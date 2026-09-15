@@ -53,10 +53,19 @@ different three-letter prefix:
 is 66 characters. Node addresses look the same with `ZNK_`; the checksum differs because the prefix
 bytes are hashed, so a key's `ZBC_` and `ZNK_` forms never share their last characters.
 
-**Decoding** accepts the separators `_` and `-` interchangeably (and mixed), and any letter case;
-the body without separators must be exactly 56 characters and decode to 35 bytes, and the
-checksum must match when recomputed with the prefix from the text. `ZBC_` and `ZNK_` bytes are
-the same key; which prefix a tool expects is a matter of role, not of format.
+**Decoding** looks only at the 59 significant characters — the 3-letter prefix and the 56 of
+base32. Everything else in the written form is cosmetic: the separators `_` and `-`
+(interchangeably, and mixed), whitespace (a line-wrapped paste, a chat client), and any letter
+case; a form with no separators at all is the same address. Strip `_`, `-` and whitespace,
+uppercase, then: the prefix is the first three characters, the body must be exactly 56 characters
+and decode to 35 bytes, and the checksum must match when recomputed with that prefix. This is the
+rule the wallet applies before it decodes, and the node and the C++ tools apply the same one (node
+commit 12a716b9). `ZBC_` and `ZNK_` bytes are the same key; which prefix a tool expects is a matter
+of role, not of format.
+
+Auto-detection of a recipient's chain (`DecodeAddress` without a chain hint) takes the bare form
+as ZooBC only behind a `ZBC`/`ZBS` prefix with a base32 body: without a separator nothing else
+marks the string as ZooBC, and no other supported chain writes an address as 59 base32 characters.
 
 The canonical form is upper case with `_`. Tools print that form.
 

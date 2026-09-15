@@ -77,10 +77,40 @@ std::string rippleToBitcoinAlphabet(const std::string& s) {
     return out;
 }
 
+// A ZooBC identifier is 59 significant characters — a 3-letter prefix and 56 of base32 — and
+// everything else in the written form is cosmetic: '_' and '-' (interchangeably, mixed) and
+// whitespace from a line-wrapped paste; a form with no separator at all is the same identifier.
+// That is the wallet's rule and ZoobcAddress::Decode's, and detection has to agree with it, or a
+// spelling the wallet accepts is refused as "unrecognised" here while the same string decodes one
+// call deeper — and a ZBS address typed as a ZBC account because only its prefix check looked at
+// the separator.
+bool zbcSeparator(char c) { return c == '_' || c == '-'; }
+
+std::string zbcSignificant(const std::string& a) {
+    std::string n;
+    for (char c : a) {
+        if (zbcSeparator(c) || std::isspace(static_cast<unsigned char>(c))) continue;
+        n.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+    }
+    return n;
+}
+
 bool zbcPrefixIs(const std::string& a, const char* p) {
-    return a.size() > 4 && std::toupper(static_cast<unsigned char>(a[0])) == p[0]
-        && std::toupper(static_cast<unsigned char>(a[1])) == p[1]
-        && std::toupper(static_cast<unsigned char>(a[2])) == p[2] && a[3] == '_';
+    const std::string n = zbcSignificant(a);   // the prefix is the first three significant characters
+    return n.size() >= 3 && n[0] == p[0] && n[1] == p[1] && n[2] == p[2];
+}
+
+// Shape only (Decode verifies): PREFIX then a separator, or — with no separator at all — 59
+// significant characters that are all base32 after an account prefix. The bare form is gated on
+// ZBC/ZBS because without a separator nothing else marks the string as ZooBC; the checksum decides.
+bool looksZbc(const std::string& a) {
+    if (a.size() > 4 && zbcSeparator(a[3])) return true;
+    const std::string n = zbcSignificant(a);
+    if (n.size() != 59 || !(n.compare(0, 3, "ZBC") == 0 || n.compare(0, 3, "ZBS") == 0)) return false;
+    static const char* kAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    for (size_t i = 3; i < n.size(); i++)
+        if (n[i] == '\0' || std::strchr(kAlphabet, n[i]) == nullptr) return false;
+    return true;
 }
 
 Result<DecodedAddress> zbcForm(const std::string& a) {
@@ -189,8 +219,8 @@ Result<DecodedAddress> DecodeAddress(const std::string& input, AddressChain hint
     if (a.size() == 42 && a[0] == '0' && (a[1] == 'x' || a[1] == 'X') && isHex(a.substr(2), 40))
         return DecodedAddress{withType(AT::ACCOUNT_TYPE_ETH, hexBytes(a.substr(2))), AT::ACCOUNT_TYPE_ETH, "ethereum"};
 
-    // ---- ZooBC family: PREFIX_ then base32 ----------------------------------------------------
-    if (a.size() > 4 && a[3] == '_') return zbcForm(a);
+    // ---- ZooBC family: PREFIX then '_' or '-' then base32, or the bare 59-character form -------
+    if (looksZbc(a)) return zbcForm(a);
 
     // ---- Bitcoin bech32 / bech32m: version+program decide the script type ---------------------
     {

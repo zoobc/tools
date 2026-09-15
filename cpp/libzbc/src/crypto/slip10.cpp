@@ -652,36 +652,27 @@ Result<std::vector<uint8_t>> ZoobcAddress::Decode(const std::string& address) {
     // ZooBC address format: PREFIX_SEG1_SEG2_SEG3_SEG4_SEG5_SEG6_SEG7
     // Canonical form: 66 characters (3 prefix + 1 sep + 56 base32 + 6 seps).
     //
-    // Separator normalization: '_' and '-' are accepted INTERCHANGEABLY (and mixed),
-    // and the string is case-normalized. Users may type an address with dashes (e.g.
-    // pasted into a foreign-chain deposit memo) — `ZBC-XXXX-YYYY…` must decode to the
-    // SAME bytes as `ZBC_XXXX_YYYY…`. Backward compatible: the underscore form is
-    // unchanged, and only the base32 body length (56) + checksum gate validity, so no
-    // extra strings become valid beyond the same address written with the other separator.
+    // Only the 59 SIGNIFICANT characters matter: the 3-letter prefix and the 56 base32 characters.
+    // Everything between them is cosmetic — '_' and '-' (interchangeably, mixed), and whitespace,
+    // which a line-wrapped paste or a chat client routinely inserts — and a form with no separators
+    // at all is the same address. This is the rule the wallet applies before it decodes (strip
+    // [-_\s], uppercase, then length + prefix + checksum); a string the wallet accepts must not be
+    // refused one hop later by the node or a tool. Validity is still gated by the body length (56)
+    // and the checksum, so no extra strings become valid beyond the same address written another way.
     std::string norm;
     norm.reserve(address.size());
-    for (char c : address) norm += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    for (char c : address) {
+        if (c == '_' || c == '-' || std::isspace(static_cast<unsigned char>(c))) continue;
+        norm += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    }
 
-    if (norm.length() < 4) {
+    if (norm.length() < 3) {
         return Result<std::vector<uint8_t>>(
             Error(ErrorCode::InvalidArgument, "Address too short"));
     }
-    // Prefix (3 chars) then a separator ('_' or '-').
-    if (norm[3] != '_' && norm[3] != '-') {
-        return Result<std::vector<uint8_t>>(
-            Error(ErrorCode::InvalidArgument, "Invalid address format"));
-    }
 
     std::string prefix = norm.substr(0, 3);
-
-    // Strip ALL separators ('_' and '-') from the body.
-    std::string b32_encoded;
-    for (size_t i = 4; i < norm.length(); i++) {
-        char c = norm[i];
-        if (c != '_' && c != '-') {
-            b32_encoded += c;
-        }
-    }
+    std::string b32_encoded = norm.substr(3);
 
     // Should be exactly 56 Base32 characters
     if (b32_encoded.length() != 56) {
@@ -736,14 +727,29 @@ Result<std::vector<uint8_t>> ZoobcAddress::Decode(const std::string& address) {
 }
 
 bool ZoobcAddress::IsFormatted(const std::string& address, const std::string& prefix) {
-    // Prefix (3 chars) + a separator ('_' or '-'), case-insensitive. Mirrors Decode's
-    // normalization so a dash/lowercase form is recognized as "a ZBC/ZNK/ZBS address".
-    if (address.length() < 4 || prefix.length() != 3) return false;
-    for (int i = 0; i < 3; i++) {
-        if (std::toupper(static_cast<unsigned char>(address[i])) !=
-            std::toupper(static_cast<unsigned char>(prefix[i]))) return false;
+    // "Is this string a PREFIX address, however it is written?" — shape only; Decode() verifies.
+    // Mirrors Decode's normalisation: the prefix is compared case-blind on the significant
+    // characters, and after it either a separator ('_' or '-') follows in the written form, or the
+    // string with separators and whitespace removed is exactly 59 characters of the base32
+    // alphabet (the no-separator form the wallet accepts).
+    if (prefix.length() != 3) return false;
+    std::string norm;
+    for (char c : address) {
+        if (c == '_' || c == '-' || std::isspace(static_cast<unsigned char>(c))) continue;
+        norm += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
     }
-    return address[3] == '_' || address[3] == '-';
+    if (norm.length() < 4) return false;
+    for (int i = 0; i < 3; i++) {
+        if (norm[i] != std::toupper(static_cast<unsigned char>(prefix[i]))) return false;
+    }
+    const size_t s = address.find_first_not_of(" \t\r\n");
+    if (s != std::string::npos && address.length() > s + 3 && (address[s + 3] == '_' || address[s + 3] == '-')) return true;
+    if (norm.length() != 59) return false;
+    static const char* kAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    for (size_t i = 3; i < norm.length(); i++) {
+        if (norm[i] == '\0' || std::strchr(kAlphabet, norm[i]) == nullptr) return false;
+    }
+    return true;
 }
 
 bool ZoobcAddress::ValidateChecksum(const std::string& address) {
