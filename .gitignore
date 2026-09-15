@@ -1,7 +1,7 @@
 build/
 build-*/
 target/
-bin/
+/bin/
 *.o
 *.a
 .DS_Store
