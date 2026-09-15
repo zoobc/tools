@@ -15,7 +15,8 @@ public enum Custom {
 
     /// owner (36) || block hash (32) || height u32le, then the owner's signature over those bytes.
     public static func proofOfOwnership(_ owner: KeyPair, _ block: ReferenceBlock) -> [UInt8] {
-        let msg = owner.accountBytes + block.hash + LE.u32(block.height)
+        var msg = owner.accountBytes
+        msg += block.hash; msg += LE.u32(block.height)
         return msg + owner.sign(msg)
     }
 
@@ -35,15 +36,18 @@ public enum Custom {
             extra.append(("node_znk", try KeyPair(hex: p["node_privkey"] ?? "").nodeAddress))
             extra.append(("owner_zbc", input.sender.address))
         case "fee-vote-reveal":
-            let info = (Enc.unhex(p["recent_block_hash"] ?? "") ?? []) + LE.u32(UInt32(try Body.parseInteger(p["recent_block_height"] ?? "", kind: "uint32", name: "recent_block_height")))
-                + LE.i64(try Body.parseInteger(p["fee_vote"] ?? "", kind: "int64", name: "fee_vote"))
+            var info = Enc.unhex(p["recent_block_hash"] ?? "") ?? []
+            info += LE.u32(UInt32(try Body.parseInteger(p["recent_block_height"] ?? "", kind: "uint32", name: "recent_block_height")))
+            info += LE.i64(try Body.parseInteger(p["fee_vote"] ?? "", kind: "int64", name: "fee_vote"))
             let sig = input.sender.sign(info)
             ctx.computed["voter_signature"] = LE.u32(UInt32(sig.count)) + sig
         case "gateway-heartbeat":
             guard let gw = try? KeyPair(hex: p["gateway_privkey"] ?? "") else { throw ToolError.usage("gateway_privkey is not a valid key") }
             let h = try Body.parseInteger(p["reference_height"] ?? "", kind: "uint32", name: "reference_height")
             guard let hash = Enc.unhex(p["reference_block_hash"] ?? ""), hash.count == 32 else { throw ToolError.usage("reference_block_hash must be 32 bytes (64 hex)") }
-            ctx.computed["signature"] = gw.sign(gw.publicKey + LE.u32(UInt32(h)) + hash)
+            var hb = gw.publicKey
+            hb += LE.u32(UInt32(h)); hb += hash
+            ctx.computed["signature"] = gw.sign(hb)
             extra.append(("gateway_key", Enc.hex(gw.publicKey))); extra.append(("reference_height", h)); extra.append(("reference_block_hash", p["reference_block_hash"] ?? ""))
         default: break
         }
@@ -85,9 +89,11 @@ public enum Custom {
         var sigs: [(String, [UInt8])] = []
         for sk in signers { guard let kp = try? KeyPair(hex: sk) else { throw ToolError.usage("Invalid signer key") }; sigs.append((Enc.hex(kp.accountBytes), kp.sign(innerDigest))) }
         sigs.sort { $0.0 < $1.0 }   // the node keeps them in a map ordered by address hex
-        var body = LE.u32(1) + LE.u32(minSigs) + LE.i64(nonce) + LE.u32(UInt32(participants.count)) + participants.flatMap { $0 }
-        body += LE.u32(UInt32(inner.count)) + inner + LE.u32(1) + innerHash + LE.u32(UInt32(sigs.count))
-        for (addr, sig) in sigs { body += Enc.unhex(addr)! + LE.u32(UInt32(sig.count)) + sig }
+        var body: [UInt8] = LE.u32(1)
+        body += LE.u32(minSigs); body += LE.i64(nonce); body += LE.u32(UInt32(participants.count))
+        for a in participants { body += a }
+        body += LE.u32(UInt32(inner.count)); body += inner; body += LE.u32(1); body += innerHash; body += LE.u32(UInt32(sigs.count))
+        for (addr, sig) in sigs { body += Enc.unhex(addr)!; body += LE.u32(UInt32(sig.count)); body += sig }
         let extra: [(String, Any)] = [("multisig_address", Enc.hex(ms)), ("multisig_zbc_address", Address.encode(ms, prefix: "ZBC")!), ("min_signatures", Int(minSigs)),
                                       ("inner_tx_hash", Enc.hex(innerHash)), ("fund_hint", "send ZBC to multisig_zbc_address before the signatures complete, else the inner tx stays in mempool")]
         return (body, extra)
@@ -108,11 +114,14 @@ public enum Custom {
             let seat = (turn + k) % 2
             guard cell <= 8, state[cell] == 0 else { throw ToolError.usage("illegal move at seq \(k + 1)") }
             let move: [UInt8] = [UInt8(cell)]
-            let digest = SHA3.hash256(LE.i64(appId) + LE.u32(UInt32(k + 1)) + SHA3.hash256(state) + move)
-            entries += [UInt8(seat)] + LE.u16(move.count) + move + seats[seat].sign(digest)
+            var pre: [UInt8] = LE.i64(appId)
+            pre += LE.u32(UInt32(k + 1)); pre += SHA3.hash256(state); pre += move
+            let digest = SHA3.hash256(pre)
+            entries.append(UInt8(seat)); entries += LE.u16(move.count); entries += move; entries += seats[seat].sign(digest)
             state[cell] = UInt8(seat + 1)
         }
-        let body = LE.i64(appId) + LE.u32(UInt32(cells.count)) + LE.u32(UInt32(cells.count)) + entries
+        var body: [UInt8] = LE.i64(appId)
+        body += LE.u32(UInt32(cells.count)); body += LE.u32(UInt32(cells.count)); body += entries
         return (body, [("app_id", appId), ("opening_turn", turn), ("final_seq", cells.count)])
     }
 }

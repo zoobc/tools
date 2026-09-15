@@ -109,7 +109,8 @@ public enum Enc {
     }
     /// (hrp, witness version, program) of a segwit address.
     public static func segwitDecode(_ s: String) -> (String, Int, [UInt8])? {
-        guard let (hrp, data, enc) = bech32DecodeRaw(s), let first = data.first else { return nil }
+        guard let raw = bech32DecodeRaw(s), let first = raw.1.first else { return nil }
+        let (hrp, data, enc) = raw
         let version = Int(first)
         guard let prog = convertBits(Array(data.dropFirst()), 5, 8, false), prog.count >= 2, prog.count <= 40, version <= 16 else { return nil }
         if version == 0 && prog.count != 20 && prog.count != 32 { return nil }
@@ -118,8 +119,8 @@ public enum Enc {
     }
     /// Plain bech32 with an 8-bit payload (Cardano addresses).
     public static func bech32DecodePlain(_ s: String) -> (String, [UInt8])? {
-        guard let (hrp, data, enc) = bech32DecodeRaw(s), enc == "bech32", let b = convertBits(data, 5, 8, false) else { return nil }
-        return (hrp, b)
+        guard let raw = bech32DecodeRaw(s), raw.2 == "bech32", let b = convertBits(raw.1, 5, 8, false) else { return nil }
+        return (raw.0, b)
     }
     /// (prefix, 32-byte account id) of an SS58 address; checksum = BLAKE2b-512("SS58PRE" || body)[0..1].
     public static func ss58Decode(_ s: String) -> (Int, [UInt8])? {

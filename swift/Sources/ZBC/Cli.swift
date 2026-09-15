@@ -205,7 +205,8 @@ public enum Cli {
     }
 
     static func printHelp(_ cmd: String, _ io: Io) -> Int {
-        guard let (desc, params, type) = commandOf(cmd) else { io.stderr("Unknown command: \(cmd) (try `zbc-cli list`)\n"); return ExitCode.usage }
+        guard let found = commandOf(cmd) else { io.stderr("Unknown command: \(cmd) (try `zbc-cli list`)\n"); return ExitCode.usage }
+        let (desc, params, type) = found
         var s = "\(cmd) — \(desc)  (tx type \(type))\nJSON fields (default: JSON in/out; --json-input reads them on stdin; positional order matches):\n"
         var sample: [(String, Any)] = []
         for p in params {
@@ -383,7 +384,8 @@ public enum Cli {
 
     /// One command with its own arguments.
     public static func runTool(_ cmd: String, _ args: [String], _ io: Io) -> Int {
-        guard let (_, params, _) = commandOf(cmd) else { io.stderr("Unknown command: \(cmd) (try `zbc-cli list`)\n"); return ExitCode.usage }
+        guard let found = commandOf(cmd) else { io.stderr("Unknown command: \(cmd) (try `zbc-cli list`)\n"); return ExitCode.usage }
+        let params = found.1
         var verbose = false
         do {
             let (positional, parsed) = try parseArgs(args, io)

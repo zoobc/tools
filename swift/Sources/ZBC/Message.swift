@@ -20,8 +20,8 @@ public enum Message {
     /// The public key behind a ZBC_ address or 64 hex, or nil.
     public static func publicKey(of address: String) -> [UInt8]? {
         if Enc.isHex(address, 64) { return Enc.unhex(address) }
-        guard let (prefix, payload) = Address.decode(address), prefix == "ZBC" else { return nil }
-        return payload
+        guard let d = Address.decode(address), d.0 == "ZBC" else { return nil }
+        return d.1
     }
 
     /// False for anything that does not verify; never throws.

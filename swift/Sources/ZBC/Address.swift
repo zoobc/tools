@@ -60,7 +60,8 @@ public enum Address {
     public struct Invalid: Error { public let message: String }
 
     private static func zbcForm(_ a: String) throws -> ParsedAddress {
-        guard let (prefix, payload) = decode(a) else { throw Invalid(message: "invalid ZooBC address checksum") }
+        guard let d = decode(a) else { throw Invalid(message: "invalid ZooBC address checksum") }
+        let (prefix, payload) = d
         return ParsedAddress(type: prefix == "ZBS" ? AccountType.dataset : AccountType.zoobc, payload: payload, display: a)
     }
 
@@ -74,8 +75,8 @@ public enum Address {
             guard let d = Enc.base58Decode(a), d.count == 32 else { throw Invalid(message: "not a 32-byte Solana address") }
             return ParsedAddress(type: AccountType.solana, payload: d, display: a)
         case "dot":
-            guard let (_, id) = Enc.ss58Decode(a) else { throw Invalid(message: "not a valid SS58 address") }
-            return ParsedAddress(type: AccountType.polkadot, payload: id, display: a)
+            guard let ss = Enc.ss58Decode(a) else { throw Invalid(message: "not a valid SS58 address") }
+            return ParsedAddress(type: AccountType.polkadot, payload: ss.1, display: a)
         case "zbc", "zbs": return try zbcForm(a)
         default: return try auto(a)
         }
@@ -89,7 +90,8 @@ public enum Address {
         if u.count > 4 && (u[3] == UInt8(ascii: "_") || u[3] == UInt8(ascii: "-")) { return try zbcForm(a) }
         let low5 = String(a.prefix(5)).lowercased()
         if low5.hasPrefix("bc1") || low5.hasPrefix("tb1") || low5.hasPrefix("bcrt1") {
-            guard let (_, version, prog) = Enc.segwitDecode(a) else { throw Invalid(message: "invalid Bitcoin bech32 address") }
+            guard let sw = Enc.segwitDecode(a) else { throw Invalid(message: "invalid Bitcoin bech32 address") }
+            let (version, prog) = (sw.1, sw.2)
             switch (version, prog.count) {
             case (0, 20): return ParsedAddress(type: AccountType.bitcoinP2WPKH, payload: prog, display: a)
             case (0, 32): return ParsedAddress(type: AccountType.bitcoinP2WSH, payload: prog, display: a)
@@ -104,7 +106,7 @@ public enum Address {
             }
         }
         if u.count > 5 && String(a.prefix(5)).lowercased() == "addr1" {
-            if let (hrp, b) = Enc.bech32DecodePlain(a), hrp == "addr", b.count == 29, b[0] == 0x61 { return ParsedAddress(type: AccountType.cardano, payload: Array(b[1...]), display: a) }
+            if let d = Enc.bech32DecodePlain(a), d.0 == "addr", d.1.count == 29, d.1[0] == 0x61 { return ParsedAddress(type: AccountType.cardano, payload: Array(d.1[1...]), display: a) }
             throw Invalid(message: "invalid Cardano address (expected a mainnet enterprise addr1… address)")
         }
         if u[0] == UInt8(ascii: "T") && u.count == 34 {
@@ -119,7 +121,7 @@ public enum Address {
             if let body = Enc.base58CheckDecode(a), body.count == 23, body[0] == 0x06, body[1] == 0xa1, body[2] == 0x9f { return ParsedAddress(type: AccountType.tezos, payload: Array(body[3...]), display: a) }
             throw Invalid(message: "invalid Tezos address")
         }
-        if let (_, id) = Enc.ss58Decode(a), id.count == 32 { return ParsedAddress(type: AccountType.polkadot, payload: id, display: a) }
+        if let ss = Enc.ss58Decode(a), ss.1.count == 32 { return ParsedAddress(type: AccountType.polkadot, payload: ss.1, display: a) }
         if u.count >= 32 && u.count <= 44, let d = Enc.base58Decode(a), d.count == 32 { return ParsedAddress(type: AccountType.solana, payload: d, display: a) }
         if Enc.isHex(a, 64), let key = Enc.unhex(a) { return ParsedAddress(type: AccountType.zoobc, payload: key, display: encode(key, prefix: "ZBC")!) }
         throw Invalid(message: "unrecognised address. Supported: ZooBC (ZBC_/ZBS_), Bitcoin, Ethereum, Solana, Polkadot, Cardano, Ripple, Tron, Tezos")
@@ -144,8 +146,8 @@ public enum Address {
     public static func parseKey32(_ text: String) throws -> [UInt8] {
         let u = Array(text.utf8)
         if u.count == 66 && u[3] == UInt8(ascii: "_") {
-            guard let (_, payload) = decode(text) else { throw Invalid(message: "invalid address checksum") }
-            return payload
+            guard let d = decode(text) else { throw Invalid(message: "invalid address checksum") }
+            return d.1
         }
         var h = text; if h.hasPrefix("0x") || h.hasPrefix("0X") { h = String(h.dropFirst(2)) }
         guard Enc.isHex(h, 64), let b = Enc.unhex(h) else { throw Invalid(message: "key must be a 64-hex string or a ZNK_/ZBG_/ZBR_ address") }

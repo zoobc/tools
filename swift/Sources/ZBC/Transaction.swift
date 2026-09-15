@@ -15,7 +15,13 @@ public struct Escrow: Equatable {
     /// The escrow block of the envelope (spec/signing.md section 3).
     public func bytes() throws -> [UInt8] {
         let ins = Array(instruction.utf8)
-        return try Address.parse(approver).bytes + LE.i64(commission) + LE.i64(timeout) + LE.u32(UInt32(ins.count)) + ins + [0]
+        var out = try Address.parse(approver).bytes
+        out += LE.i64(commission)
+        out += LE.i64(timeout)
+        out += LE.u32(UInt32(ins.count))
+        out += ins
+        out.append(0)
+        return out
     }
     /// The escrow object of the submit payload.
     public func payload() throws -> [String: Any] {
@@ -57,8 +63,18 @@ public enum Transaction {
     public static func unsignedBytes(type: UInt32, timestamp: Int64, sender: [UInt8], recipient: [UInt8], fee: Int64, body: [UInt8],
                                      escrow: Escrow? = nil, message: [UInt8] = [], version: UInt8 = 1) throws -> [UInt8] {
         let rec = (recipient.isEmpty || recipient.allSatisfy { $0 == 0 }) ? emptyAccount : recipient
-        return LE.u32(type) + [version] + LE.i64(timestamp) + sender + rec + LE.i64(fee) + LE.u32(UInt32(body.count)) + body
-            + (try escrow?.bytes() ?? emptyAccount) + LE.u32(UInt32(message.count)) + message
+        var out: [UInt8] = LE.u32(type)
+        out.append(version)
+        out += LE.i64(timestamp)
+        out += sender
+        out += rec
+        out += LE.i64(fee)
+        out += LE.u32(UInt32(body.count))
+        out += body
+        out += try escrow?.bytes() ?? emptyAccount
+        out += LE.u32(UInt32(message.count))
+        out += message
+        return out
     }
 
     /// SHA3-256("ZBC-TX" || genesis || unsigned) for version 2; SHA3-256(unsigned) for version 1.
