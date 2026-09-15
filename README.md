@@ -40,6 +40,13 @@ is updated as tools land.
 Every tool prints one JSON object on stdout and uses the same exit codes, options and
 environment variables. The contract is in `spec/cli-contract.md` (to be added with the C++ tools).
 
+## Links
+
+- Project site: https://zoobc.com
+- ZooBC Foundation: https://zoobc.foundation
+- This repository: https://github.com/zoobc/tools
+- Contact: info@zoobc.foundation
+
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci.
