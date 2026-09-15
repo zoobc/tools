@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
+[workspace]
+resolver = "2"
+members = ["zbc", "zbc-cli", "gen"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["ZooBC Foundation and Roberto Capodieci <info@zoobc.foundation>"]
+repository = "https://github.com/zoobc/tools"
+rust-version = "1.75"

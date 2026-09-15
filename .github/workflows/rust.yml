@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
+name: rust
+
+on:
+  push:
+    paths: ["rust/**", "spec/**", ".github/workflows/rust.yml"]
+  pull_request:
+    paths: ["rust/**", "spec/**", ".github/workflows/rust.yml"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Generated files are current
+        run: cd rust && cargo run -q -p gen && git diff --exit-code -- zbc/src/commands_gen.rs zbc-cli/src/bin
+      - name: Build every program and run every vector
+        run: cd rust && cargo build --release && cargo test --release
