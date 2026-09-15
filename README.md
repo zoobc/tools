@@ -18,6 +18,7 @@ cpp/        C++ implementation: libzbc (keys, addresses, serialisation, signing,
             one program per transaction, and zbc-cli
 ts/         TypeScript: one npm package for Node and the browser, no runtime dependencies, with zbc-cli
 js/         the TypeScript package bundled into one dependency-free file for a <script> tag
+py/         Python: one pip package on the standard library only, with zbc-cli
 scripts/    the generators that write spec/transactions and spec/vectors from the C++ tools
 go/         Go implementation, same shape: a zbc package, cmd/<tool>, cmd/zbc-cli
 rust/       Rust implementation, same shape: a zbc crate, one binary per tool, zbc-cli
@@ -30,16 +31,16 @@ single differing byte fails the build.
 ## Status
 
 The C++ tools are here and build on Linux and macOS (see `cpp/README.md`). The TypeScript
-package and its drop-in JavaScript build are here too (`ts/README.md`, `js/README.md`), minus
-`--encrypt`. The other languages follow in the order of [ROADMAP.md](ROADMAP.md): Python, Go,
-Rust, Kotlin, Swift, PHP, Perl.
+package with its drop-in JavaScript build (`ts/README.md`, `js/README.md`) and the Python package
+(`py/README.md`) are here too, minus `--encrypt`. The other languages follow in the order of
+[ROADMAP.md](ROADMAP.md): Go, Rust, Kotlin, Swift, PHP, Perl.
 
 | Tool | C++ | TypeScript / JS | Python | Go | Rust | Kotlin | Swift | PHP | Perl |
 |------|-----|-----------------|--------|----|------|--------|-------|-----|------|
-| zbc-cli (all transactions) | done | done (58 types, generated from the spec) | next | planned | planned | planned | planned | planned | planned |
-| one program per transaction | done (45) | n/a, one command | n/a, one command | planned | planned | n/a, one command | n/a | n/a, one command | n/a, one command |
-| key and address generators | done | done (library and `zbc-cli`; no separate generator programs) | next | planned | planned | planned | planned | planned | planned |
-| passes every vector in `spec/vectors` in CI | done | done | next | planned | planned | planned | planned | planned | planned |
+| zbc-cli (all transactions) | done | done (58 types, generated from the spec) | done (58 types) | next | planned | planned | planned | planned | planned |
+| one program per transaction | done (45) | n/a, one command | n/a, one command | next | planned | n/a, one command | n/a | n/a, one command | n/a, one command |
+| key and address generators | done | done (library and `zbc-cli`; no separate generator programs) | done (library) | next | planned | planned | planned | planned | planned |
+| passes every vector in `spec/vectors` in CI | done | done | done | next | planned | planned | planned | planned | planned |
 
 ## Command-line contract
 

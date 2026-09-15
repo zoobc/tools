@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zbc-tools"
+version = "0.1.0"
+description = "ZooBC keys, addresses, transaction signing, the node client and the zbc-cli command line; standard library only"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "ZooBC Foundation and Roberto Capodieci", email = "info@zoobc.foundation" }]
+requires-python = ">=3.9"
+dependencies = []
+classifiers = ["License :: OSI Approved :: MIT License", "Programming Language :: Python :: 3", "Operating System :: OS Independent"]
+
+[project.urls]
+Homepage = "https://github.com/zoobc/tools"
+
+[project.scripts]
+zbc-cli = "zbc.cli:main"
+
+[tool.setuptools]
+packages = ["zbc"]

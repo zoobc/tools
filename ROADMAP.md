@@ -9,8 +9,8 @@ of work, chosen by who integrates ZooBC with what.
 | 1 | C++ | `libzbc` and 57 programs, the reference | published, `cpp/` |
 | 2 | TypeScript | one npm package for browser and Node, typed, with `zbc-cli` | published, `ts/` (all 58 types; `--encrypt` not yet) |
 | 3 | JavaScript | one dependency-free file to include with a script tag, built from the TypeScript package and committed so nobody needs npm | published, `js/zbc.js` |
-| 4 | Python | one pip package and `zbc-cli` | next |
-| 5 | Go | one module: `zbc` package, `cmd/<tool>`, `cmd/zbc-cli` | planned |
+| 4 | Python | one pip package and `zbc-cli` | published, `py/` (all 58 types; `--encrypt` not yet) |
+| 5 | Go | one module: `zbc` package, `cmd/<tool>`, `cmd/zbc-cli` | next |
 | 6 | Rust | one Cargo workspace: `zbc` crate, one binary per tool, `zbc-cli` | planned |
 | 7 | Kotlin | one JVM/Android library, usable from Java, and `zbc-cli` | planned |
 | 8 | Swift | one Swift package for iOS and macOS | planned |

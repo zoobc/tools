@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
+name: py
+
+on:
+  push:
+    paths: ["py/**", "spec/**", ".github/workflows/py.yml"]
+  pull_request:
+    paths: ["py/**", "spec/**", ".github/workflows/py.yml"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: The command table is current
+        run: cd py && python3 scripts/gen_commands.py && git diff --exit-code -- zbc/_commands.py
+      - name: Every vector through the library and the CLI
+        run: cd py && python3 -m unittest -v
+      - name: The package installs and zbc-cli runs
+        run: cd py && pip install . && zbc-cli list | head -1
