@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
+name: go
+
+on:
+  push:
+    paths: ["go/**", "spec/**", ".github/workflows/go.yml"]
+  pull_request:
+    paths: ["go/**", "spec/**", ".github/workflows/go.yml"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ["1.24", "stable"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - name: Generated files are current and formatted
+        run: cd go && go run ./internal/gen && git diff --exit-code -- zbc/commands_gen.go cmd && test -z "$(gofmt -l .)"
+      - name: Vet, build every program, run every vector
+        run: cd go && go vet ./... && go build ./... && go test ./...
