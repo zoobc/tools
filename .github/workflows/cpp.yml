@@ -1,0 +1,36 @@
+name: cpp
+
+on:
+  push:
+    paths: ["cpp/**", ".github/workflows/cpp.yml"]
+  pull_request:
+    paths: ["cpp/**", ".github/workflows/cpp.yml"]
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build libsodium-dev libssl-dev libsecp256k1-dev
+      - name: Configure
+        run: cmake -S cpp -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build
+      - name: Smoke test
+        run: ctest --test-dir build --output-on-failure
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencies
+        run: brew install libsodium openssl@3 secp256k1 ninja
+      - name: Configure
+        run: cmake -S cpp -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
+      - name: Build
+        run: cmake --build build
+      - name: Smoke test
+        run: ctest --test-dir build --output-on-failure

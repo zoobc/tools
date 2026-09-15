@@ -26,19 +26,19 @@ single differing byte fails the build.
 
 ## Status
 
-The C++ tools are being moved here from the node repository. Go and Rust follow. The table below
-is updated as tools land.
+The C++ tools are here and build on Linux and macOS (see `cpp/README.md`). Go and Rust follow.
+The table below is updated as tools land.
 
 | Tool | C++ | Go | Rust |
 |------|-----|----|------|
-| zbc-cli (all transactions) | moving | planned | planned |
-| one program per transaction | moving | planned | planned |
-| key and address generators | moving | planned | planned |
+| zbc-cli (all transactions) | done | planned | planned |
+| one program per transaction | done (45) | planned | planned |
+| key and address generators | done | planned | planned |
 
 ## Command-line contract
 
 Every tool prints one JSON object on stdout and uses the same exit codes, options and
-environment variables. The contract is in `spec/cli-contract.md` (to be added with the C++ tools).
+environment variables. The contract is in [`spec/cli-contract.md`](spec/cli-contract.md).
 
 ## Links
 

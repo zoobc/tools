@@ -1,0 +1,1 @@
+Core and tool sources copied from the ZooBC node at commit 4fe39506 on 2026-09-15 by scripts/publish-tools-cpp.sh.
