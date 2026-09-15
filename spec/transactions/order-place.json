@@ -1,0 +1,103 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "PlaceOrder",
+  "type": 22,
+  "command": "order-place",
+  "binary": "zbc-order-place",
+  "description": "Place a limit or market order on a market.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "market_id",
+      "kind": "int64",
+      "required": true,
+      "help": "market id"
+    },
+    {
+      "name": "side",
+      "kind": "uint8",
+      "required": true,
+      "help": "0 = buy, 1 = sell"
+    },
+    {
+      "name": "price",
+      "kind": "int64",
+      "required": true,
+      "help": "quote per base, scaled by 10^8"
+    },
+    {
+      "name": "amount",
+      "kind": "int64",
+      "required": true,
+      "help": "base amount (atomic)"
+    },
+    {
+      "name": "flags",
+      "kind": "uint8",
+      "required": false,
+      "help": "bit0 market order, bit1 post-only",
+      "default": "0"
+    },
+    {
+      "name": "expiry",
+      "kind": "int64",
+      "required": false,
+      "help": "Unix seconds, 0 = good till cancelled",
+      "default": "0"
+    }
+  ],
+  "body": [
+    {
+      "name": "market_id",
+      "encoding": "u64le",
+      "from": "market_id"
+    },
+    {
+      "name": "side",
+      "encoding": "u8",
+      "from": "side"
+    },
+    {
+      "name": "price",
+      "encoding": "u64le",
+      "from": "price"
+    },
+    {
+      "name": "amount",
+      "encoding": "u64le",
+      "from": "amount"
+    },
+    {
+      "name": "flags",
+      "encoding": "u8",
+      "from": "flags"
+    },
+    {
+      "name": "expiry",
+      "encoding": "u64le",
+      "from": "expiry"
+    }
+  ],
+  "example": {
+    "market_id": "7",
+    "side": "0",
+    "price": "150000000",
+    "amount": "1000",
+    "flags": "0",
+    "expiry": "0"
+  },
+  "notes": []
+}

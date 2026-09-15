@@ -1,0 +1,280 @@
+{
+ "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+ "description": "What parse_address (addresses.md 3) makes of each input as a send-zbc recipient: valid or not, the account type and the full typed address bytes (4-byte type LE + payload). `chain` = the --chain option. Produced by zbc-cli send-zbc --offline.",
+ "vectors": [
+  {
+   "input": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+   "valid": true,
+   "account_type": 0,
+   "address_bytes": "000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+   "type_label": "ZooBC",
+   "display": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX"
+  },
+  {
+   "input": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+   "valid": true,
+   "account_type": 0,
+   "address_bytes": "00000000d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+   "type_label": "ZooBC",
+   "display": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
+  },
+  {
+   "input": "zbc_2bflemtu_fo2kwoqt_nc6umfpe_43icesvx_diawxl4f_ecrtfslx_q43uiv2i",
+   "valid": true,
+   "account_type": 0,
+   "address_bytes": "00000000d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+   "type_label": "ZooBC",
+   "display": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
+  },
+  {
+   "input": "ZBC-2BFLEMTU-FO2KWOQT-NC6UMFPE-43ICESVX-DIAWXL4F-ECRTFSLX-Q43UIV2I",
+   "valid": true,
+   "account_type": 0,
+   "address_bytes": "00000000d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+   "type_label": "ZBC",
+   "display": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
+  },
+  {
+   "input": "ZBC-2BFLEMTU_FO2KWOQT-NC6UMFPE_43ICESVX-DIAWXL4F_ECRTFSLX-Q43UIV2I",
+   "valid": true,
+   "account_type": 0,
+   "address_bytes": "00000000d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+   "type_label": "ZBC",
+   "display": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
+  },
+  {
+   "input": "ZNK_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+   "valid": false,
+   "exit_code": 2,
+   "error_class": "usage"
+  },
+  {
+   "input": "ZNK_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43WTXZ7",
+   "valid": true,
+   "account_type": 0,
+   "address_bytes": "00000000d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+   "type_label": "ZooBC",
+   "display": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
+  },
+  {
+   "input": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2J",
+   "valid": false,
+   "exit_code": 2,
+   "error_class": "usage"
+  },
+  {
+   "input": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX",
+   "valid": false,
+   "exit_code": 2,
+   "error_class": "usage"
+  },
+  {
+   "input": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+   "valid": true,
+   "account_type": 0,
+   "address_bytes": "000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+   "type_label": "ZooBC",
+   "display": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX"
+  },
+  {
+   "input": "5E8EB28DCCAA94A992F7169FA67966207D96AA55DF7D24D2D6EC1F538C9F2152",
+   "valid": true,
+   "account_type": 0,
+   "address_bytes": "000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+   "type_label": "ZooBC",
+   "display": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX"
+  },
+  {
+   "input": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+   "valid": true,
+   "account_type": 4,
+   "address_bytes": "04000000d8da6bf26964af9d7eed9e03e53415d37aa96045",
+   "type_label": "Ethereum",
+   "display": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
+  },
+  {
+   "input": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+   "valid": true,
+   "account_type": 4,
+   "address_bytes": "04000000d8da6bf26964af9d7eed9e03e53415d37aa96045",
+   "type_label": "Ethereum",
+   "display": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045"
+  },
+  {
+   "input": "d8da6bf26964af9d7eed9e03e53415d37aa96045",
+   "valid": false,
+   "exit_code": 2,
+   "error_class": "usage"
+  },
+  {
+   "input": "0x1234",
+   "valid": false,
+   "exit_code": 2,
+   "error_class": "usage"
+  },
+  {
+   "input": "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2",
+   "valid": true,
+   "account_type": 5,
+   "address_bytes": "0500000077bff20c60e522dfaa3350c39b030a5d004e839a",
+   "type_label": "Bitcoin P2PKH",
+   "display": "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2"
+  },
+  {
+   "input": "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy",
+   "valid": true,
+   "account_type": 6,
+   "address_bytes": "06000000b472a266d0bd89c13706a4132ccfb16f7c3b9fcb",
+   "type_label": "Bitcoin P2SH",
+   "display": "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy"
+  },
+  {
+   "input": "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+   "valid": true,
+   "account_type": 7,
+   "address_bytes": "07000000751e76e8199196d454941c45d1b3a323f1433bd6",
+   "type_label": "Bitcoin P2WPKH",
+   "display": "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+  },
+  {
+   "input": "bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3",
+   "valid": true,
+   "account_type": 8,
+   "address_bytes": "080000001863143c14c5166804bd19203356da136c985678cd4d27a1b8c6329604903262",
+   "type_label": "Bitcoin P2WSH",
+   "display": "bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3"
+  },
+  {
+   "input": "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr",
+   "valid": true,
+   "account_type": 9,
+   "address_bytes": "09000000a60869f0dbcf1dc659c9cecbaf8050135ea9e8cdc487053f1dc6880949dc684c",
+   "type_label": "Bitcoin Taproot",
+   "display": "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr"
+  },
+  {
+   "input": "11111111111111111111111111111111",
+   "valid": true,
+   "account_type": 11,
+   "address_bytes": "0b0000000000000000000000000000000000000000000000000000000000000000000000",
+   "type_label": "Solana",
+   "display": "ZBC_AAAAAAAA_AAAAAAAA_AAAAAAAA_AAAAAAAA_AAAAAAAA_AAAAAAAA_AAAHKJF5"
+  },
+  {
+   "input": "So11111111111111111111111111111111111111112",
+   "valid": true,
+   "account_type": 11,
+   "address_bytes": "0b000000069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001",
+   "type_label": "Solana",
+   "display": "ZBC_A2NYQV76_VOAYJ63I_P5RUMGGA_GXNMIOO4_DLVTWVMY_UDYAAAAA_AAAU7OWT"
+  },
+  {
+   "input": "15oF4uVJwmo4TdGW7VfQxNLavjCXviqxT9S1MgbjMNHr6Sp5",
+   "valid": true,
+   "account_type": 12,
+   "address_bytes": "0c000000d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d",
+   "type_label": "Polkadot",
+   "display": "ZBC_2Q2ZHRYV_7XJRYYIU_DK6QJKM7_22BCZBKY_QVGM3Y42_K2COPJLN_UJ67GB4M"
+  },
+  {
+   "input": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+   "valid": true,
+   "account_type": 12,
+   "address_bytes": "0c000000d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d",
+   "type_label": "Polkadot",
+   "display": "ZBC_2Q2ZHRYV_7XJRYYIU_DK6QJKM7_22BCZBKY_QVGM3Y42_K2COPJLN_UJ67GB4M"
+  },
+  {
+   "input": "TJRabPrwbZy45sbavfcjinPJC18kjpRTv8",
+   "valid": true,
+   "account_type": 15,
+   "address_bytes": "0f0000005cbdd86a2fa8dc4bddd8a8f69dba48572eec07fb",
+   "type_label": "Tron",
+   "display": "TJRabPrwbZy45sbavfcjinPJC18kjpRTv8"
+  },
+  {
+   "input": "rN7n7otQDd6FczFgLdSqtcsAUxDkw6fzRH",
+   "valid": true,
+   "account_type": 14,
+   "address_bytes": "0e00000093b89afcad4c8eac2b131c1331fef12ae1522bbe",
+   "type_label": "Ripple",
+   "display": "rN7n7otQDd6FczFgLdSqtcsAUxDkw6fzRH"
+  },
+  {
+   "input": "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx",
+   "valid": true,
+   "account_type": 16,
+   "address_bytes": "1000000002298c03ed7d454a101eb7022bc95f7e5f41ac78",
+   "type_label": "Tezos",
+   "display": "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx"
+  },
+  {
+   "input": "addr1vx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3jcu5d8ps",
+   "valid": false,
+   "exit_code": 2,
+   "error_class": "usage"
+  },
+  {
+   "input": "addr1vyqsyqcyq5rqwzqfpg9scrgwpugpzysnzs23v9ccrydpk8qavsj8u",
+   "valid": true,
+   "account_type": 13,
+   "address_bytes": "0d0000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c",
+   "type_label": "Cardano",
+   "display": "addr1vyqsyqcyq5rqwzqfpg9scrgwpugpzysnzs23v9ccrydpk8qavsj8u"
+  },
+  {
+   "input": "",
+   "valid": false,
+   "exit_code": 2,
+   "error_class": "usage"
+  },
+  {
+   "input": "hello",
+   "valid": false,
+   "exit_code": 2,
+   "error_class": "usage"
+  },
+  {
+   "input": "ZBC_",
+   "valid": false,
+   "exit_code": 2,
+   "error_class": "usage"
+  },
+  {
+   "input": "d8da6bf26964af9d7eed9e03e53415d37aa96045",
+   "chain": "eth",
+   "valid": true,
+   "account_type": 4,
+   "address_bytes": "04000000d8da6bf26964af9d7eed9e03e53415d37aa96045",
+   "type_label": "Ethereum",
+   "display": "d8da6bf26964af9d7eed9e03e53415d37aa96045"
+  },
+  {
+   "input": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+   "chain": "zbc",
+   "valid": true,
+   "account_type": 0,
+   "address_bytes": "000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+   "type_label": "ZBC",
+   "display": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX"
+  },
+  {
+   "input": "11111111111111111111111111111111",
+   "chain": "sol",
+   "valid": true,
+   "account_type": 11,
+   "address_bytes": "0b0000000000000000000000000000000000000000000000000000000000000000000000",
+   "type_label": "Solana",
+   "display": "ZBC_AAAAAAAA_AAAAAAAA_AAAAAAAA_AAAAAAAA_AAAAAAAA_AAAAAAAA_AAAHKJF5"
+  },
+  {
+   "input": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+   "chain": "btc",
+   "valid": true,
+   "account_type": 4,
+   "address_bytes": "04000000d8da6bf26964af9d7eed9e03e53415d37aa96045",
+   "type_label": "Ethereum",
+   "display": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
+  }
+ ]
+}

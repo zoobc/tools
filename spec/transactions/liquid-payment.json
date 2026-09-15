@@ -1,0 +1,75 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "LiquidPayment",
+  "type": 6,
+  "command": "liquid-payment",
+  "binary": "zbc-liquid-pay",
+  "description": "Stream ZBC (or a token) to a recipient, vesting linearly over complete_minutes.",
+  "sender_key": "sender_privkey",
+  "recipient": "required",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "recipient",
+      "kind": "address",
+      "required": true,
+      "help": "recipient address"
+    },
+    {
+      "name": "amount",
+      "kind": "int64",
+      "required": true,
+      "help": "amount (atomic units)"
+    },
+    {
+      "name": "complete_minutes",
+      "kind": "uint64",
+      "required": true,
+      "help": "minutes until fully vested"
+    },
+    {
+      "name": "token_id",
+      "kind": "int64",
+      "required": false,
+      "help": "token to stream instead of ZBC (--token); 0 = ZBC",
+      "default": "0"
+    }
+  ],
+  "body": [
+    {
+      "name": "amount",
+      "encoding": "u64le",
+      "from": "amount"
+    },
+    {
+      "name": "complete_minutes",
+      "encoding": "u64le",
+      "from": "complete_minutes"
+    },
+    {
+      "name": "token_id",
+      "encoding": "u64le",
+      "from": "token_id",
+      "when": "token_id != 0"
+    }
+  ],
+  "example": {
+    "recipient": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+    "amount": "500000000",
+    "complete_minutes": "60"
+  },
+  "notes": [
+    "zbc-cli liquid-payment always streams ZBC; the token_id field comes from zbc-liquid-pay --token <id>."
+  ]
+}

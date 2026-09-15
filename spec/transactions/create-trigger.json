@@ -1,0 +1,74 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "CreateTrigger",
+  "type": 15,
+  "command": "create-trigger",
+  "binary": "zbc-trigger-create",
+  "description": "Lock amount now and send it to recipient at fire_height, or when an oracle event resolves.",
+  "sender_key": "sender_privkey",
+  "recipient": "required",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "recipient",
+      "kind": "address",
+      "required": true,
+      "help": "where the scheduled SendZBC pays"
+    },
+    {
+      "name": "fire_height",
+      "kind": "int64",
+      "required": true,
+      "help": "future block height"
+    },
+    {
+      "name": "amount",
+      "kind": "int64",
+      "required": true,
+      "help": "atomic ZBC locked now"
+    },
+    {
+      "name": "event_id",
+      "kind": "string",
+      "required": false,
+      "help": "oracle event id; when set the trigger fires on the event",
+      "default": ""
+    }
+  ],
+  "body": [
+    {
+      "name": "fire_height",
+      "encoding": "u64le",
+      "from": "fire_height"
+    },
+    {
+      "name": "amount",
+      "encoding": "u64le",
+      "from": "amount"
+    },
+    {
+      "name": "event_id",
+      "encoding": "str32",
+      "from": "event_id",
+      "when": "event_id != ''"
+    }
+  ],
+  "example": {
+    "recipient": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+    "fire_height": "100000",
+    "amount": "100000000",
+    "event_id": ""
+  },
+  "notes": []
+}

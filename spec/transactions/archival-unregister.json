@@ -1,0 +1,43 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "UnregisterArchival",
+  "type": 47,
+  "command": "archival-unregister",
+  "binary": "zbc-archival-unregister",
+  "description": "Withdraw an archival announcement; the node stays registered.",
+  "sender_key": "owner_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "owner_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key (64 hex). Named owner_privkey: ZBC_KEY does not apply, pass it explicitly"
+    },
+    {
+      "name": "node_public_key",
+      "kind": "key",
+      "required": true,
+      "help": "the node's ZNK_ address or 64 hex"
+    }
+  ],
+  "body": [
+    {
+      "name": "node_public_key",
+      "encoding": "key32",
+      "from": "node_public_key"
+    }
+  ],
+  "example": {
+    "node_public_key": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "notes": [
+    "No zbc-cli subcommand."
+  ]
+}

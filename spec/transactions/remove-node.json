@@ -1,0 +1,43 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "RemoveNodeRegistration",
+  "type": 514,
+  "command": "remove-node",
+  "binary": "zbc-node-remove",
+  "description": "Remove a node from the registry; the locked balance returns to the owner.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "node_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the node's private key; its public key is the body"
+    }
+  ],
+  "body": [
+    {
+      "name": "node_public_key",
+      "encoding": "pubkey_of_key",
+      "from": "node_privkey"
+    }
+  ],
+  "example": {
+    "node_privkey": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "notes": [
+    "zbc-node-remove takes (node_privkey, owner_privkey)."
+  ]
+}

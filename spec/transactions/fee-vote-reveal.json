@@ -1,0 +1,72 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "FeeVoteReveal",
+  "type": 263,
+  "command": "fee-vote-reveal",
+  "binary": "zbc-fee-vote-reveal",
+  "description": "Reveal the fee vote during the reveal phase; the body carries the sender's signature over the 44 vote bytes.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": "voter_signature",
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "recent_block_hash",
+      "kind": "hex32",
+      "required": true,
+      "help": "reference block hash"
+    },
+    {
+      "name": "recent_block_height",
+      "kind": "uint32",
+      "required": true,
+      "help": "reference block height"
+    },
+    {
+      "name": "fee_vote",
+      "kind": "int64",
+      "required": true,
+      "help": "proposed fee multiplier"
+    }
+  ],
+  "body": [
+    {
+      "name": "recent_block_hash",
+      "encoding": "hex",
+      "from": "recent_block_hash",
+      "size": 32
+    },
+    {
+      "name": "recent_block_height",
+      "encoding": "u32le",
+      "from": "recent_block_height"
+    },
+    {
+      "name": "fee_vote",
+      "encoding": "u64le",
+      "from": "fee_vote"
+    },
+    {
+      "name": "voter_signature",
+      "encoding": "bytes32",
+      "from": "voter_signature",
+      "computed": "u32le length (64) then Ed25519(sender seed, the 44 bytes above), no tag"
+    }
+  ],
+  "example": {
+    "recent_block_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+    "recent_block_height": "1000",
+    "fee_vote": "3"
+  },
+  "notes": []
+}

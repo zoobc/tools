@@ -1,0 +1,41 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "AddPrepaidStorage",
+  "type": 9,
+  "command": "add-prepaid-storage",
+  "binary": "zbc-storage-prepay",
+  "description": "Fund the account's prepaid storage balance (dataset rent).",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "amount",
+      "kind": "int64",
+      "required": true,
+      "help": "atomic ZBC"
+    }
+  ],
+  "body": [
+    {
+      "name": "amount",
+      "encoding": "u64le",
+      "from": "amount"
+    }
+  ],
+  "example": {
+    "amount": "100000000"
+  },
+  "notes": []
+}

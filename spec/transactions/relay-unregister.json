@@ -1,0 +1,43 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "UnregisterRelay",
+  "type": 49,
+  "command": "relay-unregister",
+  "binary": "zbc-relay-unregister",
+  "description": "Withdraw a relay announcement.",
+  "sender_key": "owner_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "owner_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key (64 hex). Named owner_privkey: ZBC_KEY does not apply, pass it explicitly"
+    },
+    {
+      "name": "relay_key",
+      "kind": "key",
+      "required": true,
+      "help": "the relay's ZBR_ address or 64 hex"
+    }
+  ],
+  "body": [
+    {
+      "name": "relay_key",
+      "encoding": "key32",
+      "from": "relay_key"
+    }
+  ],
+  "example": {
+    "relay_key": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "notes": [
+    "No zbc-cli subcommand."
+  ]
+}

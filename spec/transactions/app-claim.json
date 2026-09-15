@@ -1,0 +1,41 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "ClaimAppTimeout",
+  "type": 28,
+  "command": "app-claim",
+  "binary": "zbc-app-claim",
+  "description": "Claim the win when an opponent missed the per-move deadline.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "app_id",
+      "kind": "int64",
+      "required": true,
+      "help": "app id"
+    }
+  ],
+  "body": [
+    {
+      "name": "app_id",
+      "encoding": "u64le",
+      "from": "app_id"
+    }
+  ],
+  "example": {
+    "app_id": "5"
+  },
+  "notes": []
+}

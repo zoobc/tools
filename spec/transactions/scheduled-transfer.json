@@ -1,0 +1,144 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "ScheduledTransfer",
+  "type": 29,
+  "command": "scheduled-transfer",
+  "binary": null,
+  "description": "Recurring or vested transfers to a recipient.",
+  "sender_key": "sender_privkey",
+  "recipient": "required",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "recipient",
+      "kind": "address",
+      "required": true,
+      "help": "paid on each fire"
+    },
+    {
+      "name": "token_id",
+      "kind": "int64",
+      "required": false,
+      "help": "0 = ZBC",
+      "default": "0"
+    },
+    {
+      "name": "per_fire_amount",
+      "kind": "int64",
+      "required": true,
+      "help": "amount per fire (atomic), > 0"
+    },
+    {
+      "name": "interval_seconds",
+      "kind": "int64",
+      "required": false,
+      "help": "seconds between fires",
+      "default": "0"
+    },
+    {
+      "name": "remaining_fires",
+      "kind": "uint32",
+      "required": true,
+      "help": "number of fires, >= 1"
+    },
+    {
+      "name": "cliff_seconds",
+      "kind": "int64",
+      "required": false,
+      "help": "delay before the first fire",
+      "default": "0"
+    },
+    {
+      "name": "funding_mode",
+      "kind": "uint8",
+      "required": false,
+      "help": "0 pre-lock now, 1 pull at fire",
+      "default": "0"
+    },
+    {
+      "name": "cancel_policy",
+      "kind": "uint8",
+      "required": false,
+      "help": "0 or 1",
+      "default": "0"
+    },
+    {
+      "name": "end_time",
+      "kind": "int64",
+      "required": false,
+      "help": "Unix-seconds cutoff, 0 = none",
+      "default": "0"
+    }
+  ],
+  "body": [
+    {
+      "name": "token_id",
+      "encoding": "u64le",
+      "from": "token_id"
+    },
+    {
+      "name": "per_fire_amount",
+      "encoding": "u64le",
+      "from": "per_fire_amount"
+    },
+    {
+      "name": "interval_seconds",
+      "encoding": "u64le",
+      "from": "interval_seconds"
+    },
+    {
+      "name": "remaining_fires",
+      "encoding": "u32le",
+      "from": "remaining_fires"
+    },
+    {
+      "name": "cliff_seconds",
+      "encoding": "u64le",
+      "from": "cliff_seconds"
+    },
+    {
+      "name": "funding_mode",
+      "encoding": "u8",
+      "from": "funding_mode"
+    },
+    {
+      "name": "cancel_policy",
+      "encoding": "u8",
+      "from": "cancel_policy"
+    },
+    {
+      "name": "end_time",
+      "encoding": "u64le",
+      "from": "end_time"
+    },
+    {
+      "name": "reserved",
+      "encoding": "literal",
+      "from": "reserved",
+      "value": "00"
+    }
+  ],
+  "example": {
+    "recipient": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+    "token_id": "0",
+    "per_fire_amount": "100000000",
+    "interval_seconds": "86400",
+    "remaining_fires": "3",
+    "cliff_seconds": "0",
+    "funding_mode": "0",
+    "cancel_policy": "0",
+    "end_time": "0"
+  },
+  "notes": []
+}

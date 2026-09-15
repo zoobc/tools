@@ -1,0 +1,41 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "CancelSchedule",
+  "type": 30,
+  "command": "cancel-schedule",
+  "binary": null,
+  "description": "Cancel a scheduled transfer (sender) or decline it (recipient).",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "schedule_id",
+      "kind": "int64",
+      "required": true,
+      "help": "schedule id"
+    }
+  ],
+  "body": [
+    {
+      "name": "schedule_id",
+      "encoding": "u64le",
+      "from": "schedule_id"
+    }
+  ],
+  "example": {
+    "schedule_id": "11"
+  },
+  "notes": []
+}

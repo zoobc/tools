@@ -1,0 +1,90 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "CreateSwapOffer",
+  "type": 18,
+  "command": "swap-create",
+  "binary": "zbc-swap-create",
+  "description": "Offer give_amount of give_token for want_amount of want_token; the give side is held.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "give_token",
+      "kind": "int64",
+      "required": true,
+      "help": "token to give, 0 = ZBC"
+    },
+    {
+      "name": "give_amount",
+      "kind": "int64",
+      "required": true,
+      "help": "atomic"
+    },
+    {
+      "name": "want_token",
+      "kind": "int64",
+      "required": true,
+      "help": "token wanted, 0 = ZBC"
+    },
+    {
+      "name": "want_amount",
+      "kind": "int64",
+      "required": true,
+      "help": "atomic"
+    },
+    {
+      "name": "expiry",
+      "kind": "int64",
+      "required": false,
+      "help": "Unix seconds, 0 = good till cancelled",
+      "default": "0"
+    }
+  ],
+  "body": [
+    {
+      "name": "give_token",
+      "encoding": "u64le",
+      "from": "give_token"
+    },
+    {
+      "name": "give_amount",
+      "encoding": "u64le",
+      "from": "give_amount"
+    },
+    {
+      "name": "want_token",
+      "encoding": "u64le",
+      "from": "want_token"
+    },
+    {
+      "name": "want_amount",
+      "encoding": "u64le",
+      "from": "want_amount"
+    },
+    {
+      "name": "expiry",
+      "encoding": "u64le",
+      "from": "expiry"
+    }
+  ],
+  "example": {
+    "give_token": "0",
+    "give_amount": "100000000",
+    "want_token": "123456789",
+    "want_amount": "5000",
+    "expiry": "0"
+  },
+  "notes": []
+}

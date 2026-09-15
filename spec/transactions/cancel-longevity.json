@@ -1,0 +1,43 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "CancelLongevity",
+  "type": 53,
+  "command": "cancel-longevity",
+  "binary": "zbc-cancel-longevity",
+  "description": "Cancel a longevity sponsorship you created; the remainder is refunded.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "target_tx_id",
+      "kind": "int64",
+      "required": true,
+      "help": "the sponsored transaction's int64 id"
+    }
+  ],
+  "body": [
+    {
+      "name": "target_tx_id",
+      "encoding": "u64le",
+      "from": "target_tx_id"
+    }
+  ],
+  "example": {
+    "target_tx_id": "-1234567890123456789"
+  },
+  "notes": [
+    "No zbc-cli subcommand."
+  ]
+}

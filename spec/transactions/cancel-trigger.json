@@ -1,0 +1,41 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "CancelTrigger",
+  "type": 16,
+  "command": "cancel-trigger",
+  "binary": "zbc-trigger-cancel",
+  "description": "Cancel a pending trigger you own; the locked amount is refunded.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "trigger_id",
+      "kind": "int64",
+      "required": true,
+      "help": "trigger id"
+    }
+  ],
+  "body": [
+    {
+      "name": "trigger_id",
+      "encoding": "u64le",
+      "from": "trigger_id"
+    }
+  ],
+  "example": {
+    "trigger_id": "77"
+  },
+  "notes": []
+}

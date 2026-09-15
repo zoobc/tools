@@ -1,0 +1,49 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "ClaimNodeRegistration",
+  "type": 770,
+  "command": "claim-node",
+  "binary": "zbc-node-claim",
+  "description": "Claim the locked balance of a removed or expired node registration.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": true,
+  "custom": "proof_of_ownership",
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "node_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the node's private key"
+    }
+  ],
+  "body": [
+    {
+      "name": "node_public_key",
+      "encoding": "pubkey_of_key",
+      "from": "node_privkey"
+    },
+    {
+      "name": "proof_of_ownership",
+      "encoding": "custom",
+      "from": "proof_of_ownership",
+      "computed": "as register-node"
+    }
+  ],
+  "example": {
+    "node_privkey": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "notes": [
+    "zbc-node-claim takes (node_privkey, owner_privkey)."
+  ]
+}

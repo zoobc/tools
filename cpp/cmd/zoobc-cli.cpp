@@ -23,6 +23,9 @@ static void u64(std::vector<uint8_t>& b, int64_t v){ for(int i=0;i<8;i++){ b.pus
 static void u16(std::vector<uint8_t>& b, int v){ b.push_back(v&0xff); b.push_back((v>>8)&0xff); }
 static void u32(std::vector<uint8_t>& b, uint32_t v){ for(int i=0;i<4;i++){ b.push_back((uint8_t)(v&0xff)); v>>=8; } }
 static std::vector<uint8_t> hx(const std::string& h){ std::vector<uint8_t> v; for(size_t i=0;i+1<h.size();i+=2) v.push_back((uint8_t)std::stoi(h.substr(i,2),nullptr,16)); return v; }
+// --chain <name>: read the envelope recipient as this chain (cli-contract.md). The builders have no
+// access to ParsedParams, so main() parks the option here before calling them.
+static std::string& chain_hint(){ static std::string s; return s; }
 static ParamDef PK(){ return {"Sender private key","sender_privkey","Sender private key (64 hex)","",true,nullptr}; }
 static ParamDef P(const char* n,const char* k,const char* pr,const char* d="",bool req=true){ return {n,k,pr,d,req,nullptr}; }
 // Decode a hex string to bytes (for object ids). Throws on odd length / non-hex.
@@ -63,7 +66,7 @@ static std::map<std::string, Cmd> registry() {
     m["send-zbc"] = {"Send ZBC to an address", (uint32_t)TT::SendZBC, true,
         {PK(), P("Recipient","recipient","recipient address (ZBC_/hex/eth)"), P("Amount","amount","amount (atomic)")},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
-            auto r=parse_address(v[1]); if(!r.IsOk()) throw std::runtime_error("invalid recipient address"); rec=r.Value().address;
+            auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid recipient address"); rec=r.Value().address;
             int64_t amt=std::stoll(v[2]); body=TransactionUtil::GetSendZBCBodyBytes(amt); ex={{"amount",amt}}; }};
     // ---- colored-coin tokens ----
     m["issue-token"] = {"Issue a colored-coin token", (uint32_t)TT::IssueToken, false,
@@ -146,7 +149,7 @@ static std::map<std::string, Cmd> registry() {
     m["liquid-payment"] = {"Stream ZBC over time (vesting)", (uint32_t)TT::LiquidPayment, true,
         {PK(), P("Recipient","recipient","recipient address"), P("Amount","amount","atomic"), P("Complete minutes","complete_minutes","full-vesting period (min)")},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
-            auto r=parse_address(v[1]); if(!r.IsOk()) throw std::runtime_error("invalid recipient"); rec=r.Value().address;
+            auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid recipient"); rec=r.Value().address;
             int64_t amt=std::stoll(v[2]); uint64_t mins=std::stoull(v[3]);
             body=TransactionUtil::GetLiquidPaymentBodyBytes(amt, mins, 0); ex={{"amount",amt},{"complete_minutes",mins}}; }};
     m["liquid-payment-stop"] = {"Stop a liquid payment", (uint32_t)TT::LiquidPaymentStop, false,
@@ -166,7 +169,7 @@ static std::map<std::string, Cmd> registry() {
         {PK(), P("Recipient","recipient","where the scheduled SendZBC fires"), P("Fire height","fire_height","future block height"),
          P("Amount","amount","atomic ZBC locked now"), P("Event id","event_id","optional oracle event id","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
-            auto r=parse_address(v[1]); if(!r.IsOk()) throw std::runtime_error("invalid recipient"); rec=r.Value().address;
+            auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid recipient"); rec=r.Value().address;
             int64_t fh=std::stoll(v[2]), amt=std::stoll(v[3]); u64(body,fh); u64(body,amt);
             if(v.size()>4 && !v[4].empty()){ u32(body,(uint32_t)v[4].size()); body.insert(body.end(),v[4].begin(),v[4].end()); }
             ex={{"fire_height",fh},{"amount",amt}}; }};
@@ -190,14 +193,14 @@ static std::map<std::string, Cmd> registry() {
     m["setup-dataset"] = {"Set an account-dataset property", (uint32_t)TT::SetupAccountDataset, true,
         {PK(), P("Subject","recipient","dataset subject address (ZBC_)"), P("Property","property","key"), P("Value","value","value")},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
-            auto r=parse_address(v[1]); if(!r.IsOk()) throw std::runtime_error("invalid subject address"); rec=r.Value().address;
+            auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid subject address"); rec=r.Value().address;
             auto kp=derive_zbc_keypair(v[0]); if(!kp.IsOk()) throw std::runtime_error("bad key");
             auto setter=TransactionUtil::BuildAccountAddress(TransactionUtil::ACCOUNT_TYPE_ZBC, kp.Value().public_key);
             body=TransactionUtil::GetSetupAccountDatasetBodyBytes(v[2], v[3], setter, rec); ex={{"property",v[2]},{"value",v[3]}}; }};
     m["remove-dataset"] = {"Remove an account-dataset property", (uint32_t)TT::RemoveAccountDataset, true,
         {PK(), P("Subject","recipient","dataset subject address (ZBC_)"), P("Property","property","key"), P("Value","value","value")},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
-            auto r=parse_address(v[1]); if(!r.IsOk()) throw std::runtime_error("invalid subject address"); rec=r.Value().address;
+            auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid subject address"); rec=r.Value().address;
             auto kp=derive_zbc_keypair(v[0]); if(!kp.IsOk()) throw std::runtime_error("bad key");
             auto setter=TransactionUtil::BuildAccountAddress(TransactionUtil::ACCOUNT_TYPE_ZBC, kp.Value().public_key);
             body=TransactionUtil::GetRemoveAccountDatasetBodyBytes(v[2], v[3], setter, rec); ex={{"property",v[2]},{"value",v[3]}}; }};
@@ -240,7 +243,7 @@ static std::map<std::string, Cmd> registry() {
         {PK(), P("Recipient","recipient","recipient address (ZBC_/hex/eth)"),
          P("Token id","token_id","token id (decimal int64)"), P("Amount","amount","amount (atomic)")},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
-            auto r=parse_address(v[1]); if(!r.IsOk()) throw std::runtime_error("invalid recipient address"); rec=r.Value().address;
+            auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid recipient address"); rec=r.Value().address;
             int64_t tid=std::stoll(v[2]), amt=std::stoll(v[3]);
             if(amt<=0) throw std::runtime_error("amount must be > 0");
             u64(body,tid); u64(body,amt); ex={{"token_id",tid},{"amount",amt}}; }};
@@ -292,7 +295,7 @@ static std::map<std::string, Cmd> registry() {
          P("Cancel policy","cancel_policy","0 or 1","0",false),
          P("End time","end_time","unix-seconds cutoff (0 = none)","0",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
-            auto r=parse_address(v[1]); if(!r.IsOk()) throw std::runtime_error("invalid recipient"); rec=r.Value().address;
+            auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid recipient"); rec=r.Value().address;
             int64_t tid=(v.size()>2&&!v[2].empty())?std::stoll(v[2]):0;
             int64_t per=std::stoll(v[3]);
             int64_t iv=(v.size()>4&&!v[4].empty())?std::stoll(v[4]):0;
@@ -659,6 +662,7 @@ int main(int argc, char* argv[]) {
     if (rc != 0) return rc == -1 ? 0 : rc;
     emit_error = make_emitter(params.json_output);
     if (!init_sodium(emit_error)) return exit_code::INTERNAL;
+    chain_hint() = params.chain;
     // Custom handler (multisig, node reg, sign/verify): fully self-contained.
     // A builder or handler throws only for arguments it cannot use (bad address, out-of-range
     // value, bad hex), so an exception here is a usage error, not an internal one.

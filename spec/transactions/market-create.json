@@ -1,0 +1,66 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "CreateMarket",
+  "type": 21,
+  "command": "market-create",
+  "binary": "zbc-market-create",
+  "description": "Open a (base, quote) order-book market, paying a rent deposit.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "base_token",
+      "kind": "int64",
+      "required": true,
+      "help": "base token, 0 = ZBC"
+    },
+    {
+      "name": "quote_token",
+      "kind": "int64",
+      "required": true,
+      "help": "quote token, 0 = ZBC"
+    },
+    {
+      "name": "deposit",
+      "kind": "int64",
+      "required": false,
+      "help": "rent deposit (atomic)",
+      "default": "0"
+    }
+  ],
+  "body": [
+    {
+      "name": "base_token",
+      "encoding": "u64le",
+      "from": "base_token"
+    },
+    {
+      "name": "quote_token",
+      "encoding": "u64le",
+      "from": "quote_token"
+    },
+    {
+      "name": "deposit",
+      "encoding": "u64le",
+      "from": "deposit"
+    }
+  ],
+  "example": {
+    "base_token": "123456789",
+    "quote_token": "0",
+    "deposit": "100000000"
+  },
+  "notes": []
+}

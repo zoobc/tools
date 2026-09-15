@@ -1,0 +1,104 @@
+{
+ "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+ "description": "Ed25519 seed -> public key -> ZBC_ account address and ZNK_ node address (signing.md 1, addresses.md 2); BIP-39 mnemonic + passphrase -> SLIP-10 m/44'/883'/<index>' accounts.",
+ "seeds": [
+  {
+   "seed": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+   "public_key": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+   "address": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+   "node_address": "ZNK_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJH435X"
+  },
+  {
+   "seed": "1111111111111111111111111111111111111111111111111111111111111111",
+   "public_key": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+   "address": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+   "node_address": "ZNK_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43WTXZ7"
+  },
+  {
+   "seed": "2222222222222222222222222222222222222222222222222222222222222222",
+   "public_key": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+   "address": "ZBC_UCNKL5D2_M5MYAL7Z_KX4NYLJK_CSS4THJD_X2L7QZAS_P74TQNCV_UTYAGL5D",
+   "node_address": "ZNK_UCNKL5D2_M5MYAL7Z_KX4NYLJK_CSS4THJD_X2L7QZAS_P74TQNCV_UTYHLHBQ"
+  },
+  {
+   "seed": "0000000000000000000000000000000000000000000000000000000000000001",
+   "public_key": "4cb5abf6ad79fbf5abbccafcc269d85cd2651ed4b885b5869f241aedf0a5ba29",
+   "address": "ZBC_JS22X5VN_PH57LK54_ZL6ME2OY_LTJGKHWU_XCC3LBU7_EQNO34FF_XIU2FBNY",
+   "node_address": "ZNK_JS22X5VN_PH57LK54_ZL6ME2OY_LTJGKHWU_XCC3LBU7_EQNO34FF_XIUQQXUV"
+  },
+  {
+   "seed": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+   "public_key": "76a1592044a6e4f511265bca73a604d90b0529d1df602be30a19a9257660d1f5",
+   "address": "ZBC_O2QVSICE_U3SPKEJG_LPFHHJQE_3EFQKKOR_35QCXYYK_DGUSK5TA_2H25QB45",
+   "node_address": "ZNK_O2QVSICE_U3SPKEJG_LPFHHJQE_3EFQKKOR_35QCXYYK_DGUSK5TA_2H2QYIRY"
+  },
+  {
+   "seed": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+   "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+   "address": "ZBC_25NJQAMC_WEFLPVKL_73J4SZAH_HIHOC4XT_3KTCGJNP_AINGR5YH_KENCSS57",
+   "node_address": "ZNK_25NJQAMC_WEFLPVKL_73J4SZAH_HIHOC4XT_3KTCGJNP_AINGR5YH_KENCJHGC"
+  }
+ ],
+ "wallets": [
+  {
+   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+   "passphrase": "",
+   "accounts": [
+    {
+     "index": 0,
+     "path": "m/44'/883'/0'",
+     "seed": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+     "public_key": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "address": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+     "node_address": "ZNK_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJH435X"
+    },
+    {
+     "index": 1,
+     "path": "m/44'/883'/1'",
+     "seed": "2c0f8a5722d5701a7a4e7d61219c5235a9b74ba46fdbaff9f7978ec7bc14f85d",
+     "public_key": "fd4472bbdec43b919aa37b9b3366a3318f2902a753a15f5fd6d43c44b5121b67",
+     "address": "ZBC_7VCHFO66_YQ5ZDGVD_PONTGZVD_GGHSSAVH_KOQV6X6W_2Q6EJNIS_DNTVIFT4",
+     "node_address": "ZNK_7VCHFO66_YQ5ZDGVD_PONTGZVD_GGHSSAVH_KOQV6X6W_2Q6EJNIS_DNTVG7C4"
+    },
+    {
+     "index": 2,
+     "path": "m/44'/883'/2'",
+     "seed": "930baeed63aeba93c19ad9cf2106923495f5d693273de3db962c30c517f441b3",
+     "public_key": "49ee4deac865ac35847f677fc407939897540b01e1ef219052c7b9c52b5ce29d",
+     "address": "ZBC_JHXE32WI_MWWDLBD7_M574IB4T_TCLVICYB_4HXSDECS_Y644KK24_4KO24BCC",
+     "node_address": "ZNK_JHXE32WI_MWWDLBD7_M574IB4T_TCLVICYB_4HXSDECS_Y644KK24_4KOVBJ7R"
+    }
+   ]
+  },
+  {
+   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+   "passphrase": "TREZOR",
+   "accounts": [
+    {
+     "index": 0,
+     "path": "m/44'/883'/0'",
+     "seed": "c7c232cb15e54c5753957152dcb440decb04d6e9a465967140255b8db040d6e1",
+     "public_key": "2b3e2a26e20f2adec570bdcacca86ece17437cf9c3b14efebc89b051a1b35dce",
+     "address": "ZBC_FM7CUJXC_B4VN5RLQ_XXFMZKDO_ZYLUG7HZ_YOYU57V4_RGYFDINT_LXHKQ7P5",
+     "node_address": "ZNK_FM7CUJXC_B4VN5RLQ_XXFMZKDO_ZYLUG7HZ_YOYU57V4_RGYFDINT_LXHKVZZM"
+    },
+    {
+     "index": 1,
+     "path": "m/44'/883'/1'",
+     "seed": "b09379f2ab67198d6eff702e7a6d341f13f6f39a3c7523d21d88cc11f3ec584b",
+     "public_key": "92eed3c0240a5f80927431081927243d4a64880a3f9c174eedd8f55397b12e70",
+     "address": "ZBC_SLXNHQBE_BJPYBETU_GEEBSJZE_HVFGJCAK_H6OBOTXN_3D2VHF5R_FZYE6QAM",
+     "node_address": "ZNK_SLXNHQBE_BJPYBETU_GEEBSJZE_HVFGJCAK_H6OBOTXN_3D2VHF5R_FZYDHHFZ"
+    },
+    {
+     "index": 2,
+     "path": "m/44'/883'/2'",
+     "seed": "dfc260657a7cd8700fbdb454685995d5676b71d4f66fcee6895e6abb27f52e39",
+     "public_key": "cfeb81881b5fff352114880d080a3ccb25874ed7d7fe932310f0e7242d626941",
+     "address": "ZBC_Z7VYDCA3_L77TKIIU_RAGQQCR4_ZMSYOTWX_277JGIYQ_6DTSILLC_NFARS45R",
+     "node_address": "ZNK_Z7VYDCA3_L77TKIIU_RAGQQCR4_ZMSYOTWX_277JGIYQ_6DTSILLC_NFARQALX"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,53 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "AttestEvent",
+  "type": 17,
+  "command": "attest-event",
+  "binary": "zbc-event-attest",
+  "description": "Oracle attestation of an external (event_id, value) by an authorised node account.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "event_id",
+      "kind": "string",
+      "required": true,
+      "help": "external event id"
+    },
+    {
+      "name": "value",
+      "kind": "string",
+      "required": true,
+      "help": "attested value"
+    }
+  ],
+  "body": [
+    {
+      "name": "event_id",
+      "encoding": "str32",
+      "from": "event_id"
+    },
+    {
+      "name": "value",
+      "encoding": "str32",
+      "from": "value"
+    }
+  ],
+  "example": {
+    "event_id": "match-2026-09-16",
+    "value": "home"
+  },
+  "notes": []
+}

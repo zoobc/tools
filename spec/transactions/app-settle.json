@@ -1,0 +1,88 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "SettleApp",
+  "type": 39,
+  "command": "app-settle",
+  "binary": "zbc-app-settle",
+  "description": "Settle a two-seat tic-tac-toe state channel: replay the signed moves on chain.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": "settle",
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "app_id",
+      "kind": "int64",
+      "required": true,
+      "help": "the channel app id"
+    },
+    {
+      "name": "p0_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "seat 0 key, signs seat 0 vouchers"
+    },
+    {
+      "name": "p1_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "seat 1 key"
+    },
+    {
+      "name": "opening_turn",
+      "kind": "uint8",
+      "required": false,
+      "help": "seat that moves first, 0 or 1",
+      "default": "0"
+    },
+    {
+      "name": "moves",
+      "kind": "string",
+      "required": true,
+      "help": "cells in play order, comma-separated, e.g. 0,3,1,4,2"
+    }
+  ],
+  "body": [
+    {
+      "name": "app_id",
+      "encoding": "u64le",
+      "from": "app_id"
+    },
+    {
+      "name": "count",
+      "encoding": "u32le",
+      "from": "moves",
+      "computed": "number of moves"
+    },
+    {
+      "name": "final_seq",
+      "encoding": "u32le",
+      "from": "moves",
+      "computed": "number of moves"
+    },
+    {
+      "name": "entries",
+      "encoding": "custom",
+      "from": "moves",
+      "computed": "per move: seat u8, move_bytes hex16, 64-byte voucher signature = Ed25519(seat key, SHA3-256(app_id u64le ‖ seq u32le ‖ SHA3-256(9-byte board before the move) ‖ move_bytes)); the board marks cells with seat+1"
+    }
+  ],
+  "example": {
+    "app_id": "5",
+    "p0_privkey": "1111111111111111111111111111111111111111111111111111111111111111",
+    "p1_privkey": "2222222222222222222222222222222222222222222222222222222222222222",
+    "opening_turn": "0",
+    "moves": "0,3,1,4,2"
+  },
+  "notes": []
+}

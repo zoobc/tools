@@ -28,12 +28,11 @@ int main(int argc, char* argv[]) {
 
     try {
         auto sender_kp = derive_zbc_keypair(params.values[0]);
-        if (!sender_kp.IsOk()) { emit_error(sender_kp.GetError().ToString()); return 1; }
+        if (!sender_kp.IsOk()) return fail(emit_error, exit_code::USAGE, sender_kp.GetError().ToString());
 
         int32_t approval_int = std::stoi(params.values[1]);
         if (approval_int < 0 || approval_int > 2) {
-            emit_error("Approval must be 0 (approve), 1 (reject), or 2 (expire)");
-            return 1;
+            return fail(emit_error, exit_code::USAGE, "Approval must be 0 (approve), 1 (reject), or 2 (expire)");
         }
         auto approval = static_cast<zoobc::model::EscrowApproval>(approval_int);
 
@@ -42,8 +41,7 @@ int main(int argc, char* argv[]) {
         // signer against the transaction it is releasing.
         auto tx_hash = hex_to_bytes(params.values[2]);
         if (tx_hash.size() != 32) {
-            emit_error("Transaction hash must be 64 hex characters (the escrowed transaction's SHA3-256 hash)");
-            return 1;
+            return fail(emit_error, exit_code::USAGE, "Transaction hash must be 64 hex characters (the escrowed transaction's SHA3-256 hash)");
         }
 
         auto body_bytes = TransactionUtil::GetApprovalEscrowBodyBytes(approval, tx_hash);
@@ -69,7 +67,7 @@ int main(int argc, char* argv[]) {
             "SUCCESS: Escrow approval transaction submitted!");
 
     } catch (const std::exception& e) {
-        emit_error(e.what());
-        return 1;
+        // Only argument parsing throws here (run_transaction reports its own errors): a usage error.
+        return fail(emit_error, exit_code::USAGE, e.what());
     }
 }

@@ -1,0 +1,71 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "RemoveAccountDataset",
+  "type": 259,
+  "command": "remove-dataset",
+  "binary": "zbc-dataset-remove",
+  "description": "Deactivate a key-value property; same body layout as setup-dataset.",
+  "sender_key": "sender_privkey",
+  "recipient": "required",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "recipient",
+      "kind": "address",
+      "required": true,
+      "help": "dataset subject address"
+    },
+    {
+      "name": "property",
+      "kind": "string",
+      "required": true,
+      "help": "key"
+    },
+    {
+      "name": "value",
+      "kind": "string",
+      "required": true,
+      "help": "value"
+    }
+  ],
+  "body": [
+    {
+      "name": "property",
+      "encoding": "str32",
+      "from": "property"
+    },
+    {
+      "name": "value",
+      "encoding": "str32",
+      "from": "value"
+    },
+    {
+      "name": "setter",
+      "encoding": "sender_address",
+      "from": "setter",
+      "computed": "the sender's 36-byte account"
+    },
+    {
+      "name": "recipient",
+      "encoding": "address",
+      "from": "recipient"
+    }
+  ],
+  "example": {
+    "recipient": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+    "property": "role",
+    "value": "tester"
+  },
+  "notes": []
+}

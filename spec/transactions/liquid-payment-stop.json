@@ -1,0 +1,41 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "LiquidPaymentStop",
+  "type": 262,
+  "command": "liquid-payment-stop",
+  "binary": "zbc-liquid-stop",
+  "description": "Stop a liquid payment; the vested part goes to the recipient, the rest back.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "transaction_id",
+      "kind": "int64",
+      "required": true,
+      "help": "the liquid payment's transaction id (first 8 bytes of its hash, int64 LE; often negative)"
+    }
+  ],
+  "body": [
+    {
+      "name": "transaction_id",
+      "encoding": "u64le",
+      "from": "transaction_id"
+    }
+  ],
+  "example": {
+    "transaction_id": "-1234567890123456789"
+  },
+  "notes": []
+}

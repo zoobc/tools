@@ -1,0 +1,73 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "GatewayHeartbeat",
+  "type": 37,
+  "command": "gateway-heartbeat",
+  "binary": null,
+  "description": "Liveness proof signed by the gateway key over a recent block; any account may relay it.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": "gateway_signature",
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "gateway_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the gateway's own private key"
+    },
+    {
+      "name": "reference_height",
+      "kind": "uint32",
+      "required": true,
+      "help": "height of a recent confirmed block"
+    },
+    {
+      "name": "reference_block_hash",
+      "kind": "hex32",
+      "required": true,
+      "help": "that block's hash"
+    }
+  ],
+  "body": [
+    {
+      "name": "gateway_key",
+      "encoding": "pubkey_of_key",
+      "from": "gateway_privkey"
+    },
+    {
+      "name": "reference_height",
+      "encoding": "u32le",
+      "from": "reference_height"
+    },
+    {
+      "name": "reference_block_hash",
+      "encoding": "hex",
+      "from": "reference_block_hash",
+      "size": 32
+    },
+    {
+      "name": "signature",
+      "encoding": "hex",
+      "from": "signature",
+      "size": 64,
+      "computed": "Ed25519(gateway seed, the 68 bytes above), no tag"
+    }
+  ],
+  "example": {
+    "gateway_privkey": "2222222222222222222222222222222222222222222222222222222222222222",
+    "reference_height": "41154",
+    "reference_block_hash": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "notes": []
+}

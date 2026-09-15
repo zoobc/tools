@@ -1,0 +1,53 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "BurnToken",
+  "type": 13,
+  "command": "burn-token",
+  "binary": "zbc-token-burn",
+  "description": "Burn a token; reclaims backing when redeemable.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "token_id",
+      "kind": "int64",
+      "required": true,
+      "help": "token id"
+    },
+    {
+      "name": "amount",
+      "kind": "int64",
+      "required": true,
+      "help": "amount (atomic)"
+    }
+  ],
+  "body": [
+    {
+      "name": "token_id",
+      "encoding": "u64le",
+      "from": "token_id"
+    },
+    {
+      "name": "amount",
+      "encoding": "u64le",
+      "from": "amount"
+    }
+  ],
+  "example": {
+    "token_id": "123456789",
+    "amount": "1000"
+  },
+  "notes": []
+}

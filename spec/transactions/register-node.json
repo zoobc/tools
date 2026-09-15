@@ -1,0 +1,67 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "NodeRegistration",
+  "type": 2,
+  "command": "register-node",
+  "binary": "zbc-node-register",
+  "description": "Register a node with a locked stake; the owner proves control of the node key.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": true,
+  "custom": "proof_of_ownership",
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "node_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the node's private key; its public key goes in the body"
+    },
+    {
+      "name": "locked_balance",
+      "kind": "int64",
+      "required": true,
+      "help": "stake to lock (atomic)"
+    }
+  ],
+  "body": [
+    {
+      "name": "node_public_key",
+      "encoding": "pubkey_of_key",
+      "from": "node_privkey"
+    },
+    {
+      "name": "owner",
+      "encoding": "sender_address",
+      "from": "owner",
+      "computed": "the owner's 36-byte account"
+    },
+    {
+      "name": "locked_balance",
+      "encoding": "u64le",
+      "from": "locked_balance"
+    },
+    {
+      "name": "proof_of_ownership",
+      "encoding": "custom",
+      "from": "proof_of_ownership",
+      "computed": "136 bytes: owner address (36) ‖ latest block hash (32) ‖ latest block height u32le ‖ Ed25519(owner seed, those 72 bytes); block from GET /api/v1/blocks/latest"
+    }
+  ],
+  "example": {
+    "node_privkey": "2222222222222222222222222222222222222222222222222222222222222222",
+    "locked_balance": "100000000000"
+  },
+  "notes": [
+    "zbc-node-register takes (node_privkey, owner_privkey, locked_balance): node key first, then the owner key that signs."
+  ]
+}

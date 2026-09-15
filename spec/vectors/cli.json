@@ -1,0 +1,270 @@
+{
+ "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+ "description": "Exit codes and error_class for command-line mistakes (cli-contract.md 5), as zbc-cli behaves. A port's zbc-cli must produce the same exit code and error_class for the same arguments.",
+ "vectors": [
+  {
+   "case": "missing amount",
+   "args": [
+    "send-zbc",
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+    "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX"
+   ],
+   "stdin": null,
+   "exit_code": 2,
+   "error_class": "usage",
+   "success": false
+  },
+  {
+   "case": "bad recipient",
+   "args": [
+    "send-zbc",
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+    "not-an-address",
+    "1",
+    "--genesis",
+    "v1",
+    "--offline"
+   ],
+   "stdin": null,
+   "exit_code": 2,
+   "error_class": "usage",
+   "success": false
+  },
+  {
+   "case": "fee not a number",
+   "args": [
+    "send-zbc",
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+    "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "1",
+    "--fee",
+    "abc"
+   ],
+   "stdin": null,
+   "exit_code": 2,
+   "error_class": "usage",
+   "success": false
+  },
+  {
+   "case": "unknown option",
+   "args": [
+    "send-zbc",
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+    "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "1",
+    "--bogus"
+   ],
+   "stdin": null,
+   "exit_code": 2,
+   "error_class": "usage",
+   "success": false
+  },
+  {
+   "case": "offline without genesis",
+   "args": [
+    "send-zbc",
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+    "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "1",
+    "--offline"
+   ],
+   "stdin": null,
+   "exit_code": 2,
+   "error_class": "usage",
+   "success": false
+  },
+  {
+   "case": "timestamp not a number",
+   "args": [
+    "send-zbc",
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+    "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "1",
+    "--timestamp",
+    "x",
+    "--genesis",
+    "v1",
+    "--offline"
+   ],
+   "stdin": null,
+   "exit_code": 2,
+   "error_class": "usage",
+   "success": false
+  },
+  {
+   "case": "escrow without approver",
+   "args": [
+    "send-zbc",
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+    "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "1",
+    "--escrow-timeout",
+    "1800000000",
+    "--genesis",
+    "v1",
+    "--offline"
+   ],
+   "stdin": null,
+   "exit_code": 2,
+   "error_class": "usage",
+   "success": false
+  },
+  {
+   "case": "escrow without timeout",
+   "args": [
+    "send-zbc",
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+    "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "1",
+    "--escrow-approver",
+    "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+    "--genesis",
+    "v1",
+    "--offline"
+   ],
+   "stdin": null,
+   "exit_code": 2,
+   "error_class": "usage",
+   "success": false
+  },
+  {
+   "case": "key placeholder without ZBC_KEY",
+   "args": [
+    "send-zbc",
+    "-",
+    "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "1",
+    "--genesis",
+    "v1",
+    "--offline"
+   ],
+   "stdin": null,
+   "exit_code": 2,
+   "error_class": "usage",
+   "success": false
+  },
+  {
+   "case": "key wrong length",
+   "args": [
+    "send-zbc",
+    "abcd",
+    "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "1",
+    "--genesis",
+    "v1",
+    "--offline"
+   ],
+   "stdin": null,
+   "exit_code": 2,
+   "error_class": "usage",
+   "success": false
+  },
+  {
+   "case": "approve-escrow bad approval",
+   "args": [
+    "approve-escrow",
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+    "3",
+    "1111111111111111111111111111111111111111111111111111111111111111",
+    "--genesis",
+    "v1",
+    "--offline"
+   ],
+   "stdin": null,
+   "exit_code": 2,
+   "error_class": "usage",
+   "success": false
+  },
+  {
+   "case": "approve-escrow short hash",
+   "args": [
+    "approve-escrow",
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+    "0",
+    "1111",
+    "--genesis",
+    "v1",
+    "--offline"
+   ],
+   "stdin": null,
+   "exit_code": 2,
+   "error_class": "usage",
+   "success": false
+  },
+  {
+   "case": "unreachable node",
+   "args": [
+    "send-zbc",
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+    "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "1",
+    "--api",
+    "http://127.0.0.1:9",
+    "--genesis",
+    "v1",
+    "--timeout",
+    "2"
+   ],
+   "stdin": null,
+   "exit_code": 3,
+   "error_class": "node_unreachable",
+   "success": false
+  },
+  {
+   "case": "json-input missing field",
+   "args": [
+    "send-zbc",
+    "--json-input",
+    "--genesis",
+    "v1",
+    "--offline"
+   ],
+   "stdin": "{\"sender_privkey\": \"51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96\", \"recipient\": \"ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX\"}",
+   "exit_code": 2,
+   "error_class": "usage",
+   "success": false
+  },
+  {
+   "case": "json-input invalid json",
+   "args": [
+    "send-zbc",
+    "--json-input"
+   ],
+   "stdin": "{not json",
+   "exit_code": 2,
+   "error_class": "usage",
+   "success": false
+  },
+  {
+   "case": "verify-message wrong signature",
+   "args": [
+    "verify-message",
+    "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+    "hello zoobc",
+    "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+   ],
+   "stdin": null,
+   "exit_code": 10,
+   "error_class": "verify_failed",
+   "success": true
+  },
+  {
+   "case": "unknown command",
+   "args": [
+    "no-such-command"
+   ],
+   "stdin": null,
+   "exit_code": 2,
+   "error_class": null,
+   "success": null
+  },
+  {
+   "case": "no arguments",
+   "args": [],
+   "stdin": null,
+   "exit_code": 2,
+   "error_class": null,
+   "success": null
+  }
+ ]
+}

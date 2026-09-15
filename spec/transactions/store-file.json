@@ -1,0 +1,96 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "StoreFile",
+  "type": 40,
+  "command": "store-file",
+  "binary": null,
+  "description": "Anchor a decentralised-storage manifest (root and piece ids) with a rent deposit.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "file_root",
+      "kind": "hex32",
+      "required": true,
+      "help": "manifest root hash"
+    },
+    {
+      "name": "total_size",
+      "kind": "int64",
+      "required": true,
+      "help": "file size in bytes"
+    },
+    {
+      "name": "piece_size",
+      "kind": "uint32",
+      "required": true,
+      "help": "piece size in bytes"
+    },
+    {
+      "name": "deposit",
+      "kind": "int64",
+      "required": true,
+      "help": "rent deposit (atomic)"
+    },
+    {
+      "name": "piece_ids",
+      "kind": "hexbytes",
+      "required": true,
+      "help": "piece id hashes concatenated, n x 32 bytes"
+    }
+  ],
+  "body": [
+    {
+      "name": "file_root",
+      "encoding": "hex",
+      "from": "file_root",
+      "size": 32
+    },
+    {
+      "name": "total_size",
+      "encoding": "u64le",
+      "from": "total_size"
+    },
+    {
+      "name": "piece_size",
+      "encoding": "u32le",
+      "from": "piece_size"
+    },
+    {
+      "name": "deposit",
+      "encoding": "u64le",
+      "from": "deposit"
+    },
+    {
+      "name": "piece_count",
+      "encoding": "u32le",
+      "from": "piece_ids",
+      "computed": "len(piece_ids) / 32"
+    },
+    {
+      "name": "piece_ids",
+      "encoding": "hex",
+      "from": "piece_ids"
+    }
+  ],
+  "example": {
+    "file_root": "1111111111111111111111111111111111111111111111111111111111111111",
+    "total_size": "4096",
+    "piece_size": "2048",
+    "deposit": "100000000",
+    "piece_ids": "11111111111111111111111111111111111111111111111111111111111111112222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "notes": []
+}

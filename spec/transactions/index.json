@@ -1,0 +1,561 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "description": "Index of spec/transactions: one file per transaction type. Field meanings in README.md.",
+  "encodings": {
+    "u8": "1 byte",
+    "u16le": "2 bytes little-endian",
+    "u32le": "4 bytes little-endian",
+    "u64le": "8 bytes little-endian; an int64 is written as its two's-complement uint64",
+    "hex": "raw bytes given as hex (fixed `size` when stated)",
+    "hex16": "u16le byte length, then the bytes",
+    "bytes32": "u32le byte length, then the bytes",
+    "str16": "u16le byte length, then the UTF-8 bytes",
+    "str32": "u32le byte length, then the UTF-8 bytes",
+    "address": "the typed account address bytes (addresses.md section 1; 36 bytes for a ZooBC account)",
+    "address_list": "the typed address bytes of each entry, concatenated",
+    "address_list8": "u8 count, then the typed address bytes of each entry",
+    "sender_address": "the signing account's 36-byte typed address (00000000 ‖ public key)",
+    "pubkey_of_key": "the 32-byte Ed25519 public key derived from the named private-key parameter",
+    "key32": "32 bytes from a `key` parameter: 64 hex, or a ZNK_/ZBG_/ZBR_/ZBC_ text address decoded (addresses.md)",
+    "literal": "the fixed bytes in `value` (hex)",
+    "custom": "cannot be produced by the generic serialiser; see `computed`"
+  },
+  "param_kinds": {
+    "privkey": "64 hex characters, a 32-byte Ed25519 seed",
+    "address": "any address form of addresses.md section 3",
+    "address_list": "comma-separated addresses; may be empty",
+    "key": "64 hex characters (optionally 0x-prefixed) or a ZNK_/ZBG_/ZBR_/ZBC_ text address",
+    "int64": "decimal, may be negative",
+    "uint64": "decimal",
+    "uint32": "decimal",
+    "uint8": "decimal 0-255",
+    "hex32": "exactly 64 hex characters",
+    "hexbytes": "hex of any even length, may be empty",
+    "string": "UTF-8 text",
+    "file": "path of a local file whose bytes are used"
+  },
+  "transactions": [
+    {
+      "command": "send-zbc",
+      "type": 1,
+      "name": "SendZBC",
+      "binary": "zbc-send",
+      "recipient": "required",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "liquid-payment",
+      "type": 6,
+      "name": "LiquidPayment",
+      "binary": "zbc-liquid-pay",
+      "recipient": "required",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "liquid-payment-stop",
+      "type": 262,
+      "name": "LiquidPaymentStop",
+      "binary": "zbc-liquid-stop",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "approve-escrow",
+      "type": 4,
+      "name": "ApprovalEscrow",
+      "binary": "zbc-escrow-approve",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "escrow-request",
+      "type": 260,
+      "name": "EscrowRequest",
+      "binary": "zbc-escrow-request",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "issue-token",
+      "type": 10,
+      "name": "IssueToken",
+      "binary": "zbc-token-issue",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "transfer-token",
+      "type": 11,
+      "name": "TransferToken",
+      "binary": "zbc-token-transfer",
+      "recipient": "required",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "mint-token",
+      "type": 12,
+      "name": "MintToken",
+      "binary": "zbc-token-mint",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "burn-token",
+      "type": 13,
+      "name": "BurnToken",
+      "binary": "zbc-token-burn",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "finance-token",
+      "type": 14,
+      "name": "FinanceToken",
+      "binary": "zbc-token-finance",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "swap-create",
+      "type": 18,
+      "name": "CreateSwapOffer",
+      "binary": "zbc-swap-create",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "swap-accept",
+      "type": 19,
+      "name": "AcceptSwapOffer",
+      "binary": "zbc-swap-accept",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "swap-cancel",
+      "type": 20,
+      "name": "CancelSwapOffer",
+      "binary": "zbc-swap-cancel",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "market-create",
+      "type": 21,
+      "name": "CreateMarket",
+      "binary": "zbc-market-create",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "order-place",
+      "type": 22,
+      "name": "PlaceOrder",
+      "binary": "zbc-order-place",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "order-cancel",
+      "type": 23,
+      "name": "CancelOrder",
+      "binary": "zbc-order-cancel",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "app-create",
+      "type": 24,
+      "name": "CreateApp",
+      "binary": "zbc-app-create",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "app-join",
+      "type": 25,
+      "name": "JoinApp",
+      "binary": "zbc-app-join",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "app-move",
+      "type": 26,
+      "name": "AppMove",
+      "binary": "zbc-app-move",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "app-resign",
+      "type": 27,
+      "name": "ResignApp",
+      "binary": "zbc-app-resign",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "app-claim",
+      "type": 28,
+      "name": "ClaimAppTimeout",
+      "binary": "zbc-app-claim",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "app-settle",
+      "type": 39,
+      "name": "SettleApp",
+      "binary": "zbc-app-settle",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": "settle"
+    },
+    {
+      "command": "create-trigger",
+      "type": 15,
+      "name": "CreateTrigger",
+      "binary": "zbc-trigger-create",
+      "recipient": "required",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "cancel-trigger",
+      "type": 16,
+      "name": "CancelTrigger",
+      "binary": "zbc-trigger-cancel",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "attest-event",
+      "type": 17,
+      "name": "AttestEvent",
+      "binary": "zbc-event-attest",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "add-prepaid-storage",
+      "type": 9,
+      "name": "AddPrepaidStorage",
+      "binary": "zbc-storage-prepay",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "dfs-create-file",
+      "type": 8,
+      "name": "DFSCreateFile",
+      "binary": "zbc-dfs-create-file",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "store-file",
+      "type": 40,
+      "name": "StoreFile",
+      "binary": null,
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "setup-dataset",
+      "type": 3,
+      "name": "SetupAccountDataset",
+      "binary": "zbc-dataset-setup",
+      "recipient": "required",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "remove-dataset",
+      "type": 259,
+      "name": "RemoveAccountDataset",
+      "binary": "zbc-dataset-remove",
+      "recipient": "required",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "transfer-dataset",
+      "type": 42,
+      "name": "TransferDataset",
+      "binary": null,
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "accept-dataset",
+      "type": 44,
+      "name": "AcceptDataset",
+      "binary": null,
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "delete-dataset",
+      "type": 45,
+      "name": "DeleteDataset",
+      "binary": null,
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "set-dataset-policy",
+      "type": 43,
+      "name": "SetDatasetPolicy",
+      "binary": null,
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "scheduled-transfer",
+      "type": 29,
+      "name": "ScheduledTransfer",
+      "binary": null,
+      "recipient": "required",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "cancel-schedule",
+      "type": 30,
+      "name": "CancelSchedule",
+      "binary": null,
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "reassign-schedule",
+      "type": 31,
+      "name": "ReassignSchedule",
+      "binary": null,
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "fee-vote-commit",
+      "type": 7,
+      "name": "FeeVoteCommitment",
+      "binary": "zbc-fee-vote-commit",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "fee-vote-reveal",
+      "type": 263,
+      "name": "FeeVoteReveal",
+      "binary": "zbc-fee-vote-reveal",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": "voter_signature"
+    },
+    {
+      "command": "governance-vote",
+      "type": 51,
+      "name": "SetConsensusParam",
+      "binary": "zbc-governance-vote",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "fund-longevity",
+      "type": 52,
+      "name": "FundLongevity",
+      "binary": "zbc-fund-longevity",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "cancel-longevity",
+      "type": 53,
+      "name": "CancelLongevity",
+      "binary": "zbc-cancel-longevity",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "multisig",
+      "type": 5,
+      "name": "MultiSignature",
+      "binary": "zbc-multisig",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": "multisig"
+    },
+    {
+      "command": "register-node",
+      "type": 2,
+      "name": "NodeRegistration",
+      "binary": "zbc-node-register",
+      "recipient": "none",
+      "needs_node": true,
+      "custom": "proof_of_ownership"
+    },
+    {
+      "command": "update-node",
+      "type": 258,
+      "name": "NodeRegistrationUpdate",
+      "binary": "zbc-node-update",
+      "recipient": "none",
+      "needs_node": true,
+      "custom": "proof_of_ownership"
+    },
+    {
+      "command": "claim-node",
+      "type": 770,
+      "name": "ClaimNodeRegistration",
+      "binary": "zbc-node-claim",
+      "recipient": "none",
+      "needs_node": true,
+      "custom": "proof_of_ownership"
+    },
+    {
+      "command": "remove-node",
+      "type": 514,
+      "name": "RemoveNodeRegistration",
+      "binary": "zbc-node-remove",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "register-gateway",
+      "type": 36,
+      "name": "RegisterGateway",
+      "binary": "zbc-gateway-register",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "unregister-gateway",
+      "type": 38,
+      "name": "UnregisterGateway",
+      "binary": "zbc-gateway-unregister",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "gateway-heartbeat",
+      "type": 37,
+      "name": "GatewayHeartbeat",
+      "binary": null,
+      "recipient": "none",
+      "needs_node": false,
+      "custom": "gateway_signature"
+    },
+    {
+      "command": "archival-register",
+      "type": 46,
+      "name": "RegisterArchival",
+      "binary": "zbc-archival-register",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "archival-unregister",
+      "type": 47,
+      "name": "UnregisterArchival",
+      "binary": "zbc-archival-unregister",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "relay-register",
+      "type": 48,
+      "name": "RegisterRelay",
+      "binary": "zbc-relay-register",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "relay-unregister",
+      "type": 49,
+      "name": "UnregisterRelay",
+      "binary": "zbc-relay-unregister",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "register-release",
+      "type": 32,
+      "name": "RegisterRelease",
+      "binary": null,
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "revoke-release",
+      "type": 35,
+      "name": "RevokeRelease",
+      "binary": null,
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "release-authority-propose",
+      "type": 33,
+      "name": "ReleaseAuthorityPropose",
+      "binary": null,
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "release-authority-accept",
+      "type": 34,
+      "name": "ReleaseAuthorityAccept",
+      "binary": null,
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    }
+  ]
+}

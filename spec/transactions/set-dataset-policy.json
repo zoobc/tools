@@ -1,0 +1,80 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "SetDatasetPolicy",
+  "type": 43,
+  "command": "set-dataset-policy",
+  "binary": null,
+  "description": "Set a dataset object's manage policy and edit its access lists.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "object_id",
+      "kind": "hex32",
+      "required": true,
+      "help": "dataset object id"
+    },
+    {
+      "name": "mode",
+      "kind": "uint8",
+      "required": true,
+      "help": "0 owner-only, 1 whitelist, 2 blacklist, 3 open"
+    },
+    {
+      "name": "add",
+      "kind": "address_list",
+      "required": false,
+      "help": "comma-separated addresses to add (max 255)",
+      "default": ""
+    },
+    {
+      "name": "remove",
+      "kind": "address_list",
+      "required": false,
+      "help": "comma-separated addresses to remove (max 255)",
+      "default": ""
+    }
+  ],
+  "body": [
+    {
+      "name": "object_id",
+      "encoding": "hex",
+      "from": "object_id",
+      "size": 32
+    },
+    {
+      "name": "mode",
+      "encoding": "u8",
+      "from": "mode"
+    },
+    {
+      "name": "add",
+      "encoding": "address_list8",
+      "from": "add"
+    },
+    {
+      "name": "remove",
+      "encoding": "address_list8",
+      "from": "remove"
+    }
+  ],
+  "example": {
+    "object_id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "mode": "1",
+    "add": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+    "remove": ""
+  },
+  "notes": []
+}

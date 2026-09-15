@@ -1,0 +1,52 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "SendZBC",
+  "type": 1,
+  "command": "send-zbc",
+  "binary": "zbc-send",
+  "description": "Send ZBC from the sender to a recipient; optionally escrowed.",
+  "sender_key": "sender_privkey",
+  "recipient": "required",
+  "options": [
+    "message",
+    "encrypt",
+    "escrow",
+    "chain"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "recipient",
+      "kind": "address",
+      "required": true,
+      "help": "recipient address (ZBC_, 64 hex, or another chain's address)"
+    },
+    {
+      "name": "amount",
+      "kind": "int64",
+      "required": true,
+      "help": "amount in atomic units (1 ZBC = 100000000)"
+    }
+  ],
+  "body": [
+    {
+      "name": "amount",
+      "encoding": "u64le",
+      "from": "amount"
+    }
+  ],
+  "example": {
+    "recipient": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "amount": "100000000"
+  },
+  "notes": [
+    "zbc-send also accepts --liquid <minutes>, which makes it a LiquidPayment (type 6) instead."
+  ]
+}

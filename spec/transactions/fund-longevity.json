@@ -1,0 +1,55 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "FundLongevity",
+  "type": 52,
+  "command": "fund-longevity",
+  "binary": "zbc-fund-longevity",
+  "description": "Attach a rent deposit to a transaction so pruning keeps it.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "target_tx_id",
+      "kind": "int64",
+      "required": true,
+      "help": "the transaction to keep, as its int64 id"
+    },
+    {
+      "name": "amount",
+      "kind": "int64",
+      "required": true,
+      "help": "deposit (atomic), minimum 0.1 ZBC"
+    }
+  ],
+  "body": [
+    {
+      "name": "target_tx_id",
+      "encoding": "u64le",
+      "from": "target_tx_id"
+    },
+    {
+      "name": "amount",
+      "encoding": "u64le",
+      "from": "amount"
+    }
+  ],
+  "example": {
+    "target_tx_id": "-1234567890123456789",
+    "amount": "10000000"
+  },
+  "notes": [
+    "No zbc-cli subcommand."
+  ]
+}

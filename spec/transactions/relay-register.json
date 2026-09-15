@@ -1,0 +1,79 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "RegisterRelay",
+  "type": 48,
+  "command": "relay-register",
+  "binary": "zbc-relay-register",
+  "description": "Announce a relay a gateway runs.",
+  "sender_key": "owner_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "owner_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key (64 hex). Named owner_privkey: ZBC_KEY does not apply, pass it explicitly"
+    },
+    {
+      "name": "relay_key",
+      "kind": "key",
+      "required": true,
+      "help": "the relay's ZBR_ address or 64 hex"
+    },
+    {
+      "name": "gateway_key",
+      "kind": "key",
+      "required": true,
+      "help": "the ZBG_ address or 64 hex of the gateway it serves"
+    },
+    {
+      "name": "domain",
+      "kind": "string",
+      "required": true,
+      "help": "public domain"
+    },
+    {
+      "name": "url",
+      "kind": "string",
+      "required": true,
+      "help": "base URL"
+    }
+  ],
+  "body": [
+    {
+      "name": "relay_key",
+      "encoding": "key32",
+      "from": "relay_key"
+    },
+    {
+      "name": "gateway_key",
+      "encoding": "key32",
+      "from": "gateway_key"
+    },
+    {
+      "name": "domain",
+      "encoding": "str32",
+      "from": "domain"
+    },
+    {
+      "name": "url",
+      "encoding": "str32",
+      "from": "url"
+    }
+  ],
+  "example": {
+    "relay_key": "1111111111111111111111111111111111111111111111111111111111111111",
+    "gateway_key": "2222222222222222222222222222222222222222222222222222222222222222",
+    "domain": "relay.example.org",
+    "url": "https://relay.example.org"
+  },
+  "notes": [
+    "No zbc-cli subcommand."
+  ]
+}

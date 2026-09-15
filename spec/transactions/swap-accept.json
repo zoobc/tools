@@ -1,0 +1,41 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "AcceptSwapOffer",
+  "type": 19,
+  "command": "swap-accept",
+  "binary": "zbc-swap-accept",
+  "description": "Fill an open swap offer.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "offer_id",
+      "kind": "int64",
+      "required": true,
+      "help": "offer id"
+    }
+  ],
+  "body": [
+    {
+      "name": "offer_id",
+      "encoding": "u64le",
+      "from": "offer_id"
+    }
+  ],
+  "example": {
+    "offer_id": "42"
+  },
+  "notes": []
+}

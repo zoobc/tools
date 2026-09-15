@@ -1,0 +1,67 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "RegisterArchival",
+  "type": 46,
+  "command": "archival-register",
+  "binary": "zbc-archival-register",
+  "description": "Announce a registered node as archival: it serves history and the read API.",
+  "sender_key": "owner_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "owner_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key (64 hex). Named owner_privkey: ZBC_KEY does not apply, pass it explicitly"
+    },
+    {
+      "name": "node_public_key",
+      "kind": "key",
+      "required": true,
+      "help": "the node's ZNK_ address or 64 hex"
+    },
+    {
+      "name": "domain",
+      "kind": "string",
+      "required": true,
+      "help": "public domain"
+    },
+    {
+      "name": "url",
+      "kind": "string",
+      "required": true,
+      "help": "public API base URL"
+    }
+  ],
+  "body": [
+    {
+      "name": "node_public_key",
+      "encoding": "key32",
+      "from": "node_public_key"
+    },
+    {
+      "name": "domain",
+      "encoding": "str32",
+      "from": "domain"
+    },
+    {
+      "name": "url",
+      "encoding": "str32",
+      "from": "url"
+    }
+  ],
+  "example": {
+    "node_public_key": "2222222222222222222222222222222222222222222222222222222222222222",
+    "domain": "archive.example.org",
+    "url": "https://archive.example.org"
+  },
+  "notes": [
+    "No zbc-cli subcommand."
+  ]
+}

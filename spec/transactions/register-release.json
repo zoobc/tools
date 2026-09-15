@@ -1,0 +1,66 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "RegisterRelease",
+  "type": 32,
+  "command": "register-release",
+  "binary": null,
+  "description": "Publish a signed binary release (release authority only).",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "version",
+      "kind": "string",
+      "required": true,
+      "help": "release version, 1-256 chars"
+    },
+    {
+      "name": "manifest_hash",
+      "kind": "hex32",
+      "required": true,
+      "help": "manifest hash"
+    },
+    {
+      "name": "release_address",
+      "kind": "address",
+      "required": true,
+      "help": "the release's on-chain address"
+    }
+  ],
+  "body": [
+    {
+      "name": "version",
+      "encoding": "str32",
+      "from": "version"
+    },
+    {
+      "name": "manifest_hash",
+      "encoding": "hex",
+      "from": "manifest_hash",
+      "size": 32
+    },
+    {
+      "name": "release_address",
+      "encoding": "address",
+      "from": "release_address"
+    }
+  ],
+  "example": {
+    "version": "0.4.2",
+    "manifest_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+    "release_address": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
+  },
+  "notes": []
+}

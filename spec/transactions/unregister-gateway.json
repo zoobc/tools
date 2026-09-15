@@ -1,0 +1,43 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "UnregisterGateway",
+  "type": 38,
+  "command": "unregister-gateway",
+  "binary": "zbc-gateway-unregister",
+  "description": "Withdraw a gateway you registered; the stake is refunded.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "gateway_key",
+      "kind": "key",
+      "required": true,
+      "help": "gateway public key"
+    }
+  ],
+  "body": [
+    {
+      "name": "gateway_key",
+      "encoding": "key32",
+      "from": "gateway_key"
+    }
+  ],
+  "example": {
+    "gateway_key": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "notes": [
+    "zbc-gateway-unregister names its first field owner_privkey."
+  ]
+}

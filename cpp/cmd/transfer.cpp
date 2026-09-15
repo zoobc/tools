@@ -41,23 +41,18 @@ int main(int argc, char* argv[]) {
     try {
         // Derive sender keys
         auto keys_result = derive_sender_keys(params.values[0], params.sender_type);
-        if (!keys_result.IsOk()) {
-            emit_error(keys_result.GetError().ToString());
-            return 1;
-        }
+        if (!keys_result.IsOk()) return fail(emit_error, exit_code::USAGE, keys_result.GetError().ToString());
         auto sender = keys_result.Value();
 
         // Parse recipient address
         auto recip_result = parse_address(params.values[1], params.chain);
-        if (!recip_result.IsOk()) {
-            emit_error("Invalid recipient address: " + recip_result.GetError().ToString());
-            return 1;
-        }
+        if (!recip_result.IsOk())
+            return fail(emit_error, exit_code::USAGE, "Invalid recipient address: " + recip_result.GetError().ToString());
         auto recipient = recip_result.Value();
 
         // Parse amount
         int64_t amount = std::stoll(params.values[2]);
-        if (amount < 0) { emit_error("Amount cannot be negative"); return 1; }
+        if (amount < 0) return fail(emit_error, exit_code::USAGE, "Amount cannot be negative");
 
         // Build body (liquid payment carries amount + vesting minutes)
         auto body_bytes = liquid
@@ -93,7 +88,7 @@ int main(int argc, char* argv[]) {
             extra, emit_error, verbose_msg);
 
     } catch (const std::exception& e) {
-        emit_error(e.what());
-        return 1;
+        // Only argument parsing throws here (run_transaction reports its own errors): a usage error.
+        return fail(emit_error, exit_code::USAGE, e.what());
     }
 }

@@ -1,0 +1,55 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "SetConsensusParam",
+  "type": 51,
+  "command": "governance-vote",
+  "binary": "zbc-governance-vote",
+  "description": "A registry node votes a value for a governable parameter (2/3 of the registry must agree).",
+  "sender_key": "node_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "node_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key (64 hex). Named node_privkey: ZBC_KEY does not apply, pass it explicitly"
+    },
+    {
+      "name": "parameter",
+      "kind": "string",
+      "required": true,
+      "help": "parameter name"
+    },
+    {
+      "name": "value",
+      "kind": "int64",
+      "required": true,
+      "help": "the value voted for, raw units"
+    }
+  ],
+  "body": [
+    {
+      "name": "parameter",
+      "encoding": "str32",
+      "from": "parameter"
+    },
+    {
+      "name": "value",
+      "encoding": "u64le",
+      "from": "value"
+    }
+  ],
+  "example": {
+    "parameter": "min_fee",
+    "value": "2500000"
+  },
+  "notes": [
+    "No zbc-cli subcommand; the node's own key signs."
+  ]
+}

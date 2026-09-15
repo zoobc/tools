@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
+name: spec
+
+on:
+  push:
+    paths: ["spec/**", "scripts/**", "cpp/**", ".github/workflows/spec.yml"]
+  pull_request:
+    paths: ["spec/**", "scripts/**", "cpp/**", ".github/workflows/spec.yml"]
+
+jobs:
+  vectors-match-reference:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build libsodium-dev libssl-dev libsecp256k1-dev
+      - name: Build the C++ reference
+        run: cmake -S cpp -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
+      - name: Transaction descriptions are what the script writes
+        run: |
+          python3 scripts/write-spec-transactions.py
+          git diff --exit-code -- spec/transactions
+      - name: Vectors are what the C++ tools print
+        run: python3 scripts/make-vectors.py --bin build --check
+      - name: The documents' formulas reproduce the vectors
+        run: pip3 install --quiet cryptography && python3 scripts/check-spec-formulas.py

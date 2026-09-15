@@ -1,0 +1,56 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "ApprovalEscrow",
+  "type": 4,
+  "command": "approve-escrow",
+  "binary": "zbc-escrow-approve",
+  "description": "Approve (0), reject (1) or expire (2) an escrowed transaction, named by its full hash.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "approval",
+      "kind": "uint32",
+      "required": true,
+      "help": "0 = approve, 1 = reject, 2 = expire"
+    },
+    {
+      "name": "transaction_hash",
+      "kind": "hex32",
+      "required": true,
+      "help": "the escrowed transaction's hash, 64 hex"
+    }
+  ],
+  "body": [
+    {
+      "name": "approval",
+      "encoding": "u32le",
+      "from": "approval"
+    },
+    {
+      "name": "transaction_hash",
+      "encoding": "hex",
+      "from": "transaction_hash",
+      "size": 32
+    }
+  ],
+  "example": {
+    "approval": "0",
+    "transaction_hash": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "notes": [
+    "The tool reports escrowed_transaction_hash and transaction_id (int64 of the escrowed hash) next to its own transaction_hash."
+  ]
+}

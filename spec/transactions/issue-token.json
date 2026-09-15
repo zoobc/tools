@@ -1,0 +1,102 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "IssueToken",
+  "type": 10,
+  "command": "issue-token",
+  "binary": "zbc-token-issue",
+  "description": "Issue a token backed by ZBC.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "symbol",
+      "kind": "string",
+      "required": true,
+      "help": "2-10 upper-case letters or digits, not a reserved symbol"
+    },
+    {
+      "name": "name",
+      "kind": "string",
+      "required": true,
+      "help": "token name"
+    },
+    {
+      "name": "decimals",
+      "kind": "uint8",
+      "required": true,
+      "help": "0-8, display only"
+    },
+    {
+      "name": "supply",
+      "kind": "int64",
+      "required": true,
+      "help": "total supply (atomic, 10^8 per unit)"
+    },
+    {
+      "name": "backing",
+      "kind": "int64",
+      "required": true,
+      "help": "ZBC locked as backing (atomic); 0 = unbacked"
+    },
+    {
+      "name": "flags",
+      "kind": "uint8",
+      "required": false,
+      "help": "bit0 redeemable, bit1 mintable, bit3 unbacked",
+      "default": "1"
+    }
+  ],
+  "body": [
+    {
+      "name": "decimals",
+      "encoding": "u8",
+      "from": "decimals"
+    },
+    {
+      "name": "flags",
+      "encoding": "u8",
+      "from": "flags"
+    },
+    {
+      "name": "supply",
+      "encoding": "u64le",
+      "from": "supply"
+    },
+    {
+      "name": "backing",
+      "encoding": "u64le",
+      "from": "backing"
+    },
+    {
+      "name": "symbol",
+      "encoding": "str16",
+      "from": "symbol"
+    },
+    {
+      "name": "name",
+      "encoding": "str16",
+      "from": "name"
+    }
+  ],
+  "example": {
+    "symbol": "GOLD",
+    "name": "Gold token",
+    "decimals": "2",
+    "supply": "100000000000",
+    "backing": "100000000",
+    "flags": "1"
+  },
+  "notes": []
+}

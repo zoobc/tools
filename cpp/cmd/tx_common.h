@@ -857,6 +857,7 @@ inline BlockInfo fetch_latest_block(const std::string& api_url) {
         auto response = json::parse(res->body);
         info.height = response.value("height", 0u);
         std::string hash_hex = response.value("block_hash", "");
+        if (hash_hex.empty()) hash_hex = response.value("hash", "");  // the gateway/archival API's name for it
         if (!hash_hex.empty()) {
             info.hash = hex_to_bytes(hash_hex);
             info.valid = true;

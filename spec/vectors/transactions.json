@@ -1,0 +1,566 @@
+{
+ "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+ "description": "Transactions built by the C++ tools with --offline --timestamp (signing.md). `params` are the command-line strings in spec/transactions order after the key; `expected` is what the tools printed: body, unsigned envelope, digest, signature, transaction_bytes = unsigned || signature, transaction_hash = SHA3-256(transaction_bytes), and the submit payload. `genesis` = the chain signed for ('v1' = legacy bare digest). `reference_block` is the block a proof of ownership used. Core set: SendZBC and ApprovalEscrow.",
+ "vectors": [
+  {
+   "name": "send-zbc/plain",
+   "command": "send-zbc",
+   "type": 1,
+   "key": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+   "params": {
+    "recipient": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "amount": "100000000"
+   },
+   "fee": 5000000,
+   "timestamp": 1700000000,
+   "genesis": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "message": null,
+   "escrow": null,
+   "reference_block": null,
+   "expected": {
+    "body": "00e1f50500000000",
+    "unsigned_bytes": "010000000100f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152404b4c00000000000800000000e1f505000000000200000000000000",
+    "digest": "4ae94781c3c811882e89f21534002827e25002f65088b854d58fe358e88451f3",
+    "signature": "2ba02b283e8c8492cebd0cc59f264a470223bb807b97245f37ccaa8aea9acce09737344044fb7269df3e6c68463a7508af74504e02fe851b73df9d22fb12d704",
+    "transaction_bytes": "010000000100f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152404b4c00000000000800000000e1f5050000000002000000000000002ba02b283e8c8492cebd0cc59f264a470223bb807b97245f37ccaa8aea9acce09737344044fb7269df3e6c68463a7508af74504e02fe851b73df9d22fb12d704",
+    "transaction_hash": "4ac2d11be8fe534bf2b2776fa7c1a3ece08e17f3b71e8d796545f5edde8b86fa",
+    "signing_version": 2,
+    "payload": {
+     "fee": 5000000,
+     "recipient_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "sender_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "signature": "2ba02b283e8c8492cebd0cc59f264a470223bb807b97245f37ccaa8aea9acce09737344044fb7269df3e6c68463a7508af74504e02fe851b73df9d22fb12d704",
+     "timestamp": 1700000000,
+     "transaction_body_bytes": "00e1f50500000000",
+     "transaction_type": 1,
+     "version": 1
+    }
+   }
+  },
+  {
+   "name": "send-zbc/message",
+   "command": "send-zbc",
+   "type": 1,
+   "key": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+   "params": {
+    "recipient": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "amount": "100000000"
+   },
+   "fee": 5000000,
+   "timestamp": 1700000001,
+   "genesis": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "message": "hello zoobc",
+   "escrow": null,
+   "reference_block": null,
+   "expected": {
+    "body": "00e1f50500000000",
+    "unsigned_bytes": "010000000101f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152404b4c00000000000800000000e1f50500000000020000000b00000068656c6c6f207a6f6f6263",
+    "digest": "0132b69d9a6b163a8e6fb1c229d4e3291628e264b6f8a4d8ce3e30ca86b684cf",
+    "signature": "a8209e1e94c01127358657f731aadb2883d7a017f06ab09e8c72b25aa09b5196d66d36c9b3ce71cc56d33e74f6289f029c44131adf7019d5335d407585371e00",
+    "transaction_bytes": "010000000101f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152404b4c00000000000800000000e1f50500000000020000000b00000068656c6c6f207a6f6f6263a8209e1e94c01127358657f731aadb2883d7a017f06ab09e8c72b25aa09b5196d66d36c9b3ce71cc56d33e74f6289f029c44131adf7019d5335d407585371e00",
+    "transaction_hash": "c1bfaa19e1b5cbbe678053e207972624ccdfa6f21ec0f7c2be93ce3660af4783",
+    "signing_version": 2,
+    "payload": {
+     "fee": 5000000,
+     "message_hex": "68656c6c6f207a6f6f6263",
+     "recipient_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "sender_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "signature": "a8209e1e94c01127358657f731aadb2883d7a017f06ab09e8c72b25aa09b5196d66d36c9b3ce71cc56d33e74f6289f029c44131adf7019d5335d407585371e00",
+     "timestamp": 1700000001,
+     "transaction_body_bytes": "00e1f50500000000",
+     "transaction_type": 1,
+     "version": 1
+    }
+   }
+  },
+  {
+   "name": "send-zbc/escrow",
+   "command": "send-zbc",
+   "type": 1,
+   "key": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+   "params": {
+    "recipient": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "amount": "100000000"
+   },
+   "fee": 5000000,
+   "timestamp": 1700000002,
+   "genesis": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "message": null,
+   "escrow": {
+    "approver": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "commission": 1000,
+    "timeout": 720,
+    "instruction": "release on delivery"
+   },
+   "reference_block": null,
+   "expected": {
+    "body": "00e1f50500000000",
+    "unsigned_bytes": "010000000102f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152404b4c00000000000800000000e1f50500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152e803000000000000d0020000000000001300000072656c65617365206f6e2064656c69766572790000000000",
+    "digest": "4421893beb03534310616068fedb772c31c7723a9034bc8b1651d81c1b3f2298",
+    "signature": "eedc777bb80ea5683a907c098037e5ac257f40d0118093c065aedb6c74b08fb5fa106a6f77c3ba47477c2e7a7da6f8487e2e385da16d6e7cd901a6626975e10c",
+    "transaction_bytes": "010000000102f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152404b4c00000000000800000000e1f50500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152e803000000000000d0020000000000001300000072656c65617365206f6e2064656c69766572790000000000eedc777bb80ea5683a907c098037e5ac257f40d0118093c065aedb6c74b08fb5fa106a6f77c3ba47477c2e7a7da6f8487e2e385da16d6e7cd901a6626975e10c",
+    "transaction_hash": "c168466b38db35b8ed3d5e35c9e3862e17d9384bff7b999c587b0f6415ed1c63",
+    "signing_version": 2,
+    "payload": {
+     "escrow": {
+      "approver_address": "000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+      "commission": 1000,
+      "instruction": "release on delivery",
+      "timeout": 720
+     },
+     "fee": 5000000,
+     "recipient_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "sender_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "signature": "eedc777bb80ea5683a907c098037e5ac257f40d0118093c065aedb6c74b08fb5fa106a6f77c3ba47477c2e7a7da6f8487e2e385da16d6e7cd901a6626975e10c",
+     "timestamp": 1700000002,
+     "transaction_body_bytes": "00e1f50500000000",
+     "transaction_type": 1,
+     "version": 1
+    }
+   }
+  },
+  {
+   "name": "send-zbc/escrow-no-instruction",
+   "command": "send-zbc",
+   "type": 1,
+   "key": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+   "params": {
+    "recipient": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+    "amount": "250000000"
+   },
+   "fee": 5000000,
+   "timestamp": 1700000003,
+   "genesis": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "message": null,
+   "escrow": {
+    "approver": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "commission": 0,
+    "timeout": 1800000000,
+    "instruction": ""
+   },
+   "reference_block": null,
+   "expected": {
+    "body": "80b2e60e00000000",
+    "unsigned_bytes": "010000000103f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f215200000000d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737404b4c00000000000800000080b2e60e00000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152000000000000000000d2496b00000000000000000000000000",
+    "digest": "d350677aea4ae35704a9f466f697db3fd682b6c62846163df9db2f30fb60cedd",
+    "signature": "24f3f02c77dde69d25820ba69494ea509cc69452e2db13365cec89ec1b469119650a5fa9efddbdfc546199329ad59b1b77551e3b2b1785beccc27ce30c0f6806",
+    "transaction_bytes": "010000000103f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f215200000000d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737404b4c00000000000800000080b2e60e00000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152000000000000000000d2496b0000000000000000000000000024f3f02c77dde69d25820ba69494ea509cc69452e2db13365cec89ec1b469119650a5fa9efddbdfc546199329ad59b1b77551e3b2b1785beccc27ce30c0f6806",
+    "transaction_hash": "d54708974e2c4c168c7d70a2530132c378ba4305449356ce998e7f927740f629",
+    "signing_version": 2,
+    "payload": {
+     "escrow": {
+      "approver_address": "000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+      "commission": 0,
+      "timeout": 1800000000
+     },
+     "fee": 5000000,
+     "recipient_account_address": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+     "sender_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "signature": "24f3f02c77dde69d25820ba69494ea509cc69452e2db13365cec89ec1b469119650a5fa9efddbdfc546199329ad59b1b77551e3b2b1785beccc27ce30c0f6806",
+     "timestamp": 1700000003,
+     "transaction_body_bytes": "80b2e60e00000000",
+     "transaction_type": 1,
+     "version": 1
+    }
+   }
+  },
+  {
+   "name": "send-zbc/escrow-and-message",
+   "command": "send-zbc",
+   "type": 1,
+   "key": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+   "params": {
+    "recipient": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+    "amount": "250000000"
+   },
+   "fee": 5000000,
+   "timestamp": 1700000004,
+   "genesis": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "message": "invoice 42",
+   "escrow": {
+    "approver": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "commission": 5000,
+    "timeout": 1800000000,
+    "instruction": "ship first"
+   },
+   "reference_block": null,
+   "expected": {
+    "body": "80b2e60e00000000",
+    "unsigned_bytes": "010000000104f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f215200000000d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737404b4c00000000000800000080b2e60e00000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152881300000000000000d2496b000000000a00000073686970206669727374000a000000696e766f696365203432",
+    "digest": "e40ded0f2883f89a46ec09a0d26c8174d4afceb22d6f7889946e061a929fc53a",
+    "signature": "bbda32ba34aedf8c8692c888776b6cce723ba008d7766aea6b7672aa28a711fd3709c2b73afa346bf5cd3bd874533ef43fc6dc94b64de57b173f2094da926005",
+    "transaction_bytes": "010000000104f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f215200000000d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737404b4c00000000000800000080b2e60e00000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152881300000000000000d2496b000000000a00000073686970206669727374000a000000696e766f696365203432bbda32ba34aedf8c8692c888776b6cce723ba008d7766aea6b7672aa28a711fd3709c2b73afa346bf5cd3bd874533ef43fc6dc94b64de57b173f2094da926005",
+    "transaction_hash": "fb23b17faca94510ecfbe0e8778373faea5f4c97ffdafa9d75e4e2e1512022ea",
+    "signing_version": 2,
+    "payload": {
+     "escrow": {
+      "approver_address": "000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+      "commission": 5000,
+      "instruction": "ship first",
+      "timeout": 1800000000
+     },
+     "fee": 5000000,
+     "message_hex": "696e766f696365203432",
+     "recipient_account_address": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+     "sender_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "signature": "bbda32ba34aedf8c8692c888776b6cce723ba008d7766aea6b7672aa28a711fd3709c2b73afa346bf5cd3bd874533ef43fc6dc94b64de57b173f2094da926005",
+     "timestamp": 1700000004,
+     "transaction_body_bytes": "80b2e60e00000000",
+     "transaction_type": 1,
+     "version": 1
+    }
+   }
+  },
+  {
+   "name": "send-zbc/other-sender",
+   "command": "send-zbc",
+   "type": 1,
+   "key": "1111111111111111111111111111111111111111111111111111111111111111",
+   "params": {
+    "recipient": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "amount": "1"
+   },
+   "fee": 5000000,
+   "timestamp": 1700000005,
+   "genesis": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "message": null,
+   "escrow": null,
+   "reference_block": null,
+   "expected": {
+    "body": "0100000000000000",
+    "unsigned_bytes": "010000000105f153650000000000000000d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152404b4c00000000000800000001000000000000000200000000000000",
+    "digest": "a54f58b8b13082465c8d1d6bd898e1ed0ff23c9e1165d3d3a1a17bc861e1adb9",
+    "signature": "3992d57e84c089d67e5f7048d61cc5f460be257ae3a74971d881e76229e53a23e291deca03433ef6372b281b276709fceef5d465817ef08ca7cf0cd55d82ef0d",
+    "transaction_bytes": "010000000105f153650000000000000000d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152404b4c000000000008000000010000000000000002000000000000003992d57e84c089d67e5f7048d61cc5f460be257ae3a74971d881e76229e53a23e291deca03433ef6372b281b276709fceef5d465817ef08ca7cf0cd55d82ef0d",
+    "transaction_hash": "3d14dfffe390f4a5bbb14052fc0144b6b578d3fa81580d75ea79d80b1db092e6",
+    "signing_version": 2,
+    "payload": {
+     "fee": 5000000,
+     "recipient_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "sender_account_address": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+     "signature": "3992d57e84c089d67e5f7048d61cc5f460be257ae3a74971d881e76229e53a23e291deca03433ef6372b281b276709fceef5d465817ef08ca7cf0cd55d82ef0d",
+     "timestamp": 1700000005,
+     "transaction_body_bytes": "0100000000000000",
+     "transaction_type": 1,
+     "version": 1
+    }
+   }
+  },
+  {
+   "name": "send-zbc/large-fee-above-2^53",
+   "command": "send-zbc",
+   "type": 1,
+   "key": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+   "params": {
+    "recipient": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "amount": "100000000"
+   },
+   "fee": 9007199254740995,
+   "timestamp": 1700000006,
+   "genesis": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "message": null,
+   "escrow": null,
+   "reference_block": null,
+   "expected": {
+    "body": "00e1f50500000000",
+    "unsigned_bytes": "010000000106f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f215203000000000020000800000000e1f505000000000200000000000000",
+    "digest": "922c8e8633447a8fccbc37d18ed6da0029eef9eeedc8194e1aeb793016b5bffd",
+    "signature": "9502825b66684021ce48dd79546ba06a039d1db20510930648fee8f34517fb0f4d36a7c4c8574032d6e642eea8008fb6982f548627b2bac8da94030dbdbf3f08",
+    "transaction_bytes": "010000000106f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f215203000000000020000800000000e1f5050000000002000000000000009502825b66684021ce48dd79546ba06a039d1db20510930648fee8f34517fb0f4d36a7c4c8574032d6e642eea8008fb6982f548627b2bac8da94030dbdbf3f08",
+    "transaction_hash": "079ffff3b34036c031f5a799258b2c9fb98f30f857dfdf55650dc16cf8f5154a",
+    "signing_version": 2,
+    "payload": {
+     "fee": 9007199254740995,
+     "recipient_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "sender_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "signature": "9502825b66684021ce48dd79546ba06a039d1db20510930648fee8f34517fb0f4d36a7c4c8574032d6e642eea8008fb6982f548627b2bac8da94030dbdbf3f08",
+     "timestamp": 1700000006,
+     "transaction_body_bytes": "00e1f50500000000",
+     "transaction_type": 1,
+     "version": 1
+    }
+   }
+  },
+  {
+   "name": "send-zbc/hex-recipient",
+   "command": "send-zbc",
+   "type": 1,
+   "key": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+   "params": {
+    "recipient": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+    "amount": "7"
+   },
+   "fee": 5000000,
+   "timestamp": 1700000007,
+   "genesis": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "message": null,
+   "escrow": null,
+   "reference_block": null,
+   "expected": {
+    "body": "0700000000000000",
+    "unsigned_bytes": "010000000107f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152404b4c00000000000800000007000000000000000200000000000000",
+    "digest": "a951dc7d2cd3b5283fa70f01690264b0fa5a553faef1e860526af18ed372df31",
+    "signature": "1042886e04f06664dfce4bb097e713319deee6a5f55c3adbde5c00b3feaed5d7e00a512974254f94c1413213ed5af9f6802657b4c019152a1b0c601b4306940b",
+    "transaction_bytes": "010000000107f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152404b4c000000000008000000070000000000000002000000000000001042886e04f06664dfce4bb097e713319deee6a5f55c3adbde5c00b3feaed5d7e00a512974254f94c1413213ed5af9f6802657b4c019152a1b0c601b4306940b",
+    "transaction_hash": "74ffefb1ed93d64121ca0a5fd1215c90ded75548f60bef6930b772863cde78d7",
+    "signing_version": 2,
+    "payload": {
+     "fee": 5000000,
+     "recipient_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "sender_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "signature": "1042886e04f06664dfce4bb097e713319deee6a5f55c3adbde5c00b3feaed5d7e00a512974254f94c1413213ed5af9f6802657b4c019152a1b0c601b4306940b",
+     "timestamp": 1700000007,
+     "transaction_body_bytes": "0700000000000000",
+     "transaction_type": 1,
+     "version": 1
+    }
+   }
+  },
+  {
+   "name": "send-zbc/eth-recipient",
+   "command": "send-zbc",
+   "type": 1,
+   "key": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+   "params": {
+    "recipient": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+    "amount": "100000000"
+   },
+   "fee": 5000000,
+   "timestamp": 1700000008,
+   "genesis": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "message": null,
+   "escrow": null,
+   "reference_block": null,
+   "expected": {
+    "body": "00e1f50500000000",
+    "unsigned_bytes": "010000000108f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f215204000000d8da6bf26964af9d7eed9e03e53415d37aa96045404b4c00000000000800000000e1f505000000000200000000000000",
+    "digest": "b5fb202dd07d3d2e567c1b613b1120cf066a971801850d994738911a30ffdf99",
+    "signature": "ca526d91da53d38562003e7d3e8fd2e373f03e7250c7e46e5f827ade2475c9c1179eeaece9ad5f5526a390dd15946a6ad3499aa4fd4951edcc4aa9c0f899b107",
+    "transaction_bytes": "010000000108f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f215204000000d8da6bf26964af9d7eed9e03e53415d37aa96045404b4c00000000000800000000e1f505000000000200000000000000ca526d91da53d38562003e7d3e8fd2e373f03e7250c7e46e5f827ade2475c9c1179eeaece9ad5f5526a390dd15946a6ad3499aa4fd4951edcc4aa9c0f899b107",
+    "transaction_hash": "d71dec287b41da6ccca38b2abef8f91d012ed5a92e5d3abd4b919da53ef21cb8",
+    "signing_version": 2,
+    "payload": {
+     "fee": 5000000,
+     "recipient_account_address": "04000000d8da6bf26964af9d7eed9e03e53415d37aa96045",
+     "sender_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "signature": "ca526d91da53d38562003e7d3e8fd2e373f03e7250c7e46e5f827ade2475c9c1179eeaece9ad5f5526a390dd15946a6ad3499aa4fd4951edcc4aa9c0f899b107",
+     "timestamp": 1700000008,
+     "transaction_body_bytes": "00e1f50500000000",
+     "transaction_type": 1,
+     "version": 1
+    }
+   }
+  },
+  {
+   "name": "send-zbc/signing-v1",
+   "command": "send-zbc",
+   "type": 1,
+   "key": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+   "params": {
+    "recipient": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "amount": "100000000"
+   },
+   "fee": 5000000,
+   "timestamp": 1700000000,
+   "genesis": "v1",
+   "message": null,
+   "escrow": null,
+   "reference_block": null,
+   "expected": {
+    "body": "00e1f50500000000",
+    "unsigned_bytes": "010000000100f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152404b4c00000000000800000000e1f505000000000200000000000000",
+    "digest": "a2595c72adb86f750985979613868fe48b742d9a7606a59b519b154381109bbd",
+    "signature": "cd6b6723d610833615b13b2db318cdbafc0e1d1fc97aaff39f9f9e985532167d2535292e1b5ca8a791b538a53a4d195fc8023694e606b78aa0d6e697aaa20d0a",
+    "transaction_bytes": "010000000100f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152404b4c00000000000800000000e1f505000000000200000000000000cd6b6723d610833615b13b2db318cdbafc0e1d1fc97aaff39f9f9e985532167d2535292e1b5ca8a791b538a53a4d195fc8023694e606b78aa0d6e697aaa20d0a",
+    "transaction_hash": "507dbeece11525c894401c7752b62ff77360f54674ff0c1f77918a604b5546ed",
+    "signing_version": 1,
+    "payload": {
+     "fee": 5000000,
+     "recipient_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "sender_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "signature": "cd6b6723d610833615b13b2db318cdbafc0e1d1fc97aaff39f9f9e985532167d2535292e1b5ca8a791b538a53a4d195fc8023694e606b78aa0d6e697aaa20d0a",
+     "timestamp": 1700000000,
+     "transaction_body_bytes": "00e1f50500000000",
+     "transaction_type": 1,
+     "version": 1
+    }
+   }
+  },
+  {
+   "name": "send-zbc/other-genesis",
+   "command": "send-zbc",
+   "type": 1,
+   "key": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+   "params": {
+    "recipient": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "amount": "100000000"
+   },
+   "fee": 5000000,
+   "timestamp": 1700000000,
+   "genesis": "090ab3c7e0ce0630f9b6a3d9694dc4d2d5e1ccd018352ef27de6cd8de0a61878",
+   "message": null,
+   "escrow": null,
+   "reference_block": null,
+   "expected": {
+    "body": "00e1f50500000000",
+    "unsigned_bytes": "010000000100f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152404b4c00000000000800000000e1f505000000000200000000000000",
+    "digest": "f37e53402bd62fd5b7f2fe39eea7129eaedb929c0038a132aeefeaad774644fc",
+    "signature": "9a3b044dca7c2f351e9d2b37dd6924e4260536c496207de87f0e1f1a31dd9f01cd6359e202e13964580a561a89e26688749fe9cdbf12056ed05eb1fbcd03bb07",
+    "transaction_bytes": "010000000100f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152404b4c00000000000800000000e1f5050000000002000000000000009a3b044dca7c2f351e9d2b37dd6924e4260536c496207de87f0e1f1a31dd9f01cd6359e202e13964580a561a89e26688749fe9cdbf12056ed05eb1fbcd03bb07",
+    "transaction_hash": "f00a6692eccb249e0e1cf70f1215502dcc82df6b4d47799efe3dc13d53ce78b0",
+    "signing_version": 2,
+    "payload": {
+     "fee": 5000000,
+     "recipient_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "sender_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "signature": "9a3b044dca7c2f351e9d2b37dd6924e4260536c496207de87f0e1f1a31dd9f01cd6359e202e13964580a561a89e26688749fe9cdbf12056ed05eb1fbcd03bb07",
+     "timestamp": 1700000000,
+     "transaction_body_bytes": "00e1f50500000000",
+     "transaction_type": 1,
+     "version": 1
+    }
+   }
+  },
+  {
+   "name": "send-zbc/utf8-message",
+   "command": "send-zbc",
+   "type": 1,
+   "key": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+   "params": {
+    "recipient": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "amount": "100000000"
+   },
+   "fee": 5000000,
+   "timestamp": 1700000009,
+   "genesis": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "message": "héllo ✓ zoobc",
+   "escrow": null,
+   "reference_block": null,
+   "expected": {
+    "body": "00e1f50500000000",
+    "unsigned_bytes": "010000000109f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152404b4c00000000000800000000e1f50500000000020000001000000068c3a96c6c6f20e29c93207a6f6f6263",
+    "digest": "fd816bf5b2640bfa7481a808ceb9a137ab72de1c08493488e4d5a92f7df962dd",
+    "signature": "f0d61115283954d053b33189640a6d8e11fb3a8f633559e98aab5b15152273d65eac0d6cb2beddefa473861a506a2d2f5f15b4aaf66c3ce151f629f28435890f",
+    "transaction_bytes": "010000000109f1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152404b4c00000000000800000000e1f50500000000020000001000000068c3a96c6c6f20e29c93207a6f6f6263f0d61115283954d053b33189640a6d8e11fb3a8f633559e98aab5b15152273d65eac0d6cb2beddefa473861a506a2d2f5f15b4aaf66c3ce151f629f28435890f",
+    "transaction_hash": "6a0fab929335625c8f63a3cab285fa241459c2cb3125aa593a0d427c9204d1fd",
+    "signing_version": 2,
+    "payload": {
+     "fee": 5000000,
+     "message_hex": "68c3a96c6c6f20e29c93207a6f6f6263",
+     "recipient_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "sender_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "signature": "f0d61115283954d053b33189640a6d8e11fb3a8f633559e98aab5b15152273d65eac0d6cb2beddefa473861a506a2d2f5f15b4aaf66c3ce151f629f28435890f",
+     "timestamp": 1700000009,
+     "transaction_body_bytes": "00e1f50500000000",
+     "transaction_type": 1,
+     "version": 1
+    }
+   }
+  },
+  {
+   "name": "approve-escrow/approve",
+   "command": "approve-escrow",
+   "type": 4,
+   "key": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+   "params": {
+    "approval": "0",
+    "transaction_hash": "c168466b38db35b8ed3d5e35c9e3862e17d9384bff7b999c587b0f6415ed1c63"
+   },
+   "fee": 5000000,
+   "timestamp": 1700000010,
+   "genesis": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "message": null,
+   "escrow": null,
+   "reference_block": null,
+   "expected": {
+    "body": "00000000c168466b38db35b8ed3d5e35c9e3862e17d9384bff7b999c587b0f6415ed1c63",
+    "unsigned_bytes": "04000000010af1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f215202000000404b4c00000000002400000000000000c168466b38db35b8ed3d5e35c9e3862e17d9384bff7b999c587b0f6415ed1c630200000000000000",
+    "digest": "3420aad82e48d4b9f1713ece5327e0faa530422c62dfeae244cf0c58adc7cde4",
+    "signature": "5489979dfb6ca22b9f8c1db7b135f5512c1449123fcfd837440ad60623f8400fb6554dba345f4f355f9645d6c82ebd72e7694bade5108d361bce87daff4fd301",
+    "transaction_bytes": "04000000010af1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f215202000000404b4c00000000002400000000000000c168466b38db35b8ed3d5e35c9e3862e17d9384bff7b999c587b0f6415ed1c6302000000000000005489979dfb6ca22b9f8c1db7b135f5512c1449123fcfd837440ad60623f8400fb6554dba345f4f355f9645d6c82ebd72e7694bade5108d361bce87daff4fd301",
+    "transaction_hash": "6928b73fad47869196a3a8417c78ba1951b03d1dc882782c00dbffc8b0b2e450",
+    "signing_version": 2,
+    "payload": {
+     "fee": 5000000,
+     "recipient_account_address": "",
+     "sender_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "signature": "5489979dfb6ca22b9f8c1db7b135f5512c1449123fcfd837440ad60623f8400fb6554dba345f4f355f9645d6c82ebd72e7694bade5108d361bce87daff4fd301",
+     "timestamp": 1700000010,
+     "transaction_body_bytes": "00000000c168466b38db35b8ed3d5e35c9e3862e17d9384bff7b999c587b0f6415ed1c63",
+     "transaction_type": 4,
+     "version": 1
+    }
+   }
+  },
+  {
+   "name": "approve-escrow/reject",
+   "command": "approve-escrow",
+   "type": 4,
+   "key": "1111111111111111111111111111111111111111111111111111111111111111",
+   "params": {
+    "approval": "1",
+    "transaction_hash": "c168466b38db35b8ed3d5e35c9e3862e17d9384bff7b999c587b0f6415ed1c63"
+   },
+   "fee": 5000000,
+   "timestamp": 1700000011,
+   "genesis": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "message": null,
+   "escrow": null,
+   "reference_block": null,
+   "expected": {
+    "body": "01000000c168466b38db35b8ed3d5e35c9e3862e17d9384bff7b999c587b0f6415ed1c63",
+    "unsigned_bytes": "04000000010bf153650000000000000000d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c977873702000000404b4c00000000002400000001000000c168466b38db35b8ed3d5e35c9e3862e17d9384bff7b999c587b0f6415ed1c630200000000000000",
+    "digest": "9680aa4a454780a720a086ad8b2574b8c12b093efbb78e1571537d420f9205ce",
+    "signature": "515ae7d15b226bd5114d98faf9d20b3a8fb93bcf293bd8528bb5e57d3a584ecdbc75777717754aeb952362c48d6eef6032aae2bd3c0b44fdb78c07792540b500",
+    "transaction_bytes": "04000000010bf153650000000000000000d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c977873702000000404b4c00000000002400000001000000c168466b38db35b8ed3d5e35c9e3862e17d9384bff7b999c587b0f6415ed1c630200000000000000515ae7d15b226bd5114d98faf9d20b3a8fb93bcf293bd8528bb5e57d3a584ecdbc75777717754aeb952362c48d6eef6032aae2bd3c0b44fdb78c07792540b500",
+    "transaction_hash": "7fa7e52da1e8fbbd14662210401a45537ca0134335de7f3af3937a6eb36b3666",
+    "signing_version": 2,
+    "payload": {
+     "fee": 5000000,
+     "recipient_account_address": "",
+     "sender_account_address": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+     "signature": "515ae7d15b226bd5114d98faf9d20b3a8fb93bcf293bd8528bb5e57d3a584ecdbc75777717754aeb952362c48d6eef6032aae2bd3c0b44fdb78c07792540b500",
+     "timestamp": 1700000011,
+     "transaction_body_bytes": "01000000c168466b38db35b8ed3d5e35c9e3862e17d9384bff7b999c587b0f6415ed1c63",
+     "transaction_type": 4,
+     "version": 1
+    }
+   }
+  },
+  {
+   "name": "approve-escrow/expire",
+   "command": "approve-escrow",
+   "type": 4,
+   "key": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+   "params": {
+    "approval": "2",
+    "transaction_hash": "abababababababababababababababababababababababababababababababab"
+   },
+   "fee": 1000000,
+   "timestamp": 1700000012,
+   "genesis": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "message": null,
+   "escrow": null,
+   "reference_block": null,
+   "expected": {
+    "body": "02000000abababababababababababababababababababababababababababababababab",
+    "unsigned_bytes": "04000000010cf1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f21520200000040420f00000000002400000002000000abababababababababababababababababababababababababababababababab0200000000000000",
+    "digest": "6b3aa709350b7d4a25162ce88be58f31e9f9e70930b63aad7a3de7f0bcce7041",
+    "signature": "fd8837130208b8a3118caafcbfd6016d58d87e9a92dc183acd1cb3a589d0400ade5b4e718182dc691396b047f40ec046bd25f4bd9934dfb3e73736feaee8420f",
+    "transaction_bytes": "04000000010cf1536500000000000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f21520200000040420f00000000002400000002000000abababababababababababababababababababababababababababababababab0200000000000000fd8837130208b8a3118caafcbfd6016d58d87e9a92dc183acd1cb3a589d0400ade5b4e718182dc691396b047f40ec046bd25f4bd9934dfb3e73736feaee8420f",
+    "transaction_hash": "7faa6de7860642a450a3a4fc1bc8ee931c59f1fe8fca64d9fd731f9579c4b7e1",
+    "signing_version": 2,
+    "payload": {
+     "fee": 1000000,
+     "recipient_account_address": "",
+     "sender_account_address": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+     "signature": "fd8837130208b8a3118caafcbfd6016d58d87e9a92dc183acd1cb3a589d0400ade5b4e718182dc691396b047f40ec046bd25f4bd9934dfb3e73736feaee8420f",
+     "timestamp": 1700000012,
+     "transaction_body_bytes": "02000000abababababababababababababababababababababababababababababababab",
+     "transaction_type": 4,
+     "version": 1
+    }
+   }
+  }
+ ]
+}

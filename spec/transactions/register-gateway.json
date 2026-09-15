@@ -1,0 +1,67 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "RegisterGateway",
+  "type": 36,
+  "command": "register-gateway",
+  "binary": "zbc-gateway-register",
+  "description": "Announce a gateway you run, locking the registration stake.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "gateway_key",
+      "kind": "key",
+      "required": true,
+      "help": "gateway public key: 64 hex (zbc-cli) or ZBG_ address (zbc-gateway-register)"
+    },
+    {
+      "name": "domain",
+      "kind": "string",
+      "required": true,
+      "help": "public domain, 1-256 chars"
+    },
+    {
+      "name": "url",
+      "kind": "string",
+      "required": true,
+      "help": "base URL"
+    }
+  ],
+  "body": [
+    {
+      "name": "gateway_key",
+      "encoding": "key32",
+      "from": "gateway_key"
+    },
+    {
+      "name": "domain",
+      "encoding": "str32",
+      "from": "domain"
+    },
+    {
+      "name": "url",
+      "encoding": "str32",
+      "from": "url"
+    }
+  ],
+  "example": {
+    "gateway_key": "2222222222222222222222222222222222222222222222222222222222222222",
+    "domain": "gw.example.org",
+    "url": "https://gw.example.org"
+  },
+  "notes": [
+    "zbc-gateway-register names its first field owner_privkey."
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "ReleaseAuthorityPropose",
+  "type": 33,
+  "command": "release-authority-propose",
+  "binary": null,
+  "description": "Propose handing the release authority to another account.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "new_authority",
+      "kind": "address",
+      "required": true,
+      "help": "proposed new authority"
+    }
+  ],
+  "body": [
+    {
+      "name": "new_authority",
+      "encoding": "address",
+      "from": "new_authority"
+    }
+  ],
+  "example": {
+    "new_authority": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
+  },
+  "notes": []
+}

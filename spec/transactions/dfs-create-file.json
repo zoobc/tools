@@ -1,0 +1,54 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "DFSCreateFile",
+  "type": 8,
+  "command": "dfs-create-file",
+  "binary": "zbc-dfs-create-file",
+  "description": "Create an on-chain file at path with the given content (up to 64 KB).",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "path",
+      "kind": "string",
+      "required": true,
+      "help": "absolute path, e.g. /docs/readme.txt"
+    },
+    {
+      "name": "content_file",
+      "kind": "file",
+      "required": true,
+      "help": "local file whose bytes become the content"
+    }
+  ],
+  "body": [
+    {
+      "name": "path",
+      "encoding": "str32",
+      "from": "path"
+    },
+    {
+      "name": "content",
+      "encoding": "bytes32",
+      "from": "content_file",
+      "computed": "the file's bytes"
+    }
+  ],
+  "example": {
+    "path": "/docs/hello.txt",
+    "content_file": "<a file containing the 12 bytes 'hello zoobc\\n'>"
+  },
+  "notes": []
+}

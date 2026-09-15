@@ -1,0 +1,107 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "CreateApp",
+  "type": 24,
+  "command": "app-create",
+  "binary": "zbc-app-create",
+  "description": "Open an on-chain app (game): type, stake, seats, optional params and opponent.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "app_type",
+      "kind": "uint8",
+      "required": true,
+      "help": "1 tic-tac-toe, 3 connect-4, 6 gomoku, 16 dice, 17 coin flip"
+    },
+    {
+      "name": "stake_token",
+      "kind": "int64",
+      "required": true,
+      "help": "0 = ZBC"
+    },
+    {
+      "name": "stake_amount",
+      "kind": "int64",
+      "required": true,
+      "help": "stake (atomic)"
+    },
+    {
+      "name": "seats",
+      "kind": "uint8",
+      "required": false,
+      "help": "2 = player vs player, 1 = solo",
+      "default": "2"
+    },
+    {
+      "name": "params_hex",
+      "kind": "hexbytes",
+      "required": false,
+      "help": "app parameters (solo bet, e.g. coin flip choice '00')",
+      "default": ""
+    },
+    {
+      "name": "opponent_hex",
+      "kind": "hexbytes",
+      "required": false,
+      "help": "36-byte opponent account bytes (open seat if empty); a single byte 01 marks a state-channel app",
+      "default": ""
+    }
+  ],
+  "body": [
+    {
+      "name": "app_type",
+      "encoding": "u8",
+      "from": "app_type"
+    },
+    {
+      "name": "stake_token",
+      "encoding": "u64le",
+      "from": "stake_token"
+    },
+    {
+      "name": "stake_amount",
+      "encoding": "u64le",
+      "from": "stake_amount"
+    },
+    {
+      "name": "seats",
+      "encoding": "u8",
+      "from": "seats"
+    },
+    {
+      "name": "params_hex",
+      "encoding": "hex16",
+      "from": "params_hex"
+    },
+    {
+      "name": "opponent_hex",
+      "encoding": "hex",
+      "from": "opponent_hex",
+      "when": "opponent_hex != ''"
+    }
+  ],
+  "example": {
+    "app_type": "1",
+    "stake_token": "0",
+    "stake_amount": "100000000",
+    "seats": "2",
+    "params_hex": "",
+    "opponent_hex": ""
+  },
+  "notes": [
+    "zbc-app-create takes (app_type, stake_token, stake_amount, seats, channel) and cannot pass params or an opponent."
+  ]
+}

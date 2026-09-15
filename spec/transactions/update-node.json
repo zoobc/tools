@@ -1,0 +1,61 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "NodeRegistrationUpdate",
+  "type": 258,
+  "command": "update-node",
+  "binary": "zbc-node-update",
+  "description": "Change a node registration's locked balance.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": true,
+  "custom": "proof_of_ownership",
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "node_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the node's private key"
+    },
+    {
+      "name": "locked_balance",
+      "kind": "int64",
+      "required": true,
+      "help": "new stake (atomic)"
+    }
+  ],
+  "body": [
+    {
+      "name": "node_public_key",
+      "encoding": "pubkey_of_key",
+      "from": "node_privkey"
+    },
+    {
+      "name": "locked_balance",
+      "encoding": "u64le",
+      "from": "locked_balance"
+    },
+    {
+      "name": "proof_of_ownership",
+      "encoding": "custom",
+      "from": "proof_of_ownership",
+      "computed": "as register-node"
+    }
+  ],
+  "example": {
+    "node_privkey": "2222222222222222222222222222222222222222222222222222222222222222",
+    "locked_balance": "200000000000"
+  },
+  "notes": [
+    "zbc-node-update takes (node_privkey, owner_privkey, new_locked_balance)."
+  ]
+}

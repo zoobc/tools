@@ -1,0 +1,142 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "MultiSignature",
+  "type": 5,
+  "command": "multisig",
+  "binary": "zbc-multisig",
+  "description": "N-of-M multisig SendZBC: the inner transaction plus the participant signatures gathered so far.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": "multisig",
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "participants",
+      "kind": "address_list",
+      "required": true,
+      "help": "comma-separated participant addresses"
+    },
+    {
+      "name": "min_signatures",
+      "kind": "uint32",
+      "required": true,
+      "help": "signatures required (N of M)"
+    },
+    {
+      "name": "nonce",
+      "kind": "int64",
+      "required": false,
+      "help": "multisig account nonce",
+      "default": "0"
+    },
+    {
+      "name": "signer_privkeys",
+      "kind": "string",
+      "required": true,
+      "help": "comma-separated participant keys that sign now"
+    },
+    {
+      "name": "recipient",
+      "kind": "address",
+      "required": true,
+      "help": "inner SendZBC recipient"
+    },
+    {
+      "name": "amount",
+      "kind": "int64",
+      "required": true,
+      "help": "inner amount (atomic)"
+    },
+    {
+      "name": "inner_fee",
+      "kind": "int64",
+      "required": false,
+      "help": "inner fee (atomic)",
+      "default": "10000000"
+    }
+  ],
+  "body": [
+    {
+      "name": "info_present",
+      "encoding": "literal",
+      "from": "info_present",
+      "value": "01000000"
+    },
+    {
+      "name": "min_signatures",
+      "encoding": "u32le",
+      "from": "min_signatures"
+    },
+    {
+      "name": "nonce",
+      "encoding": "u64le",
+      "from": "nonce"
+    },
+    {
+      "name": "participant_count",
+      "encoding": "u32le",
+      "from": "participants",
+      "computed": "number of participants"
+    },
+    {
+      "name": "participants",
+      "encoding": "address_list",
+      "from": "participants",
+      "computed": "each 36-byte address, in the order given"
+    },
+    {
+      "name": "inner",
+      "encoding": "bytes32",
+      "from": "inner",
+      "computed": "the inner unsigned SendZBC envelope: sender = 36-byte address whose 32-byte key is the multisig address, timestamp = --timestamp or now, fee = inner_fee, body = amount u64le, no escrow, no message"
+    },
+    {
+      "name": "signatures_present",
+      "encoding": "literal",
+      "from": "signatures_present",
+      "value": "01000000"
+    },
+    {
+      "name": "inner_hash",
+      "encoding": "hex",
+      "from": "inner_hash",
+      "size": 32,
+      "computed": "SHA3-256(inner) (bare, no tag)"
+    },
+    {
+      "name": "signature_count",
+      "encoding": "u32le",
+      "from": "signature_count",
+      "computed": "number of signer keys"
+    },
+    {
+      "name": "signatures",
+      "encoding": "custom",
+      "from": "signatures",
+      "computed": "sorted by the signer's 36-byte address hex: address (36) ‖ u32le 64 ‖ Ed25519(signer seed, signing digest of the inner bytes per signing.md section 4)"
+    }
+  ],
+  "example": {
+    "participants": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX,ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+    "min_signatures": "1",
+    "nonce": "0",
+    "signer_privkeys": "1111111111111111111111111111111111111111111111111111111111111111",
+    "recipient": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+    "amount": "1000",
+    "inner_fee": "10000000"
+  },
+  "notes": [
+    "multisig address = SHA3-256(min_signatures u32le ‖ nonce u64le ‖ count u32le ‖ the participant addresses sorted bytewise).",
+    "The multisig account must be funded (send ZBC to its ZBC_ form) before the inner transaction can execute."
+  ]
+}

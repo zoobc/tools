@@ -1,0 +1,120 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "EscrowRequest",
+  "type": 260,
+  "command": "escrow-request",
+  "binary": "zbc-escrow-request",
+  "description": "Recipient-initiated escrow: ask proposed_sender to pay amount through an approver.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "proposed_sender",
+      "kind": "address",
+      "required": true,
+      "help": "who is asked to pay"
+    },
+    {
+      "name": "amount",
+      "kind": "int64",
+      "required": true,
+      "help": "proposed amount (atomic units)"
+    },
+    {
+      "name": "approver",
+      "kind": "address",
+      "required": true,
+      "help": "third-party approver"
+    },
+    {
+      "name": "commission",
+      "kind": "int64",
+      "required": false,
+      "help": "approver commission (atomic units)",
+      "default": "0"
+    },
+    {
+      "name": "timeout",
+      "kind": "int64",
+      "required": true,
+      "help": "escrow timeout, future Unix seconds"
+    },
+    {
+      "name": "instruction",
+      "kind": "string",
+      "required": false,
+      "help": "instructions",
+      "default": ""
+    },
+    {
+      "name": "expiry",
+      "kind": "int64",
+      "required": false,
+      "help": "request expiry; 0 = same as timeout",
+      "default": "0"
+    }
+  ],
+  "body": [
+    {
+      "name": "proposed_sender",
+      "encoding": "address",
+      "from": "proposed_sender"
+    },
+    {
+      "name": "amount",
+      "encoding": "u64le",
+      "from": "amount"
+    },
+    {
+      "name": "approver",
+      "encoding": "address",
+      "from": "approver"
+    },
+    {
+      "name": "commission",
+      "encoding": "u64le",
+      "from": "commission"
+    },
+    {
+      "name": "timeout",
+      "encoding": "u64le",
+      "from": "timeout"
+    },
+    {
+      "name": "instruction",
+      "encoding": "str32",
+      "from": "instruction"
+    },
+    {
+      "name": "expiry",
+      "encoding": "u64le",
+      "from": "expiry",
+      "default_from": "timeout",
+      "when_zero": "timeout"
+    }
+  ],
+  "example": {
+    "proposed_sender": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+    "amount": "250000000",
+    "approver": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "commission": "1000",
+    "timeout": "1800000000",
+    "instruction": "pay on delivery",
+    "expiry": "0"
+  },
+  "notes": [
+    "zbc-escrow-request names its first field requester_privkey; zbc-cli uses sender_privkey (ZBC_KEY applies there)."
+  ]
+}

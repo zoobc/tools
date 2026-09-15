@@ -1,0 +1,42 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "FeeVoteCommitment",
+  "type": 7,
+  "command": "fee-vote-commit",
+  "binary": "zbc-fee-vote-commit",
+  "description": "Commit a hashed fee vote during the commit phase.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "vote_hash",
+      "kind": "hex32",
+      "required": true,
+      "help": "32-byte vote hash"
+    }
+  ],
+  "body": [
+    {
+      "name": "vote_hash",
+      "encoding": "hex",
+      "from": "vote_hash",
+      "size": 32
+    }
+  ],
+  "example": {
+    "vote_hash": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "notes": []
+}

@@ -1,0 +1,27 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "ReleaseAuthorityAccept",
+  "type": 34,
+  "command": "release-authority-accept",
+  "binary": null,
+  "description": "Accept a pending release-authority handover. Empty body.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    }
+  ],
+  "body": [],
+  "example": {},
+  "notes": []
+}
