@@ -125,7 +125,7 @@ plus `message`, `escrow` and the command's own fields when present. Nothing else
 | 7 | `not_found` | Unknown transaction, escrow or token. |
 | 8 | `timeout` | The node did not answer within `--timeout`. |
 | 9 | `node_busy` | The node answered 5xx: emergency mode, backpressure. |
-| 10 | `signature_invalid` | `verify-message` only: the signature does not verify. |
+| 10 | `verify_failed` | `verify-message` only: the signature does not verify. |
 
 A script can branch on the exit code alone; the JSON carries the same information for logging.
 

@@ -24,7 +24,9 @@
       "name": "approval",
       "kind": "uint32",
       "required": true,
-      "help": "0 = approve, 1 = reject, 2 = expire"
+      "help": "0 = approve, 1 = reject, 2 = expire",
+      "min": 0,
+      "max": 2
     },
     {
       "name": "transaction_hash",

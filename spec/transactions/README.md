@@ -24,7 +24,7 @@ the JSON.
 | `options` | envelope options that apply: `message`, `encrypt`, `escrow`, `chain` |
 | `needs_node` | `true` when building the body needs a node (proof of ownership) even with `--genesis` |
 | `custom` | `null` when the generic serialiser can produce the body from `body`; else a label for the hand-written part |
-| `params` | the command-line parameters in order, key first: `name`, `kind` (see `index.json`), `required`, `default`, `help` |
+| `params` | the command-line parameters in order, key first: `name`, `kind` (see `index.json`), `required`, `default`, `help`, and `min`/`max` when the reference refuses values outside a range |
 | `body` | the body byte layout in order: `name`, `encoding` (see `index.json`), `from` (the parameter it is read from), and any of `size`, `value`, `when`, `computed`, `default_from`, `when_zero` |
 | `example` | parameter values (strings, as typed on the command line) that the vectors use |
 | `notes` | differences between `zbc-cli` and the standalone binary, and other things a port must know |

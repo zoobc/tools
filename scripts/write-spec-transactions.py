@@ -14,9 +14,11 @@ OUT = pathlib.Path(__file__).resolve().parent.parent / "spec" / "transactions"
 LICENSE = "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci"
 
 # ---- helpers to keep the table short ---------------------------------------------------------
-def P(name, kind, help, required=True, default=None):
+def P(name, kind, help, required=True, default=None, min=None, max=None):
     d = {"name": name, "kind": kind, "required": required, "help": help}
     if default is not None: d["default"] = default
+    if min is not None: d["min"] = min      # the reference refuses values outside [min, max] (usage error)
+    if max is not None: d["max"] = max
     return d
 def F(name, encoding, source=None, **kw):
     d = {"name": name, "encoding": encoding, "from": source or name}
@@ -69,7 +71,7 @@ T("liquid-payment-stop", 262, "LiquidPaymentStop", "Stop a liquid payment; the v
   [F("transaction_id", "u64le")], binary="zbc-liquid-stop", example={"transaction_id": "-1234567890123456789"}),
 
 T("approve-escrow", 4, "ApprovalEscrow", "Approve (0), reject (1) or expire (2) an escrowed transaction, named by its full hash.",
-  [P("approval", "uint32", "0 = approve, 1 = reject, 2 = expire"), P("transaction_hash", "hex32", "the escrowed transaction's hash, 64 hex")],
+  [P("approval", "uint32", "0 = approve, 1 = reject, 2 = expire", min=0, max=2), P("transaction_hash", "hex32", "the escrowed transaction's hash, 64 hex")],
   [F("approval", "u32le"), F("transaction_hash", "hex", size=32)], binary="zbc-escrow-approve",
   example={"approval": "0", "transaction_hash": H32},
   notes=["The tool reports escrowed_transaction_hash and transaction_id (int64 of the escrowed hash) next to its own transaction_hash."]),
@@ -86,7 +88,7 @@ T("escrow-request", 260, "EscrowRequest", "Recipient-initiated escrow: ask propo
 
 T("issue-token", 10, "IssueToken", "Issue a token backed by ZBC.",
   [P("symbol", "string", "2-10 upper-case letters or digits, not a reserved symbol"), P("name", "string", "token name"),
-   P("decimals", "uint8", "0-8, display only"), P("supply", "int64", "total supply (atomic, 10^8 per unit)"),
+   P("decimals", "uint8", "0-8, display only", min=0, max=8), P("supply", "int64", "total supply (atomic, 10^8 per unit)"),
    P("backing", "int64", "ZBC locked as backing (atomic); 0 = unbacked"),
    P("flags", "uint8", "bit0 redeemable, bit1 mintable, bit3 unbacked", required=False, default="1")],
   [F("decimals", "u8"), F("flags", "u8"), F("supply", "u64le"), F("backing", "u64le"), F("symbol", "str16"), F("name", "str16")],
@@ -137,7 +139,7 @@ T("app-resign", 27, "ResignApp", "Resign; your stake share goes to the opponent(
 T("app-claim", 28, "ClaimAppTimeout", "Claim the win when an opponent missed the per-move deadline.", [P("app_id", "int64", "app id")], [F("app_id", "u64le")], binary="zbc-app-claim", example={"app_id": "5"}),
 T("app-settle", 39, "SettleApp", "Settle a two-seat tic-tac-toe state channel: replay the signed moves on chain.",
   [P("app_id", "int64", "the channel app id"), P("p0_privkey", "privkey", "seat 0 key, signs seat 0 vouchers"), P("p1_privkey", "privkey", "seat 1 key"),
-   P("opening_turn", "uint8", "seat that moves first, 0 or 1", required=False, default="0"), P("moves", "string", "cells in play order, comma-separated, e.g. 0,3,1,4,2")],
+   P("opening_turn", "uint8", "seat that moves first, 0 or 1", required=False, default="0", min=0, max=1), P("moves", "string", "cells in play order, comma-separated, e.g. 0,3,1,4,2")],
   [F("app_id", "u64le"), F("count", "u32le", "moves", computed="number of moves"), F("final_seq", "u32le", "moves", computed="number of moves"),
    F("entries", "custom", "moves", computed="per move: seat u8, move_bytes hex16, 64-byte voucher signature = Ed25519(seat key, SHA3-256(app_id u64le ‖ seq u32le ‖ SHA3-256(9-byte board before the move) ‖ move_bytes)); the board marks cells with seat+1")],
   binary="zbc-app-settle", custom="settle", example={"app_id": "5", "p0_privkey": SEED1, "p1_privkey": SEED2, "opening_turn": "0", "moves": "0,3,1,4,2"}),
@@ -178,7 +180,7 @@ T("transfer-dataset", 42, "TransferDataset", "Propose transferring a dataset obj
 T("accept-dataset", 44, "AcceptDataset", "Accept a pending dataset transfer.", [P("object_id", "hex32", "dataset object id")], [F("object_id", "hex", size=32)], example={"object_id": H32}),
 T("delete-dataset", 45, "DeleteDataset", "Delete a dataset object and refund its deposit.", [P("object_id", "hex32", "dataset object id")], [F("object_id", "hex", size=32)], example={"object_id": H32}),
 T("set-dataset-policy", 43, "SetDatasetPolicy", "Set a dataset object's manage policy and edit its access lists.",
-  [P("object_id", "hex32", "dataset object id"), P("mode", "uint8", "0 owner-only, 1 whitelist, 2 blacklist, 3 open"),
+  [P("object_id", "hex32", "dataset object id"), P("mode", "uint8", "0 owner-only, 1 whitelist, 2 blacklist, 3 open", min=0, max=3),
    P("add", "address_list", "comma-separated addresses to add (max 255)", required=False, default=""),
    P("remove", "address_list", "comma-separated addresses to remove (max 255)", required=False, default="")],
   [F("object_id", "hex", size=32), F("mode", "u8"), F("add", "address_list8"), F("remove", "address_list8")],

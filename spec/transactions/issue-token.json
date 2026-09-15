@@ -36,7 +36,9 @@
       "name": "decimals",
       "kind": "uint8",
       "required": true,
-      "help": "0-8, display only"
+      "help": "0-8, display only",
+      "min": 0,
+      "max": 8
     },
     {
       "name": "supply",

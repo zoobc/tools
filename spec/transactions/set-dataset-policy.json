@@ -30,7 +30,9 @@
       "name": "mode",
       "kind": "uint8",
       "required": true,
-      "help": "0 owner-only, 1 whitelist, 2 blacklist, 3 open"
+      "help": "0 owner-only, 1 whitelist, 2 blacklist, 3 open",
+      "min": 0,
+      "max": 3
     },
     {
       "name": "add",
