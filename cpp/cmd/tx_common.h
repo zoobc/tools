@@ -1032,7 +1032,18 @@ struct ParsedParams {
     std::string chain;
     // --hex: a `message` parameter (sign-message / verify-message) is hex-encoded bytes, not text.
     bool hex_input = false;
+    // --offline: build, sign and hash, print every intermediate byte string and exit without
+    // submitting. Nothing is asked of a node, so the chain must be named with --genesis.
+    bool offline = false;
+    // --timestamp <unix seconds>: the transaction timestamp, instead of the clock. 0 = now.
+    // Fixing it makes a signed transaction reproducible, which is what test vectors need.
+    int64_t timestamp = 0;
 };
+
+// The timestamp a transaction is built with: --timestamp when given, else now.
+inline int64_t transaction_timestamp(const ParsedParams& p) {
+    return p.timestamp > 0 ? p.timestamp : static_cast<int64_t>(std::time(nullptr));
+}
 
 // Check if stdin is a terminal (not piped)
 inline bool is_stdin_terminal() {
@@ -1086,6 +1097,10 @@ inline void print_tool_usage(const ToolConfig& config, const char* program) {
     std::cout << "  --timeout <s>         Bound for each HTTP call, seconds (default: $ZBC_TIMEOUT, else 20;" << std::endl;
     std::cout << "                        also --timeout-seconds). A command makes up to two calls." << std::endl;
     std::cout << "  --hex                 sign-message/verify-message: the message is hex bytes, not text" << std::endl;
+    std::cout << "  --offline             Build, sign and hash, then print unsigned_bytes, digest, signature," << std::endl;
+    std::cout << "                        transaction_bytes and transaction_hash and exit 0 without submitting." << std::endl;
+    std::cout << "                        Nothing is asked of a node: --genesis <hex|v1> is required." << std::endl;
+    std::cout << "  --timestamp <n>       Transaction timestamp, Unix seconds (default: now)." << std::endl;
     std::cout << std::endl;
     std::cout << "Environment:" << std::endl;
     std::cout << "  ZBC_KEY               Sender private key (64 hex). Used when the key argument is omitted" << std::endl;
@@ -1188,6 +1203,19 @@ inline int parse_params(const ToolConfig& config, int argc, char* argv[], Parsed
             if (i + 1 >= argc) return fail(emit_error, exit_code::USAGE, "--token requires a value");
             try { out.token_id = std::stoll(argv[++i]); }
             catch (const std::exception&) { return fail(emit_error, exit_code::USAGE, "--token must be a decimal token id"); }
+        } else if (arg == "--offline") {
+            out.offline = true;
+        } else if (arg == "--timestamp") {
+            if (i + 1 >= argc) return fail(emit_error, exit_code::USAGE, "--timestamp requires a value (Unix seconds)");
+            const std::string ts_arg = argv[++i];
+            try {
+                size_t consumed = 0;
+                out.timestamp = std::stoll(ts_arg, &consumed);
+                if (consumed != ts_arg.size()) throw std::invalid_argument("trailing characters");
+            } catch (const std::exception&) {
+                return fail(emit_error, exit_code::USAGE, "--timestamp must be a whole number of Unix seconds");
+            }
+            if (out.timestamp <= 0) return fail(emit_error, exit_code::USAGE, "--timestamp must be > 0");
         } else if (arg == "--help" || arg == "-h") {
             print_tool_usage(config, argv[0]);
             return -1;  // Signal help printed, exit 0
@@ -1258,9 +1286,15 @@ inline int parse_params(const ToolConfig& config, int argc, char* argv[], Parsed
                 if (t <= 0) return fail(emit_error, exit_code::USAGE, "timeout_seconds must be > 0");
                 http_timeout_seconds() = t;
             }
+            if (j.contains("timestamp")) {
+                out.timestamp = j["timestamp"].is_number() ? j["timestamp"].get<int64_t>()
+                                                           : std::stoll(j["timestamp"].get<std::string>());
+                if (out.timestamp <= 0) return fail(emit_error, exit_code::USAGE, "timestamp must be > 0");
+            }
         } catch (const std::exception&) {
-            return fail(emit_error, exit_code::USAGE, "fee / timeout_seconds must be whole numbers");
+            return fail(emit_error, exit_code::USAGE, "fee / timeout_seconds / timestamp must be whole numbers");
         }
+        if (j.contains("offline") && j["offline"].is_boolean()) out.offline = j["offline"].get<bool>();
         if (j.contains("api_url")) out.api_url = j["api_url"].get<std::string>();
         if (j.contains("message")) out.message_text = j["message"].get<std::string>();
         if (j.contains("hex") && j["hex"].is_boolean()) out.hex_input = j["hex"].get<bool>();
@@ -1358,6 +1392,14 @@ inline int parse_params(const ToolConfig& config, int argc, char* argv[], Parsed
         if (extra_start + 1 < positional.size()) {
             out.api_url = positional[extra_start + 1];
         }
+    }
+
+    // --offline must never touch a node, so the chain it signs for has to be named up front.
+    if (out.offline && out.genesis_hex.empty()) {
+        const char* env_g = std::getenv("ZOOBC_GENESIS_HASH");
+        if (!env_g || !*env_g)
+            return fail(emit_error, exit_code::USAGE,
+                        "--offline needs --genesis <hex|v1> (or ZOOBC_GENESIS_HASH): nothing is asked of a node");
     }
 
     // Validate escrow
@@ -1480,7 +1522,7 @@ inline int run_transaction(
         }
 
         int32_t version = 1;
-        int64_t timestamp = static_cast<int64_t>(std::time(nullptr));
+        int64_t timestamp = transaction_timestamp(params);
 
         // Build transaction bytes
         std::vector<uint8_t> tx_bytes;
@@ -1541,6 +1583,53 @@ inline int run_transaction(
             tx_type, params.fee, body_bytes, signature,
             message_bytes, escrow_json);
 
+        // The fields every success reply carries (spec/cli-contract.md), online or offline.
+        const json contract_fields = {
+            {"transaction_hash", bytes_to_hex(tx_hash)},
+            {"transaction_type", tx_type},
+            {"sender_account_address", bytes_to_hex(sender_pubkey)},
+            {"recipient_account_address", bytes_to_hex(recipient_for_json)},
+            {"fee", params.fee},
+            {"timestamp", timestamp}
+        };
+
+        // --offline: everything a submitter, a verifier or a port in another language needs to
+        // reproduce this transaction byte for byte, and nothing sent anywhere.
+        if (params.offline) {
+            std::vector<uint8_t> full_bytes(tx_bytes);
+            full_bytes.insert(full_bytes.end(), signature.begin(), signature.end());
+            const auto& ctx = signing_context();
+            const auto& digest = sign_result.Value().tx_bytes_hash;
+            if (params.json_output) {
+                json result = contract_fields;
+                result["success"] = true;
+                result["offline"] = true;
+                result["signing_version"] = ctx.version;
+                if (ctx.version == 2) result["genesis_hash"] = bytes_to_hex(ctx.genesis_hash);
+                result["unsigned_bytes"] = bytes_to_hex(tx_bytes);
+                result["digest"] = bytes_to_hex(digest);
+                result["signature"] = bytes_to_hex(signature);
+                result["transaction_bytes"] = bytes_to_hex(full_bytes);
+                result["payload"] = json::parse(json_payload);
+                if (!params.message_text.empty()) result["message"] = params.message_text;
+                if (params.escrow.active) result["escrow"] = escrow_json;
+                for (auto& [key, val] : extra_success_fields.items()) result[key] = val;
+                std::cout << result.dump(2) << std::endl;
+            } else {
+                std::cout << "OFFLINE: transaction built and signed, not submitted" << std::endl << std::endl
+                          << "Transaction hash:  " << bytes_to_hex(tx_hash) << std::endl
+                          << "Signing version:   " << ctx.version
+                          << (ctx.version == 2 ? " (genesis " + bytes_to_hex(ctx.genesis_hash) + ")" : "") << std::endl
+                          << "Timestamp:         " << timestamp << std::endl
+                          << "Unsigned bytes:    " << bytes_to_hex(tx_bytes) << std::endl
+                          << "Digest:            " << bytes_to_hex(digest) << std::endl
+                          << "Signature:         " << bytes_to_hex(signature) << std::endl
+                          << "Transaction bytes: " << bytes_to_hex(full_bytes) << std::endl
+                          << "Payload:           " << json_payload << std::endl;
+            }
+            return 0;
+        }
+
         // Submit
         auto submit_result = submit_transaction(params.api_url, json_payload);
 
@@ -1551,11 +1640,9 @@ inline int run_transaction(
 
         if (submit_result.ok) {
             if (params.json_output) {
-                json result = {
-                    {"success", true},
-                    {"transaction_hash", bytes_to_hex(tx_hash)},
-                    {"api_response", submit_result.response_json}
-                };
+                json result = contract_fields;
+                result["success"] = true;
+                result["api_response"] = submit_result.response_json;
                 if (!params.message_text.empty()) result["message"] = params.message_text;
                 if (params.escrow.active) result["escrow"] = escrow_json;
                 // Merge extra fields

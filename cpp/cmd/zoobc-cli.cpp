@@ -518,7 +518,7 @@ static std::map<std::string, Cmd> registry() {
             // the node deserializes it this way (executor:5111). Bare hash -> "end of bytes (body)".
             std::vector<uint8_t> inner_sender; TransactionUtil::WriteInt32LE(inner_sender, ACCOUNT_TYPE_ZBC);
             inner_sender.insert(inner_sender.end(), multisig_addr.begin(), multisig_addr.end());
-            auto inner_unsigned=build_transaction_bytes_multikey(1,(int64_t)std::time(nullptr),inner_sender,recip.Value().address,(uint32_t)TT::SendZBC,inner_fee,inner_body,empty,empty);
+            auto inner_unsigned=build_transaction_bytes_multikey(1,transaction_timestamp(params),inner_sender,recip.Value().address,(uint32_t)TT::SendZBC,inner_fee,inner_body,empty,empty);
             auto inner_hash_r=zoobc::crypto::Hash::SHA3_256(inner_unsigned); if(inner_hash_r.IsErr()){ emit_error("Failed to hash inner tx"); return 1; }
             auto inner_hash=inner_hash_r.Value();   // the KEY the chain collects signatures under
             // Participants sign the chain-bound digest of the inner bytes (signing v2), not the key.

@@ -55,6 +55,11 @@ printf '%s' '{"recipient":"ZBC_...","amount":100000000}' | build/zbc-cli send-zb
 
 build/zbc-cli sign-message <64 hex> "text"          off-chain signature, no node needed
 build/zbc-cli verify-message ZBC_... "text" <sig>   exit 0 valid, exit 10 not
+
+build/zbc-cli send-zbc - ZBC_... 100000000 --genesis <64 hex> --timestamp 1700000000 --offline
+                                                    build, sign and hash without a node: prints
+                                                    unsigned_bytes, digest, signature, transaction_bytes,
+                                                    transaction_hash and the payload it would have sent
 ```
 
 Every tool prints one JSON object and exits with a meaningful code. The full contract, shared by

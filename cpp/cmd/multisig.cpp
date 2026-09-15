@@ -106,7 +106,7 @@ int main(int argc, char* argv[]) {
         TransactionUtil::WriteUint64LE(inner_body, static_cast<uint64_t>(amount));
 
         std::vector<uint8_t> empty;
-        int64_t inner_ts = static_cast<int64_t>(std::time(nullptr));
+        int64_t inner_ts = transaction_timestamp(params);  // --timestamp fixes it, else now
         // Inner-tx sender = the multisig account as a ZBC-TYPED 36-byte address (4-byte ACCOUNT_TYPE_ZBC
         // prefix + the 32-byte GenerateMultisigAddress hash). The node deserializes the inner sender this
         // way (transaction_executor.cpp:5111); passing the bare 32-byte hash misaligns the parse and the

@@ -16,12 +16,18 @@ zbc-cli help <command>                           the JSON field names of one com
 zbc-cli <command> --help                         options, environment variables, exit codes
 ```
 
-The first positional parameter is the **sender private key**: 64 hex characters, the 32-byte
-Ed25519 seed. It may be omitted, or given as `-`, when `ZBC_KEY` is set. `verify-message` is the
-exception: its first parameter is a ZBC address, because verification needs no key.
+The first positional parameter is the **signing private key**: 64 hex characters, the 32-byte
+Ed25519 seed. When the command's first field is named `sender_privkey` (as `zbc-cli help <command>`
+prints it) the key may be omitted, or given as `-`, and `ZBC_KEY` supplies it. Commands whose first
+field has another name (`owner_privkey` for gateways, archivals and relays, `node_privkey` for
+governance votes, `requester_privkey` for escrow requests) always take the key explicitly.
+`verify-message` is the exception: its first parameter is a ZBC address, because verification needs
+no key.
 
 Positional parameters and the JSON fields of `--json-input` are the same names, in the same order,
-as printed by `zbc-cli help <command>`.
+as printed by `zbc-cli help <command>`. The stdin object may also carry the options `fee`,
+`timeout_seconds`, `timestamp`, `offline`, `hex` and `verbose` (booleans), `api_url`, `message` and `escrow`
+(an object with `approver`, `commission`, `timeout`, `instruction`).
 
 ## 2. Options
 
@@ -38,6 +44,8 @@ as printed by `zbc-cli help <command>`.
 | `--chain <name>` | Read the recipient as an address of this chain: `zbc`, `btc`, `eth`, `sol`, `dot`, `ada`, `xrp`, `trx`, `xtz`. Detection is automatic; this only forces a reading. |
 | `--escrow-approver <addr>`, `--escrow-commission <n>`, `--escrow-timeout <unix s>`, `--escrow-instruction <s>` | Turn a transfer into an escrow. The timeout is an absolute future Unix time in seconds. |
 | `--hex` | `sign-message` and `verify-message` only: the message is given as hex bytes, not text. |
+| `--offline` | Build, sign and hash, print every intermediate byte string (section 4) and exit 0 without submitting. Nothing is asked of a node, so `--genesis` (or `ZOOBC_GENESIS_HASH`) is required. |
+| `--timestamp <unix seconds>` | The transaction timestamp, instead of the clock. With `--offline` the output is reproducible byte for byte; that is how `spec/vectors` are made. Also fixes a multisig inner transaction's timestamp. |
 
 Options may appear anywhere on the command line. Unknown options are a usage error.
 
@@ -83,6 +91,21 @@ the approval's own hash.
 | `error_class` | The name of that code. |
 | `http_code` | Present when the node answered with an error status. |
 | `api_response` | The node's reply, verbatim, when there was one. |
+
+**`--offline`**, instead of submitting, exits 0 with:
+
+| Key | Meaning |
+|-----|---------|
+| `offline` | `true`. |
+| `transaction_hash`, `transaction_type`, `sender_account_address`, `recipient_account_address`, `fee`, `timestamp` | As above. |
+| `signing_version` | 1 or 2. `genesis_hash` (hex) is present when it is 2. |
+| `unsigned_bytes` | Hex. The serialised transaction without its signature, the bytes the digest is computed over. |
+| `digest` | Hex. The 32 bytes actually signed (`signing.md`). |
+| `signature` | Hex. 64 bytes for a ZBC sender. |
+| `transaction_bytes` | Hex. `unsigned_bytes ‖ signature`; `transaction_hash` is its SHA3-256. |
+| `payload` | The JSON object that `POST /api/v1/transactions` would have received (`api.md`). |
+
+plus `message`, `escrow` and the command's own fields when present. Nothing else prints.
 
 **`sign-message`** returns `address`, `public_key`, `message`, `message_hex`, `digest`, `scheme`
 (`ZBC-MSG-v1`) and `signature` (hex). **`verify-message`** returns `valid`, `address`, `digest`,
