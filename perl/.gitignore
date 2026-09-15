@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
+blib/
+pm_to_blib
+Makefile
+Makefile.old
+MYMETA.json
+MYMETA.yml
+ZBC-*.tar.gz

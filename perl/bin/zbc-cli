@@ -1,0 +1,10 @@
+#!/usr/bin/env perl
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
+# zbc-cli: every ZooBC transaction as a subcommand, plus sign-message and verify-message. `zbc-cli list` shows them.
+use strict; use warnings;
+use FindBin;
+use lib "$FindBin::Bin/../lib";
+use ZBC::CLI;
+
+exit ZBC::CLI::run(\@ARGV);

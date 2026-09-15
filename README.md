@@ -25,6 +25,7 @@ rust/       Rust: one Cargo workspace, the zbc crate, zbc-cli and one binary per
 kotlin/     Kotlin: one Gradle project, a JVM/Android library usable from Java, with zbc-cli
 swift/      Swift: one package for iOS, macOS and Linux, the ZBC library and zbc-cli
 php/        PHP: one Composer package on PHP's own sodium/hash extensions, with zbc-cli
+perl/       Perl: one CPAN-style distribution on core modules only (SHA3, BLAKE2b and Ed25519 in pure Perl), with zbc-cli
 ```
 
 Language first, because each language has its own build system and package registry. What keeps
@@ -36,16 +37,16 @@ single differing byte fails the build.
 The C++ tools are here and build on Linux and macOS (see `cpp/README.md`). The TypeScript
 package with its drop-in JavaScript build (`ts/README.md`, `js/README.md`), the Python package
 (`py/README.md`), the Go module (`go/README.md`), the Rust workspace (`rust/README.md`), the
-Kotlin/JVM library (`kotlin/README.md`), the Swift package (`swift/README.md`) and the PHP package
-(`php/README.md`) are here too, minus `--encrypt`. Perl, the last language of
-[ROADMAP.md](ROADMAP.md), follows.
+Kotlin/JVM library (`kotlin/README.md`), the Swift package (`swift/README.md`), the PHP package
+(`php/README.md`) and the Perl distribution (`perl/README.md`) are here too, minus `--encrypt`.
+Every language of [ROADMAP.md](ROADMAP.md) is published; `--encrypt` outside C++ is what remains.
 
 | Tool | C++ | TypeScript / JS | Python | Go | Rust | Kotlin | Swift | PHP | Perl |
 |------|-----|-----------------|--------|----|------|--------|-------|-----|------|
-| zbc-cli (all transactions) | done | done (58 types, generated from the spec) | done (58 types) | done (58 types) | done (58 types) | done (58 types) | done (58 types) | done (58 types) | next |
-| one program per transaction | done (45) | n/a, one command | n/a, one command | done (45, generated) | done (45, generated) | n/a, one command (done) | n/a (done, one command) | n/a, one command (done) | n/a, one command |
-| key and address generators | done | done (library and `zbc-cli`; no separate generator programs) | done (library) | done (library) | done (library) | done (library) | done (library) | done (library) | next |
-| passes every vector in `spec/vectors` in CI | done | done | done | done | done | done | done | done | next |
+| zbc-cli (all transactions) | done | done (58 types, generated from the spec) | done (58 types) | done (58 types) | done (58 types) | done (58 types) | done (58 types) | done (58 types) | done (58 types) |
+| one program per transaction | done (45) | n/a, one command | n/a, one command | done (45, generated) | done (45, generated) | n/a, one command (done) | n/a (done, one command) | n/a, one command (done) | n/a, one command (done) |
+| key and address generators | done | done (library and `zbc-cli`; no separate generator programs) | done (library) | done (library) | done (library) | done (library) | done (library) | done (library) | done (library) |
+| passes every vector in `spec/vectors` in CI | done | done | done | done | done | done | done | done | done |
 
 ## Command-line contract
 

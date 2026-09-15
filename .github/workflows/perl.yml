@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
+name: perl
+
+on:
+  push:
+    paths: ["perl/**", "spec/**", ".github/workflows/perl.yml"]
+  pull_request:
+    paths: ["perl/**", "spec/**", ".github/workflows/perl.yml"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        perl: ["5.30", "5.36", "5.40"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shogo82148/actions-setup-perl@v1
+        with:
+          perl-version: ${{ matrix.perl }}
+      - name: The command table is current
+        run: cd perl && perl script/gen-commands.pl && git diff --exit-code -- lib/ZBC/Commands.pm
+      - name: Every vector through the library and the CLI
+        run: cd perl && prove -l t
+      - name: The distribution builds, installs and zbc-cli runs
+        run: cd perl && perl Makefile.PL && make && make install && zbc-cli list | head -1 && git status --porcelain --ignored=no
