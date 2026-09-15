@@ -12,8 +12,8 @@ of work, chosen by who integrates ZooBC with what.
 | 4 | Python | one pip package and `zbc-cli` | published, `py/` (all 58 types; `--encrypt` not yet) |
 | 5 | Go | one module: `zbc` package, `cmd/<tool>`, `cmd/zbc-cli` | published, `go/` (all 58 types, 45 programs; `--encrypt` not yet) |
 | 6 | Rust | one Cargo workspace: `zbc` crate, one binary per tool, `zbc-cli` | published, `rust/` (all 58 types, 45 programs; `--encrypt` not yet) |
-| 7 | Kotlin | one JVM/Android library, usable from Java, and `zbc-cli` | next |
-| 8 | Swift | one Swift package for iOS and macOS | planned |
+| 7 | Kotlin | one JVM/Android library, usable from Java, and `zbc-cli` | published, `kotlin/` (all 58 types; `--encrypt` not yet) |
+| 8 | Swift | one Swift package for iOS and macOS | next |
 | 9 | PHP | one Composer package and `zbc-cli`; PHP ships SHA3 and Ed25519 built in | planned |
 | 10 | Perl | one CPAN-style distribution | planned |
 

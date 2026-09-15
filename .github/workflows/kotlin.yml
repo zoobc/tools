@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
+name: kotlin
+
+on:
+  push:
+    paths: ["kotlin/**", "spec/**", ".github/workflows/kotlin.yml"]
+  pull_request:
+    paths: ["kotlin/**", "spec/**", ".github/workflows/kotlin.yml"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java: [17, 21]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.7.1"
+      - name: Every vector through the library and the CLI, then the distribution
+        run: cd kotlin && gradle --no-daemon test installDist && build/install/zbc-cli/bin/zbc-cli list | head -1
