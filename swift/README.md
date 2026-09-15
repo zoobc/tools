@@ -3,14 +3,17 @@
 
 One Swift package: the `ZBC` library (keys, addresses, message signing, the transaction envelope
 and chain-bound digest, every transaction body, the node client) and the `zbc-cli` executable.
-Ed25519, SHA-512 and HMAC come from [swift-crypto](https://github.com/apple/swift-crypto), which is
-CryptoKit on Apple platforms; SHA3-256 and BLAKE2b, which CryptoKit does not have, are in the
-package. HTTP is `URLSession`. Swift 5.9 or newer; macOS 12 / iOS 15 or newer; Linux with the
+SHA-512, HMAC and Ed25519 *verification* come from [swift-crypto](https://github.com/apple/swift-crypto),
+which is CryptoKit on Apple platforms. Ed25519 *signing*, SHA3-256 and BLAKE2b are in the package:
+CryptoKit has no SHA-3, and its Ed25519 signatures are randomised, so they would never equal the
+signature the reference tools and every other port produce for the same bytes; `Ed25519.swift`
+signs deterministically per RFC 8032 (about 100 ms per signature in a release build, much slower
+in debug). HTTP is `URLSession`. Swift 5.9 or newer; macOS 12 / iOS 15 or newer; Linux with the
 swift.org toolchain.
 
 ```
 cd swift
-swift test                         # every vector in ../spec/vectors through the library and the CLI
+swift test -c release              # every vector in ../spec/vectors through the library and the CLI (debug builds sign slowly)
 swift build -c release             # .build/release/zbc-cli
 swift run gen                      # regenerate Sources/ZBC/CommandsGen.swift from ../spec/transactions
 ```

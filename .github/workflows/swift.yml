@@ -17,7 +17,7 @@ jobs:
       - name: Generated command table is current
         run: cd swift && swift run gen && git config --global --add safe.directory "$GITHUB_WORKSPACE" && git diff --exit-code -- Sources/ZBC/CommandsGen.swift
       - name: Every vector through the library and the CLI
-        run: cd swift && swift test
+        run: cd swift && swift test -c release
       - name: Release build runs
         run: cd swift && swift build -c release && .build/release/zbc-cli list | head -1
   macos:
@@ -25,4 +25,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Every vector on macOS (CryptoKit)
-        run: cd swift && swift test
+        run: cd swift && swift test -c release

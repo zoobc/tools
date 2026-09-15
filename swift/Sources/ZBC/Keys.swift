@@ -8,11 +8,10 @@ import Foundation
 public struct KeyPair {
     public let seed: [UInt8]
     public let publicKey: [UInt8]
-    private let signing: Curve25519.Signing.PrivateKey
 
     public init(seed: [UInt8]) throws {
-        guard seed.count == 32, let k = try? Curve25519.Signing.PrivateKey(rawRepresentation: seed) else { throw Address.Invalid(message: "Private key must be 64 hex characters (32 bytes)") }
-        self.seed = seed; signing = k; publicKey = Array(k.publicKey.rawRepresentation)
+        guard seed.count == 32 else { throw Address.Invalid(message: "Private key must be 64 hex characters (32 bytes)") }
+        self.seed = seed; publicKey = Ed25519.publicKey(seed: seed)
     }
     public init(hex: String) throws {
         guard Enc.isHex(hex, 64), let s = Enc.unhex(hex) else { throw Address.Invalid(message: "Private key must be 64 hex characters (32 bytes)") }
@@ -26,16 +25,8 @@ public struct KeyPair {
     public var nodeAddress: String { Address.encode(publicKey, prefix: "ZNK")! }
     /// 36-byte typed account address: 00000000 || public key.
     public var accountBytes: [UInt8] { Address.typed(AccountType.zoobc, publicKey) }
-    /// Detached Ed25519 signature (64 bytes).
-    public func sign(_ message: [UInt8]) -> [UInt8] { Array(try! signing.signature(for: message)) }
-}
-
-/// Ed25519 verification that never throws.
-public enum Ed25519 {
-    public static func verify(_ message: [UInt8], _ signature: [UInt8], _ publicKey: [UInt8]) -> Bool {
-        guard signature.count == 64, let pk = try? Curve25519.Signing.PublicKey(rawRepresentation: publicKey) else { return false }
-        return pk.isValidSignature(signature, for: message)
-    }
+    /// Detached Ed25519 signature (64 bytes), deterministic (RFC 8032) on every platform.
+    public func sign(_ message: [UInt8]) -> [UInt8] { Ed25519.sign(message, seed: seed) }
 }
 
 /// BIP-39 mnemonics and SLIP-10 derivation along m/44'/883'/index'.
