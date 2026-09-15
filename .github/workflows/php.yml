@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
+name: php
+
+on:
+  push:
+    paths: ["php/**", "spec/**", ".github/workflows/php.yml"]
+  pull_request:
+    paths: ["php/**", "spec/**", ".github/workflows/php.yml"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ["8.1", "8.3", "8.4"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: sodium, mbstring
+          tools: composer
+      - name: The command table is current
+        run: cd php && php bin/gen-commands.php && git diff --exit-code -- src/commands_gen.php
+      - name: Every vector through the library and the CLI
+        run: cd php && php tests/run.php
+      - name: Composer autoload and the installed command
+        run: cd php && composer validate --strict && composer install --no-interaction --quiet && test -f vendor/autoload.php && php bin/zbc-cli list | head -1

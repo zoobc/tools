@@ -1,0 +1,24 @@
+#!/usr/bin/env php
+<?php
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
+// zbc-cli: every ZooBC transaction as a subcommand, plus sign-message and verify-message.
+declare(strict_types=1);
+
+foreach ([__DIR__ . '/../vendor/autoload.php', __DIR__ . '/../../../autoload.php'] as $autoload) {
+    if (file_exists($autoload)) { require $autoload; break; }
+}
+if (!class_exists(\Zoobc\Zbc\Cli::class)) {
+    spl_autoload_register(function (string $class): void {
+        if (str_starts_with($class, 'Zoobc\\Zbc\\')) { $f = __DIR__ . '/../src/' . substr($class, 10) . '.php'; if (file_exists($f)) { require $f; } }
+    });
+}
+
+$io = new \Zoobc\Zbc\Io(
+    fn() => stream_get_contents(STDIN) ?: '',
+    function (string $s): void { fwrite(STDOUT, $s); },
+    function (string $s): void { fwrite(STDERR, $s); },
+    fn(string $k) => getenv($k) === false ? null : getenv($k),
+    function_exists('posix_isatty') ? posix_isatty(STDIN) : false,
+);
+exit(\Zoobc\Zbc\Cli::run(array_slice($argv, 1), $io));

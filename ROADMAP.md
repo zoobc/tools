@@ -14,8 +14,8 @@ of work, chosen by who integrates ZooBC with what.
 | 6 | Rust | one Cargo workspace: `zbc` crate, one binary per tool, `zbc-cli` | published, `rust/` (all 58 types, 45 programs; `--encrypt` not yet) |
 | 7 | Kotlin | one JVM/Android library, usable from Java, and `zbc-cli` | published, `kotlin/` (all 58 types; `--encrypt` not yet) |
 | 8 | Swift | one Swift package for iOS and macOS | published, `swift/` (all 58 types; `--encrypt` not yet) |
-| 9 | PHP | one Composer package and `zbc-cli`; PHP ships SHA3 and Ed25519 built in | next |
-| 10 | Perl | one CPAN-style distribution | planned |
+| 9 | PHP | one Composer package and `zbc-cli`; PHP ships SHA3 and Ed25519 built in | published, `php/` (all 58 types; `--encrypt` not yet) |
+| 10 | Perl | one CPAN-style distribution | next |
 
 ## What every port contains, in this order
 

@@ -1,0 +1,12 @@
+{
+    "name": "zoobc/zbc-tools",
+    "description": "ZooBC keys, addresses, transaction signing, the node client and the zbc-cli command line",
+    "type": "library",
+    "license": "MIT",
+    "authors": [{ "name": "ZooBC Foundation and Roberto Capodieci", "email": "info@zoobc.foundation" }],
+    "homepage": "https://github.com/zoobc/tools",
+    "require": { "php": ">=8.1", "ext-sodium": "*", "ext-json": "*", "ext-hash": "*" },
+    "autoload": { "psr-4": { "Zoobc\\Zbc\\": "src/" } },
+    "bin": ["bin/zbc-cli"],
+    "scripts": { "test": "php tests/run.php", "gen": "php bin/gen-commands.php" }
+}
