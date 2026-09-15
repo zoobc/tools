@@ -26,14 +26,15 @@ single differing byte fails the build.
 
 ## Status
 
-The C++ tools are here and build on Linux and macOS (see `cpp/README.md`). Go and Rust follow.
-The table below is updated as tools land.
+The C++ tools are here and build on Linux and macOS (see `cpp/README.md`). The other languages
+follow in the order of [ROADMAP.md](ROADMAP.md): TypeScript with a drop-in JavaScript build, Python,
+Go, Rust, Kotlin, Swift, PHP, Perl.
 
-| Tool | C++ | Go | Rust |
-|------|-----|----|------|
-| zbc-cli (all transactions) | done | planned | planned |
-| one program per transaction | done (45) | planned | planned |
-| key and address generators | done | planned | planned |
+| Tool | C++ | TypeScript / JS | Python | Go | Rust | Kotlin | Swift | PHP | Perl |
+|------|-----|-----------------|--------|----|------|--------|-------|-----|------|
+| zbc-cli (all transactions) | done | next | planned | planned | planned | planned | planned | planned | planned |
+| one program per transaction | done (45) | n/a, one command | n/a, one command | planned | planned | n/a, one command | n/a | n/a, one command | n/a, one command |
+| key and address generators | done | next | planned | planned | planned | planned | planned | planned | planned |
 
 ## Command-line contract
 
