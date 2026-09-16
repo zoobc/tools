@@ -162,6 +162,47 @@ class Vectors(unittest.TestCase):
             self.assertEqual(rc, 0, out + err)
             self.assertEqual(json.loads(out)["transaction_hash"], v["expected"]["transaction_hash"])
 
+    def test_encryption(self):
+        d = load("encryption.json")
+        for k in d["keys"]:
+            self.assertEqual(zbc.ed25519_pk_to_x25519(bytes.fromhex(k["public_key"])).hex(), k["x25519_public_key"])
+            self.assertEqual(zbc.ed25519_seed_to_x25519(bytes.fromhex(k["seed"])).hex(), k["x25519_secret_key"])
+            self.assertEqual(zbc.x25519_base(bytes.fromhex(k["x25519_secret_key"])).hex(), k["x25519_public_key"])
+        for s in d["sealed"]:
+            f = zbc.seal(bytes.fromhex(s["plaintext_hex"]), bytes.fromhex(s["recipient_public_key"]), bytes.fromhex(s["ephemeral_secret_key"]))
+            self.assertEqual(f.hex(), s["message_field"], s["name"])
+            self.assertEqual(zbc.open_sealed(f, bytes.fromhex(s["recipient_seed"])).hex(), s["plaintext_hex"], s["name"])
+        for s in d["samples"]:
+            self.assertEqual(zbc.open_sealed(bytes.fromhex(s["message_field"]), bytes.fromhex(s["recipient_seed"])).hex(), s["plaintext_hex"], s["name"])
+        for i in d["invalid"]:
+            if all(c in "0123456789abcdef" for c in i["message_field"]):
+                self.assertIsNone(zbc.open_sealed(bytes.fromhex(i["message_field"]), bytes.fromhex(i["recipient_seed"])), i["case"])
+        kp = zbc.key_pair(d["keys"][0]["seed"])
+        f = zbc.seal(b"round trip", kp.public_key)
+        self.assertEqual(len(f), 10 + zbc.SEALED_OVERHEAD)
+        self.assertEqual(zbc.open_sealed(f, kp.seed), b"round trip")
+
+    def test_cli_encrypt_and_decrypt(self):
+        d = load("encryption.json")
+        s = d["samples"][0]
+        rc, out, err = run_cli(["send-zbc", d["keys"][0]["seed"], s["recipient_address"], "1", "--message", s["plaintext"], "--encrypt", "--genesis", "v1", "--offline"])
+        self.assertEqual(rc, 0, out + err)
+        j = json.loads(out)
+        self.assertEqual(j["message"], s["plaintext"])
+        field = j["payload"]["message_hex"]
+        self.assertTrue(field.startswith("5a424531") and len(field) == 2 * (len(s["plaintext"].encode()) + 52))
+        rc, out, err = run_cli(["decrypt-message", s["recipient_seed"], field])
+        self.assertEqual(rc, 0, out + err)
+        self.assertEqual(json.loads(out)["message"], s["plaintext"])
+        for smp in d["samples"]:
+            rc, out, _ = run_cli(["decrypt-message", smp["recipient_seed"], smp["message_field"]])
+            self.assertEqual((rc, json.loads(out)["message_hex"]), (0, smp["plaintext_hex"]), smp["name"])
+        for i in d["invalid"]:
+            rc, out, _ = run_cli(["decrypt-message", i["recipient_seed"], i["message_field"]])
+            self.assertEqual((rc, json.loads(out)["error_class"]), (i["exit_code"], i["error_class"]), i["case"])
+        rc, out, _ = run_cli(["send-zbc", d["keys"][0]["seed"], "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", "1", "--message", "x", "--encrypt", "--genesis", "v1", "--offline"])
+        self.assertEqual(rc, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

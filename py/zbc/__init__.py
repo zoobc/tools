@@ -6,6 +6,8 @@ from .address import (ParsedAddress, account_type_name, decode_zbc_address, enco
 from .api import Client
 from .body import build_body, encode_field, parse_integer, validate_param
 from .custom import compute_fields, custom_body, multisig_address, proof_of_ownership
+from .encryption import (SEALED_MAGIC, SEALED_OVERHEAD, ed25519_pk_to_x25519, ed25519_seed_to_x25519, is_sealed, open_sealed, seal,
+                         x25519, x25519_base)
 from .errors import ToolError, classify_node_error, error_class, usage
 from .keys import (KeyPair, WalletAccount, generate_mnemonic, key_pair, mnemonic_from_entropy, mnemonic_to_seed,
                    random_seed, slip10_derive, validate_mnemonic, wallet_account)

@@ -14,6 +14,7 @@ from .api import Client
 from .body import build_body, validate_param
 from .custom import compute_fields, custom_body
 from .errors import INTERNAL, NODE_UNREACHABLE, OK, TIMEOUT, USAGE, VERIFY_FAILED, ToolError, classify_node_error, usage
+from .encryption import is_sealed, open_sealed, seal
 from .keys import key_pair
 from .message import SCHEME, message_digest, public_key_of_address, sign_message, verify_message
 from .transaction import Escrow, SigningContext, sign_transaction, transaction_id
@@ -29,7 +30,7 @@ CATEGORY = {
     "register-gateway": "gateway", "unregister-gateway": "gateway", "gateway-heartbeat": "gateway", "archival-register": "gateway",
     "archival-unregister": "gateway", "relay-register": "gateway", "relay-unregister": "gateway",
     "register-release": "governance", "revoke-release": "governance", "release-authority-propose": "governance", "release-authority-accept": "governance",
-    "sign-message": "keys", "verify-message": "keys",
+    "sign-message": "keys", "verify-message": "keys", "decrypt-message": "keys",
 }
 MESSAGE_COMMANDS = {
     "sign-message": ("Sign a message with a private key (ZBC-MSG-v1, off-chain, no node needed)", [
@@ -39,6 +40,9 @@ MESSAGE_COMMANDS = {
         {"name": "address", "kind": "string", "required": True, "help": "signer's ZBC_ address (or 64-hex public key)"},
         {"name": "message", "kind": "string", "required": True, "help": "the signed text (hex bytes with --hex)"},
         {"name": "signature", "kind": "string", "required": True, "help": "64-byte Ed25519 signature, 128 hex"}]),
+    "decrypt-message": ("Decrypt a transaction message sealed with --encrypt, with the recipient's private key (off-chain)", [
+        {"name": "sender_privkey", "kind": "privkey", "required": True, "help": "the recipient's private key (64 hex); '-' or omitted = ZBC_KEY"},
+        {"name": "message_hex", "kind": "string", "required": True, "help": "the transaction's message field as hex: ZBE1 then the sealed box"}]),
 }
 _INT = re.compile(r"^-?\d+$")
 
@@ -387,6 +391,25 @@ def run_verify_message(v: Dict[str, str], o: Options) -> int:
     return code
 
 
+def run_decrypt_message(v: Dict[str, str], o: Options) -> int:
+    if not is_hex(v["sender_privkey"], 64):
+        raise usage("Private key must be 64 hex characters (32 bytes)")
+    if not is_hex(v["message_hex"]):
+        raise usage("message_hex must be hex")
+    field = bytes.fromhex(v["message_hex"])
+    if not is_sealed(field):
+        raise usage("message is not encrypted (no ZBE1 prefix)")
+    plaintext = open_sealed(field, bytes.fromhex(v["sender_privkey"]))
+    if plaintext is None:
+        raise ToolError(VERIFY_FAILED, "decryption failed: the key does not open this message, or it is corrupted")
+    text = plaintext.decode("utf-8", "replace")
+    if o.verbose:
+        sys.stdout.write(text + "\n")
+    else:
+        _out({"success": True, "recipient": key_pair(v["sender_privkey"]).address, "message": text, "message_hex": plaintext.hex()})
+    return 0
+
+
 def _signing_context(o: Options, client: Client) -> SigningContext:
     g = o.genesis or os.environ.get("ZOOBC_GENESIS_HASH", "")
     if g:
@@ -407,8 +430,6 @@ def run_transaction(spec: dict, v: Dict[str, str], o: Options) -> int:
     for p in spec["params"]:
         if v.get(p["name"], "") != "" or p["required"]:
             v[p["name"]] = validate_param(p, v.get(p["name"], ""))
-    if o.encrypt:
-        raise usage("--encrypt is not available in this implementation yet; send the message in clear or use the C++ tools")
     sender = key_pair(v[spec["sender_key"]])
     client = Client(o.api, o.timeout)
     ctx = _signing_context(o, client)
@@ -451,8 +472,13 @@ def run_transaction(spec: dict, v: Dict[str, str], o: Options) -> int:
         extra.pop("transaction_hash", None)
     extra["sender"] = sender.address
     escrow = Escrow(o.escrow["approver"], o.escrow["commission"], o.escrow["timeout"], o.escrow["instruction"]) if o.escrow else None
+    message_bytes = (o.message or "").encode()
+    if o.encrypt and message_bytes:   # --encrypt: seal the message to the recipient's key (signing.md 8)
+        if len(recipient) != 36:
+            raise usage("--encrypt is only supported for ZBC recipients")
+        message_bytes = seal(message_bytes, recipient[4:])
     try:
-        signed = sign_transaction(spec["type"], timestamp, sender, recipient, o.fee, body, ctx, escrow, (o.message or "").encode())
+        signed = sign_transaction(spec["type"], timestamp, sender, recipient, o.fee, body, ctx, escrow, message_bytes)
     except ValueError as e:
         raise usage("Invalid escrow approver: %s" % e)
     fields = {"transaction_hash": signed.hash.hex(), "transaction_type": spec["type"], "sender_account_address": signed.payload["sender_account_address"],
@@ -527,6 +553,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             return run_sign_message(values, o)
         if cmd == "verify-message":
             return run_verify_message(values, o)
+        if cmd == "decrypt-message":
+            return run_decrypt_message(values, o)
         return run_transaction(COMMAND_BY_NAME[cmd], values, o)
     except ToolError as e:
         return _emit_error(e, verbose)

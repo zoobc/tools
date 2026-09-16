@@ -31,7 +31,9 @@ Without installing: `python3 -m zbc.cli ...` from `py/`. The contract every comm
 [`../spec/cli-contract.md`](../spec/cli-contract.md). All 58 transaction types of
 `../spec/transactions` are subcommands; their parameters and body layouts are generated into
 `zbc/_commands.py` by `scripts/gen_commands.py`. The seven types the spec marks custom are in
-`zbc/custom.py`. Not available yet in this port: `--encrypt`.
+`zbc/custom.py`. `--encrypt` seals `--message` to a ZBC recipient exactly as the C++ tools do
+(`../spec/signing.md` 8; X25519, HSalsa20, XSalsa20 and Poly1305 in `zbc/encryption.py`, standard library only) and
+`zbc-cli decrypt-message <recipient key> <message_hex>` opens a sealed field; in the library, `seal` and `open_sealed`.
 
 ## Use the library
 
