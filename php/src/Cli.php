@@ -19,7 +19,7 @@ final class Cli
         'register-gateway' => 'gateway', 'unregister-gateway' => 'gateway', 'gateway-heartbeat' => 'gateway', 'archival-register' => 'gateway',
         'archival-unregister' => 'gateway', 'relay-register' => 'gateway', 'relay-unregister' => 'gateway',
         'register-release' => 'governance', 'revoke-release' => 'governance', 'release-authority-propose' => 'governance', 'release-authority-accept' => 'governance',
-        'sign-message' => 'keys', 'verify-message' => 'keys',
+        'sign-message' => 'keys', 'verify-message' => 'keys', 'decrypt-message' => 'keys',
     ];
     private const MESSAGE_COMMANDS = [
         'sign-message' => ['Sign a message with a private key (ZBC-MSG-v1, off-chain, no node needed)', [
@@ -29,6 +29,9 @@ final class Cli
             ['name' => 'address', 'kind' => 'string', 'required' => true, 'help' => "signer's ZBC_ address (or 64-hex public key)"],
             ['name' => 'message', 'kind' => 'string', 'required' => true, 'help' => 'the signed text (hex bytes with --hex)'],
             ['name' => 'signature', 'kind' => 'string', 'required' => true, 'help' => '64-byte Ed25519 signature, 128 hex']]],
+        'decrypt-message' => ["Decrypt a transaction message sealed with --encrypt, with the recipient's private key (off-chain)", [
+            ['name' => 'sender_privkey', 'kind' => 'privkey', 'required' => true, 'help' => "the recipient's private key (64 hex); '-' or omitted = ZBC_KEY"],
+            ['name' => 'message_hex', 'kind' => 'string', 'required' => true, 'help' => "the transaction's message field as hex: ZBE1 then the sealed box"]]],
     ];
     private const USAGE_TEXT = <<<'TXT'
 Options:
@@ -266,6 +269,19 @@ TXT;
         return 0;
     }
 
+    private static function runDecryptMessage(array $v, array $o, Io $io): int
+    {
+        try { $kp = KeyPair::fromHex($v['sender_privkey']); } catch (\InvalidArgumentException) { throw ToolError::usage('Private key must be 64 hex characters (32 bytes)'); }
+        if (!Encoding::isHex($v['message_hex'])) { throw ToolError::usage('message_hex must be hex'); }
+        $field = hex2bin($v['message_hex']);
+        if (!Encryption::isSealed($field)) { throw ToolError::usage('message is not encrypted (no ZBE1 prefix)'); }
+        $plaintext = Encryption::openSealed($field, $kp->seed);
+        if ($plaintext === null) { throw new ToolError(ExitCode::VERIFY_FAILED, 'decryption failed: the key does not open this message, or it is corrupted'); }
+        if ($o['verbose']) { ($io->stdout)($plaintext . "\n"); return 0; }
+        self::out($io, ['success' => true, 'recipient' => $kp->address(), 'message' => $plaintext, 'message_hex' => bin2hex($plaintext)]);
+        return 0;
+    }
+
     private static function runVerifyMessage(array $v, array $o, Io $io): int
     {
         $pub = Message::publicKeyOf($v['address']);
@@ -297,7 +313,6 @@ TXT;
     private static function runTransaction(array $def, array $v, array $o, Io $io): int
     {
         foreach ($def['params'] as $p) { $cur = $v[$p['name']] ?? ''; if ($cur !== '' || $p['required']) { $v[$p['name']] = Body::validateParam($p, $cur); } }
-        if ($o['encrypt']) { throw ToolError::usage('--encrypt is not available in this implementation yet; send the message in clear or use the C++ tools'); }
         try { $sender = KeyPair::fromHex($v[$def['sender_key']] ?? ''); } catch (\InvalidArgumentException $e) { throw ToolError::usage($e->getMessage()); }
         $client = new Client($o['api'], $o['timeout']);
         $ctx = self::signingContext($o, $client, $io);
@@ -332,7 +347,12 @@ TXT;
             $extra['transaction_id'] = Transaction::id(hex2bin($v['transaction_hash']));
         }
         $extra['sender'] = $sender->address();
-        try { $signed = Transaction::sign($def['type'], $timestamp, $sender, $recipient, $o['fee'], $body, $ctx, $o['escrow'], $o['message'] ?? ''); }
+        $message = $o['message'] ?? '';
+        if ($o['encrypt'] && $message !== '') {   // --encrypt: seal the message to the recipient's key (signing.md 8)
+            if (strlen($recipient) !== 36) { throw ToolError::usage('--encrypt is only supported for ZBC recipients'); }
+            $message = Encryption::seal($message, substr($recipient, 4));
+        }
+        try { $signed = Transaction::sign($def['type'], $timestamp, $sender, $recipient, $o['fee'], $body, $ctx, $o['escrow'], $message); }
         catch (\InvalidArgumentException $e) { throw ToolError::usage("Invalid escrow approver: {$e->getMessage()}"); }
         $fields = ['transaction_hash' => bin2hex($signed->hash), 'transaction_type' => $def['type'], 'sender_account_address' => $signed->payload['sender_account_address'],
                    'recipient_account_address' => $signed->payload['recipient_account_address'], 'fee' => $o['fee'], 'timestamp' => $timestamp];
@@ -396,6 +416,7 @@ TXT;
             return match ($cmd) {
                 'sign-message' => self::runSignMessage($values, $o, $io),
                 'verify-message' => self::runVerifyMessage($values, $o, $io),
+                'decrypt-message' => self::runDecryptMessage($values, $o, $io),
                 default => self::runTransaction(Spec::command($cmd), $values, $o, $io),
             };
         } catch (ToolError $e) { return self::emitError($io, $e, $verbose); }

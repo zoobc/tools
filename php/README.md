@@ -33,8 +33,9 @@ php bin/zbc-cli send-zbc --help                                  # options, envi
 The contract every command follows is [`../spec/cli-contract.md`](../spec/cli-contract.md). All
 58 transaction types of `../spec/transactions` are subcommands; `php bin/gen-commands.php` embeds
 the spec into `src/commands_gen.php`, so a new type in the spec is a regeneration, not new code.
-The seven types the spec marks custom are in `src/Custom.php`. Not available yet in this port:
-`--encrypt`.
+The seven types the spec marks custom are in `src/Custom.php`. `--encrypt` seals `--message` to a ZBC recipient exactly as the C++ tools do (`../spec/signing.md` 8; it is
+ext-sodium's own sealed box, in `src/Encryption.php`) and `zbc-cli decrypt-message <recipient key> <message_hex>`
+opens a sealed field; in the library, `Encryption::seal` and `Encryption::openSealed`.
 
 ## Use the library
 

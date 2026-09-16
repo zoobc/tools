@@ -10,7 +10,7 @@ spl_autoload_register(function (string $class): void {
     if (str_starts_with($class, 'Zoobc\\Zbc\\')) { require __DIR__ . '/../src/' . substr($class, 10) . '.php'; }
 });
 
-use Zoobc\Zbc\{Address, Body, BodyContext, Cli, Custom, CustomInput, Encoding, Escrow, Io, KeyPair, Message, ReferenceBlock, SigningContext, Spec, Transaction, Wallet};
+use Zoobc\Zbc\{Address, Body, BodyContext, Cli, Custom, CustomInput, Encoding, Encryption, Escrow, Io, KeyPair, Message, ReferenceBlock, SigningContext, Spec, Transaction, Wallet};
 
 $dir = __DIR__ . '/../../spec/vectors';
 $load = fn(string $f) => json_decode(file_get_contents("$dir/$f"), true, 512, JSON_THROW_ON_ERROR);
@@ -146,6 +146,46 @@ foreach ([[$p['recipient'], $p['amount']], ['-', $p['recipient'], $p['amount']]]
 }
 [$code, $out] = cli(['send-zbc', $v['key'], $p['recipient'], '1', '--api', 'http://127.0.0.1:9', '--genesis', 'v1', '--timeout', '2']);
 check('cli unreachable node', $code === 3 && (json_decode($out, true)['error_class'] ?? '') === 'node_unreachable', "exit $code $out");
+
+// ---- encryption.json ----
+$d = $load('encryption.json');
+foreach ($d['keys'] as $k) {
+    check("x25519 conversion {$k['seed']}", bin2hex(Encryption::ed25519PublicKeyToX25519(hex2bin($k['public_key']))) === $k['x25519_public_key']
+        && bin2hex(Encryption::ed25519SeedToX25519(hex2bin($k['seed']))) === $k['x25519_secret_key']
+        && bin2hex(Encryption::x25519Base(hex2bin($k['x25519_secret_key']))) === $k['x25519_public_key']);
+}
+foreach ($d['sealed'] as $v) {
+    $f = Encryption::seal(hex2bin($v['plaintext_hex']), hex2bin($v['recipient_public_key']), hex2bin($v['ephemeral_secret_key']));
+    check("sealed {$v['name']}", bin2hex($f) === $v['message_field'], bin2hex($f));
+    check("open {$v['name']}", bin2hex((string) Encryption::openSealed($f, hex2bin($v['recipient_seed']))) === $v['plaintext_hex']);
+}
+foreach ($d['samples'] as $v) {
+    check("open C++ sample {$v['name']}", bin2hex((string) Encryption::openSealed(hex2bin($v['message_field']), hex2bin($v['recipient_seed']))) === $v['plaintext_hex']);
+}
+foreach ($d['invalid'] as $v) {
+    if (Encoding::isHex($v['message_field'])) { check("invalid {$v['case']}", Encryption::openSealed(hex2bin($v['message_field']), hex2bin($v['recipient_seed'])) === null); }
+}
+$kp = KeyPair::fromHex($d['keys'][0]['seed']);
+$f = Encryption::seal('round trip', $kp->publicKey);
+check('random seal length', strlen($f) === 10 + Encryption::SEALED_OVERHEAD);
+check('random round trip', Encryption::openSealed($f, $kp->seed) === 'round trip');
+$smp = $d['samples'][0];
+[$rc, $out] = cli(['send-zbc', $d['keys'][0]['seed'], $smp['recipient_address'], '1', '--message', $smp['plaintext'], '--encrypt', '--genesis', 'v1', '--offline']);
+$j = json_decode($out, true) ?? [];
+$field = $j['payload']['message_hex'] ?? '';
+check('cli --encrypt', $rc === 0 && ($j['message'] ?? null) === $smp['plaintext'] && str_starts_with($field, '5a424531') && strlen($field) === 2 * (strlen($smp['plaintext']) + 52), $out);
+[$rc, $out] = cli(['decrypt-message', $smp['recipient_seed'], $field]);
+check('cli decrypt-message', $rc === 0 && (json_decode($out, true)['message'] ?? null) === $smp['plaintext'], $out);
+foreach ($d['samples'] as $v) {
+    [$rc, $out] = cli(['decrypt-message', $v['recipient_seed'], $v['message_field']]);
+    check("cli opens C++ sample {$v['name']}", $rc === 0 && (json_decode($out, true)['message_hex'] ?? null) === $v['plaintext_hex'], $out);
+}
+foreach ($d['invalid'] as $v) {
+    [$rc, $out] = cli(['decrypt-message', $v['recipient_seed'], $v['message_field']]);
+    check("cli invalid {$v['case']}", $rc === $v['exit_code'] && (json_decode($out, true)['error_class'] ?? null) === $v['error_class'], "$rc $out");
+}
+[$rc] = cli(['send-zbc', $d['keys'][0]['seed'], '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045', '1', '--message', 'x', '--encrypt', '--genesis', 'v1', '--offline']);
+check('cli --encrypt to a non-ZBC recipient is a usage error', $rc === 2);
 
 echo "$checks checks, $failures failures\n";
 exit($failures === 0 ? 0 : 1);
