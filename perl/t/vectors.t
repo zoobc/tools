@@ -11,7 +11,8 @@ use ZBC::Body qw(build_body);
 use ZBC::CLI;
 use ZBC::Commands;
 use ZBC::Custom qw(compute_fields custom_body);
-use ZBC::Encoding qw(from_hex to_hex);
+use ZBC::Encoding qw(from_hex to_hex is_hex);
+use ZBC::Encryption qw(:all);
 use ZBC::Keys qw(key_pair validate_mnemonic wallet_account);
 use ZBC::Message qw(sign_message verify_message);
 use ZBC::Transaction qw(sign_transaction send_zbc_body approval_escrow_body transaction_id);
@@ -187,6 +188,51 @@ subtest 'zbc-cli --json-input and ZBC_KEY' => sub {
         is($rc, 0, 'ZBC_KEY exits 0') or diag "$out$err";
         is(($JSON->decode($out))->{transaction_hash}, $v->{expected}{transaction_hash}, 'ZBC_KEY hash');
     }
+};
+
+subtest 'encryption.json: sealed messages' => sub {
+    my $d = load('encryption.json');
+    for my $k (@{ $d->{keys} }) {
+        is(to_hex(ed25519_pk_to_x25519(from_hex($k->{public_key}))), $k->{x25519_public_key}, "pk conversion $k->{seed}");
+        is(to_hex(ed25519_seed_to_x25519(from_hex($k->{seed}))), $k->{x25519_secret_key}, 'sk conversion');
+        is(to_hex(x25519_base(from_hex($k->{x25519_secret_key}))), $k->{x25519_public_key}, 'X25519 base');
+    }
+    for my $v (@{ $d->{sealed} }) {
+        my $f = seal(from_hex($v->{plaintext_hex}), from_hex($v->{recipient_public_key}), from_hex($v->{ephemeral_secret_key}));
+        is(to_hex($f), $v->{message_field}, "$v->{name}: sealed byte for byte");
+        is(to_hex(open_sealed($f, from_hex($v->{recipient_seed})) // ''), $v->{plaintext_hex}, "$v->{name}: opens");
+    }
+    for my $v (@{ $d->{samples} }) { is(to_hex(open_sealed(from_hex($v->{message_field}), from_hex($v->{recipient_seed})) // ''), $v->{plaintext_hex}, "$v->{name}: the C++ tool's field opens"); }
+    for my $v (@{ $d->{invalid} }) { next unless is_hex($v->{message_field}); ok(!defined open_sealed(from_hex($v->{message_field}), from_hex($v->{recipient_seed})), "invalid: $v->{case}"); }
+    my $kp = key_pair($d->{keys}[0]{seed});
+    my $f = seal('round trip', $kp->public_key);
+    is(length($f), 10 + SEALED_OVERHEAD, 'random seal length');
+    is(open_sealed($f, $kp->seed), 'round trip', 'random round trip');
+};
+
+subtest 'zbc-cli --encrypt and decrypt-message' => sub {
+    my $d = load('encryption.json');
+    my $smp = $d->{samples}[0];
+    my ($rc, $out, $err) = run_cli(['send-zbc', $d->{keys}[0]{seed}, $smp->{recipient_address}, '1', '--message', $smp->{plaintext}, '--encrypt', '--genesis', 'v1', '--offline']);
+    is($rc, 0, 'send-zbc --encrypt exits 0') or diag "$out$err";
+    my $j = eval { $JSON->decode($out) } // {};
+    is($j->{message}, $smp->{plaintext}, 'plaintext still printed');
+    my $field = $j->{payload}{message_hex} // '';
+    ok($field =~ /^5a424531/ && length($field) == 2 * (length(bytes_of($smp->{plaintext})) + 52), 'sealed field shape');
+    ($rc, $out, $err) = run_cli(['decrypt-message', $smp->{recipient_seed}, $field]);
+    is($rc, 0, 'decrypt-message exits 0') or diag "$out$err";
+    is((eval { $JSON->decode($out) } // {})->{message}, $smp->{plaintext}, 'decrypt-message plaintext');
+    for my $v (@{ $d->{samples} }) {
+        ($rc, $out) = run_cli(['decrypt-message', $v->{recipient_seed}, $v->{message_field}]);
+        is($rc, 0, "$v->{name}: exit 0"); is((eval { $JSON->decode($out) } // {})->{message_hex}, $v->{plaintext_hex}, "$v->{name}: plaintext");
+    }
+    for my $v (@{ $d->{invalid} }) {
+        ($rc, $out) = run_cli(['decrypt-message', $v->{recipient_seed}, $v->{message_field}]);
+        is($rc, $v->{exit_code}, "$v->{case}: exit $v->{exit_code}") or diag $out;
+        is((eval { $JSON->decode($out) } // {})->{error_class}, $v->{error_class}, "$v->{case}: error_class");
+    }
+    ($rc) = run_cli(['send-zbc', $d->{keys}[0]{seed}, '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045', '1', '--message', 'x', '--encrypt', '--genesis', 'v1', '--offline']);
+    is($rc, 2, '--encrypt to a non-ZBC recipient is a usage error');
 };
 
 done_testing;

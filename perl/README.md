@@ -36,8 +36,10 @@ perl bin/zbc-cli send-zbc --help                                  # options, env
 The contract every command follows is [`../spec/cli-contract.md`](../spec/cli-contract.md). All
 58 transaction types of `../spec/transactions` are subcommands; `perl script/gen-commands.pl`
 embeds the spec into `lib/ZBC/Commands.pm`, so a new type in the spec is a regeneration, not new
-code. The seven types the spec marks custom are in `lib/ZBC/Custom.pm`. Not available yet in this
-port: `--encrypt`.
+code. The seven types the spec marks custom are in `lib/ZBC/Custom.pm`. `--encrypt` seals `--message` to a ZBC
+recipient exactly as the C++ tools do (`../spec/signing.md` 8; X25519, HSalsa20, XSalsa20 and Poly1305 in
+`ZBC::Encryption`, core modules only) and `zbc-cli decrypt-message <recipient key> <message_hex>` opens a
+sealed field; in the library, `seal` and `open_sealed`.
 
 ## Use the library
 
@@ -73,7 +75,7 @@ throughout: pass UTF-8 encoded text, as the command line does.
 ## Layout
 
 ```
-lib/ZBC/        SHA3, Blake2b, Ed25519, Encoding, Bip39Words, Error, ExitCode, Address, Keys, Message, Transaction,
+lib/ZBC/        SHA3, Blake2b, Ed25519, Encryption, Encoding, Bip39Words, Error, ExitCode, Address, Keys, Message, Transaction,
                 Commands (generated), Body, Custom, Client, CLI;  lib/ZBC.pm loads them all
 bin/zbc-cli     the command line;  script/gen-commands.pl  writes lib/ZBC/Commands.pm from ../spec/transactions
 t/vectors.t     the vector suite (prove -l t)

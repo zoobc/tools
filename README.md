@@ -38,8 +38,8 @@ The C++ tools are here and build on Linux and macOS (see `cpp/README.md`). The T
 package with its drop-in JavaScript build (`ts/README.md`, `js/README.md`), the Python package
 (`py/README.md`), the Go module (`go/README.md`), the Rust workspace (`rust/README.md`), the
 Kotlin/JVM library (`kotlin/README.md`), the Swift package (`swift/README.md`), the PHP package
-(`php/README.md`) and the Perl distribution (`perl/README.md`) are here too, minus `--encrypt`.
-Every language of [ROADMAP.md](ROADMAP.md) is published; `--encrypt` outside C++ is what remains.
+(`php/README.md`) and the Perl distribution (`perl/README.md`) are here too, `--encrypt` included.
+Every language of [ROADMAP.md](ROADMAP.md) is published.
 
 | Tool | C++ | TypeScript / JS | Python | Go | Rust | Kotlin | Swift | PHP | Perl |
 |------|-----|-----------------|--------|----|------|--------|-------|-----|------|

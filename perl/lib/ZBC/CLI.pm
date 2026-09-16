@@ -11,6 +11,7 @@ use ZBC::Client;
 use ZBC::Commands;
 use ZBC::Custom qw(compute_fields custom_body);
 use ZBC::Encoding qw(is_hex from_hex to_hex);
+use ZBC::Encryption qw(is_sealed open_sealed seal);
 use ZBC::Error;
 use ZBC::ExitCode qw(:all);
 use ZBC::Keys qw(key_pair);
@@ -28,7 +29,7 @@ my %CATEGORY = (
     'register-gateway' => 'gateway', 'unregister-gateway' => 'gateway', 'gateway-heartbeat' => 'gateway', 'archival-register' => 'gateway',
     'archival-unregister' => 'gateway', 'relay-register' => 'gateway', 'relay-unregister' => 'gateway',
     'register-release' => 'governance', 'revoke-release' => 'governance', 'release-authority-propose' => 'governance', 'release-authority-accept' => 'governance',
-    'sign-message' => 'keys', 'verify-message' => 'keys',
+    'sign-message' => 'keys', 'verify-message' => 'keys', 'decrypt-message' => 'keys',
 );
 my %MESSAGE_COMMANDS = (
     'sign-message' => ['Sign a message with a private key (ZBC-MSG-v1, off-chain, no node needed)', [
@@ -38,6 +39,9 @@ my %MESSAGE_COMMANDS = (
         { name => 'address', kind => 'string', required => 1, help => "signer's ZBC_ address (or 64-hex public key)" },
         { name => 'message', kind => 'string', required => 1, help => 'the signed text (hex bytes with --hex)' },
         { name => 'signature', kind => 'string', required => 1, help => '64-byte Ed25519 signature, 128 hex' } ]],
+    'decrypt-message' => ["Decrypt a transaction message sealed with --encrypt, with the recipient's private key (off-chain)", [
+        { name => 'sender_privkey', kind => 'privkey', required => 1, help => "the recipient's private key (64 hex); '-' or omitted = ZBC_KEY" },
+        { name => 'message_hex', kind => 'string', required => 1, help => "the transaction's message field as hex: ZBE1 then the sealed box" } ]],
 );
 
 my $JSON_OUT = JSON::PP->new->utf8->canonical->pretty;
@@ -365,6 +369,19 @@ sub run_verify_message {
     return $code;
 }
 
+sub run_decrypt_message {
+    my ($v, $o) = @_;
+    die usage("Private key must be 64 hex characters (32 bytes)") unless is_hex($v->{sender_privkey}, 64);
+    die usage("message_hex must be hex") unless is_hex($v->{message_hex});
+    my $field = from_hex($v->{message_hex});
+    die usage("message is not encrypted (no ZBE1 prefix)") unless is_sealed($field);
+    my $plaintext = open_sealed($field, from_hex($v->{sender_privkey}));
+    die ZBC::Error->new(VERIFY_FAILED, "decryption failed: the key does not open this message, or it is corrupted") unless defined $plaintext;
+    if ($o->{verbose}) { _out_text($plaintext . "\n"); }
+    else { _out_json({ success => JSON::PP::true, recipient => key_pair($v->{sender_privkey})->address, message => $plaintext, message_hex => to_hex($plaintext) }); }
+    return 0;
+}
+
 sub _signing_context {
     my ($o, $client) = @_;
     my $g = length($o->{genesis}) ? $o->{genesis} : (_env('ZOOBC_GENESIS_HASH') // '');
@@ -388,7 +405,6 @@ sub run_transaction {
     for my $p (@{ $spec->{params} }) {
         $v->{ $p->{name} } = validate_param($p, $v->{ $p->{name} } // '') if length($v->{ $p->{name} } // '') || $p->{required};
     }
-    die usage("--encrypt is not available in this implementation yet; send the message in clear or use the C++ tools") if $o->{encrypt};
     my $sender = key_pair($v->{ $spec->{sender_key} });
     my $client = ZBC::Client->new($o->{api}, $o->{timeout});
     my $ctx = _signing_context($o, $client);
@@ -437,7 +453,12 @@ sub run_transaction {
     }
     $extra{sender} = $sender->address;
     my $escrow = $o->{escrow} ? ZBC::Escrow->new(%{ $o->{escrow} }) : undef;
-    my $signed = eval { sign_transaction($spec->{type}, $timestamp, $sender, $recipient, $o->{fee}, $body, $ctx, $escrow, $o->{message} // '') };
+    my $message = $o->{message} // '';
+    if ($o->{encrypt} && length $message) {   # --encrypt: seal the message to the recipient's key (signing.md 8)
+        die usage("--encrypt is only supported for ZBC recipients") if length($recipient) != 36;
+        $message = seal($message, substr($recipient, 4));
+    }
+    my $signed = eval { sign_transaction($spec->{type}, $timestamp, $sender, $recipient, $o->{fee}, $body, $ctx, $escrow, $message) };
     unless ($signed) { my $e = $@; die $e if ref $e; die usage("Invalid escrow approver: " . _strip($e)); }
     my %fields = (transaction_hash => to_hex($signed->hash), transaction_type => 0 + $spec->{type}, sender_account_address => $signed->payload->{sender_account_address},
                   recipient_account_address => $signed->payload->{recipient_account_address}, fee => 0 + $o->{fee}, timestamp => 0 + $timestamp);
@@ -498,6 +519,7 @@ sub run {
         $verbose = $o->{verbose};
         return run_sign_message($values, $o) if $cmd eq 'sign-message';
         return run_verify_message($values, $o) if $cmd eq 'verify-message';
+        return run_decrypt_message($values, $o) if $cmd eq 'decrypt-message';
         return run_transaction(ZBC::Commands::by_name($cmd), $values, $o);
     };
     return $code if defined $code;

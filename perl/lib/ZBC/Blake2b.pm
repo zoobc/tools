@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
 package ZBC::Blake2b;
-# BLAKE2b-512 (RFC 7693), unkeyed; used for the SS58 checksum only.
+# BLAKE2b (RFC 7693), unkeyed, with a chosen output length: 64 for the SS58 checksum, 24 for the nonce of a sealed message.
 use strict; use warnings; no warnings "portable";
 
 my @IV = map { hex } qw(6a09e667f3bcc908 bb67ae8584caa73b 3c6ef372fe94f82b a54ff53a5f1d36f1 510e527fade682d1 9b05688c2b3e6c1f 1f83d9abfb41bd6b 5be0cd19137e2179);
@@ -15,10 +15,13 @@ my $M64 = 0xFFFFFFFFFFFFFFFF;
 sub _add { my ($a, $b) = @_; my $lo = ($a & 0xFFFFFFFF) + ($b & 0xFFFFFFFF); my $hi = ($a >> 32) + ($b >> 32) + ($lo >> 32); return (($hi & 0xFFFFFFFF) << 32) | ($lo & 0xFFFFFFFF); }
 sub _rotr { my ($x, $n) = @_; return (($x >> $n) | ($x << (64 - $n))) & $M64; }
 
-sub blake2b_512 {
-    my ($msg) = @_;
+sub blake2b_512 { return blake2b($_[0], 64); }
+
+# BLAKE2b with an output of $outlen bytes (1..64).
+sub blake2b {
+    my ($msg, $outlen) = @_;
     my @h = @IV;
-    $h[0] ^= 0x01010000 ^ 64;
+    $h[0] ^= 0x01010000 ^ $outlen;
     my $padded = $msg;
     my $len = length($msg) > 128 ? int((length($msg) + 127) / 128) * 128 : 128;
     $padded .= "\0" x ($len - length $msg);
@@ -45,7 +48,7 @@ sub blake2b_512 {
         }
         $h[$_] ^= $v[$_] ^ $v[$_ + 8] for 0 .. 7;
     }
-    return pack 'Q<8', @h;
+    return substr(pack('Q<8', @h), 0, $outlen);
 }
 
 1;

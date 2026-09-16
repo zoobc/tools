@@ -9,6 +9,7 @@ our $VERSION = '1.0.0';
 use ZBC::SHA3;
 use ZBC::Blake2b;
 use ZBC::Ed25519;
+use ZBC::Encryption;
 use ZBC::Encoding;
 use ZBC::Error;
 use ZBC::ExitCode;
