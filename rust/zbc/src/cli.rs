@@ -10,6 +10,7 @@ use crate::api::{rejection_error, Client};
 use crate::body::{build_body, validate_param, BodyContext, Params};
 use crate::custom::{compute_fields, custom_body, CustomInput};
 use crate::encoding::is_hex;
+use crate::encryption::{is_sealed, open_sealed, seal};
 use crate::errors::*;
 use crate::keys::KeyPair;
 use crate::message::{message_digest, public_key_of_address, sign_message, verify_message, SCHEME};
@@ -32,7 +33,7 @@ fn category(cmd: &str) -> &'static str {
         "register-node" | "update-node" | "remove-node" | "claim-node" | "governance-vote" => "node",
         "register-gateway" | "unregister-gateway" | "gateway-heartbeat" | "archival-register" | "archival-unregister" | "relay-register" | "relay-unregister" => "gateway",
         "register-release" | "revoke-release" | "release-authority-propose" | "release-authority-accept" => "governance",
-        "sign-message" | "verify-message" => "keys",
+        "sign-message" | "verify-message" | "decrypt-message" => "keys",
         _ => "other",
     }
 }
@@ -45,6 +46,9 @@ fn message_commands() -> Vec<(&'static str, &'static str, Vec<ParamDef>)> {
         ("verify-message", "Verify a ZBC-MSG-v1 message signature against a ZBC_ address (off-chain)",
          vec![p("address", "string", "signer's ZBC_ address (or 64-hex public key)"), p("message", "string", "the signed text (hex bytes with --hex)"),
               p("signature", "string", "64-byte Ed25519 signature, 128 hex")]),
+        ("decrypt-message", "Decrypt a transaction message sealed with --encrypt, with the recipient's private key (off-chain)",
+         vec![p("sender_privkey", "privkey", "the recipient's private key (64 hex); '-' or omitted = ZBC_KEY"),
+              p("message_hex", "string", "the transaction's message field as hex: ZBE1 then the sealed box")]),
     ]
 }
 
@@ -451,6 +455,26 @@ fn run_verify_message(v: &Params, o: &Options, io: &mut Io) -> Result<i32, ToolE
     Ok(code)
 }
 
+fn run_decrypt_message(v: &Params, o: &Options, io: &mut Io) -> Result<i32, ToolError> {
+    let kp = KeyPair::from_hex(&v["sender_privkey"]).map_err(|_| usage("Private key must be 64 hex characters (32 bytes)"))?;
+    if !is_hex(&v["message_hex"], 0) {
+        return Err(usage("message_hex must be hex"));
+    }
+    let field = hex::decode(&v["message_hex"]).unwrap();
+    if !is_sealed(&field) {
+        return Err(usage("message is not encrypted (no ZBE1 prefix)"));
+    }
+    let plaintext = open_sealed(&field, &kp.seed)
+        .ok_or_else(|| ToolError::new(VERIFY_FAILED, "decryption failed: the key does not open this message, or it is corrupted".to_string()))?;
+    let text = String::from_utf8_lossy(&plaintext).into_owned();
+    if o.verbose {
+        let _ = writeln!(io.stdout, "{text}");
+        return Ok(0);
+    }
+    out(io, &json!({"success": true, "recipient": kp.address(), "message": text, "message_hex": hex::encode(&plaintext)}));
+    Ok(0)
+}
+
 fn signing_context(o: &Options, client: &Client, io: &Io) -> Result<SigningContext, ToolError> {
     let g = if o.genesis.is_empty() { (io.env)("ZOOBC_GENESIS_HASH").unwrap_or_default() } else { o.genesis.clone() };
     if !g.is_empty() {
@@ -470,9 +494,6 @@ fn run_transaction(def: &TxDef, v: &mut Params, o: &Options, io: &mut Io) -> Res
         if !cur.is_empty() || p.required {
             v.insert(p.name.clone(), validate_param(p, &cur)?);
         }
-    }
-    if o.encrypt {
-        return Err(usage("--encrypt is not available in this implementation yet; send the message in clear or use the C++ tools"));
     }
     let sender = KeyPair::from_hex(&v[&def.sender_key]).map_err(usage)?;
     let client = Client::new(&o.api, o.timeout);
@@ -524,8 +545,15 @@ fn run_transaction(def: &TxDef, v: &mut Params, o: &Options, io: &mut Io) -> Res
         extra.remove("transaction_hash");
     }
     extra.insert("sender".into(), json!(sender.address()));
+    let mut message = o.message.clone().unwrap_or_default().into_bytes();
+    if o.encrypt && !message.is_empty() {   // --encrypt: seal the message to the recipient's key (signing.md 8)
+        if recipient.len() != 36 {
+            return Err(usage("--encrypt is only supported for ZBC recipients"));
+        }
+        message = seal(&message, &recipient[4..], None).map_err(|e| ToolError::new(INTERNAL, e))?;
+    }
     let tx = Unsigned { tx_type: def.tx_type, timestamp, sender: sender.account_bytes(), recipient, fee: o.fee, body, escrow: o.escrow.clone(),
-                        message: o.message.clone().unwrap_or_default().into_bytes(), version: 1 };
+                        message, version: 1 };
     let signed = sign_transaction(&tx, &sender, &ctx).map_err(|e| usage(format!("Invalid escrow approver: {e}")))?;
     let mut fields = Map::new();
     fields.insert("transaction_hash".into(), json!(hex::encode(signed.hash)));
@@ -631,6 +659,7 @@ pub fn run_tool_with(cmd: &str, args: &[String], io: &mut Io) -> i32 {
         match cmd {
             "sign-message" => run_sign_message(&values, &o, io),
             "verify-message" => run_verify_message(&values, &o, io),
+            "decrypt-message" => run_decrypt_message(&values, &o, io),
             _ => run_transaction(command(cmd).unwrap(), &mut values, &o, io),
         }
     })();

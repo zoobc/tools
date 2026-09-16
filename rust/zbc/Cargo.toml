@@ -16,6 +16,10 @@ sha2 = "0.10"
 hmac = "0.12"
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 blake2 = "0.10"
+x25519-dalek = { version = "2", default-features = false, features = ["static_secrets"] }
+salsa20 = "0.10"
+crypto_secretbox = { version = "0.1", features = ["salsa20"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
 ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
 hex = "0.4"
 serde = { version = "1", features = ["derive"] }

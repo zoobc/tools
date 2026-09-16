@@ -262,3 +262,60 @@ fn cli_unreachable_node() {
     assert_eq!(code, 3, "{out}");
     assert_eq!(serde_json::from_str::<Value>(&out).unwrap()["error_class"], "node_unreachable");
 }
+
+#[test]
+fn encryption() {
+    let d = load("encryption.json");
+    let unhex = |h: &str| hex::decode(h).unwrap();
+    let key32 = |h: &str| -> [u8; 32] { unhex(h).try_into().unwrap() };
+    for k in d["keys"].as_array().unwrap() {
+        assert_eq!(hex::encode(ed25519_public_key_to_x25519(&unhex(&s(k, "public_key"))).unwrap()), s(k, "x25519_public_key"));
+        assert_eq!(hex::encode(ed25519_seed_to_x25519(&unhex(&s(k, "seed")))), s(k, "x25519_secret_key"));
+        assert_eq!(hex::encode(x25519_base(&key32(&s(k, "x25519_secret_key")))), s(k, "x25519_public_key"));
+    }
+    for v in d["sealed"].as_array().unwrap() {
+        let f = seal(&unhex(&s(v, "plaintext_hex")), &unhex(&s(v, "recipient_public_key")), Some(&key32(&s(v, "ephemeral_secret_key")))).unwrap();
+        assert_eq!(hex::encode(&f), s(v, "message_field"), "{}", s(v, "name"));
+        assert_eq!(hex::encode(open_sealed(&f, &unhex(&s(v, "recipient_seed"))).unwrap()), s(v, "plaintext_hex"), "{}", s(v, "name"));
+    }
+    for v in d["samples"].as_array().unwrap() {
+        assert_eq!(hex::encode(open_sealed(&unhex(&s(v, "message_field")), &unhex(&s(v, "recipient_seed"))).unwrap()), s(v, "plaintext_hex"), "{}", s(v, "name"));
+    }
+    for v in d["invalid"].as_array().unwrap() {
+        if let Ok(f) = hex::decode(s(v, "message_field")) {
+            assert!(open_sealed(&f, &unhex(&s(v, "recipient_seed"))).is_none(), "{}", s(v, "case"));
+        }
+    }
+    let kp = KeyPair::from_hex(&s(&d["keys"][0], "seed")).unwrap();
+    let f = seal(b"round trip", &kp.public_key, None).unwrap();
+    assert_eq!(f.len(), 10 + SEALED_OVERHEAD);
+    assert_eq!(open_sealed(&f, &kp.seed).unwrap(), b"round trip");
+}
+
+#[test]
+fn cli_encrypt_and_decrypt() {
+    let d = load("encryption.json");
+    let seed = s(&d["keys"][0], "seed");
+    let smp = &d["samples"][0];
+    let (rc, out, err) = cli(&["send-zbc", &seed, &s(smp, "recipient_address"), "1", "--message", &s(smp, "plaintext"), "--encrypt", "--genesis", "v1", "--offline"], "", &[]);
+    assert_eq!(rc, 0, "{out}{err}");
+    let j: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(s(&j, "message"), s(smp, "plaintext"));
+    let field = s(&j["payload"], "message_hex");
+    assert!(field.starts_with("5a424531") && field.len() == 2 * (s(smp, "plaintext").len() + 52));
+    let (rc, out, err) = cli(&["decrypt-message", &s(smp, "recipient_seed"), &field], "", &[]);
+    assert_eq!(rc, 0, "{out}{err}");
+    assert_eq!(s(&serde_json::from_str::<Value>(&out).unwrap(), "message"), s(smp, "plaintext"));
+    for v in d["samples"].as_array().unwrap() {
+        let (rc, out, _) = cli(&["decrypt-message", &s(v, "recipient_seed"), &s(v, "message_field")], "", &[]);
+        assert_eq!(rc, 0, "{}", s(v, "name"));
+        assert_eq!(s(&serde_json::from_str::<Value>(&out).unwrap(), "message_hex"), s(v, "plaintext_hex"), "{}", s(v, "name"));
+    }
+    for v in d["invalid"].as_array().unwrap() {
+        let (rc, out, _) = cli(&["decrypt-message", &s(v, "recipient_seed"), &s(v, "message_field")], "", &[]);
+        assert_eq!(rc, v["exit_code"].as_i64().unwrap() as i32, "{}: {out}", s(v, "case"));
+        assert_eq!(s(&serde_json::from_str::<Value>(&out).unwrap(), "error_class"), s(v, "error_class"), "{}", s(v, "case"));
+    }
+    let (rc, _, _) = cli(&["send-zbc", &seed, "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", "1", "--message", "x", "--encrypt", "--genesis", "v1", "--offline"], "", &[]);
+    assert_eq!(rc, 2);
+}
