@@ -32,7 +32,9 @@ The contract every command follows is [`../spec/cli-contract.md`](../spec/cli-co
 also ship as single programs exist under `cmd/` with the same names; `internal/gen` writes
 `zbc/commands_gen.go` and those `cmd/` programs from the spec, so a new type is a regeneration
 (`go run ./internal/gen`), not new code. The seven types the spec marks custom are in
-`zbc/custom.go`. Not available yet in this port: `--encrypt`.
+`zbc/custom.go`. `--encrypt` seals `--message` to a ZBC recipient exactly as the C++ tools do (`../spec/signing.md` 8:
+X25519 from `crypto/ecdh`, HSalsa20, XSalsa20 and Poly1305 in `zbc/encryption.go`) and `zbc-cli decrypt-message
+<recipient key> <message_hex>` opens a sealed field; in the package, `Seal` and `OpenSealed`.
 
 ## Use the library
 

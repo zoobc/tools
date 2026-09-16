@@ -33,7 +33,7 @@ var category = map[string]string{
 	"register-gateway": "gateway", "unregister-gateway": "gateway", "gateway-heartbeat": "gateway", "archival-register": "gateway",
 	"archival-unregister": "gateway", "relay-register": "gateway", "relay-unregister": "gateway",
 	"register-release": "governance", "revoke-release": "governance", "release-authority-propose": "governance", "release-authority-accept": "governance",
-	"sign-message": "keys", "verify-message": "keys",
+	"sign-message": "keys", "verify-message": "keys", "decrypt-message": "keys",
 }
 
 var messageCommands = map[string]struct {
@@ -47,6 +47,9 @@ var messageCommands = map[string]struct {
 		{Name: "address", Kind: "string", Required: true, Help: "signer's ZBC_ address (or 64-hex public key)"},
 		{Name: "message", Kind: "string", Required: true, Help: "the signed text (hex bytes with --hex)"},
 		{Name: "signature", Kind: "string", Required: true, Help: "64-byte Ed25519 signature, 128 hex"}}},
+	"decrypt-message": {"Decrypt a transaction message sealed with --encrypt, with the recipient's private key (off-chain)", []zbc.ParamDef{
+		{Name: "sender_privkey", Kind: "privkey", Required: true, Help: "the recipient's private key (64 hex); '-' or omitted = ZBC_KEY"},
+		{Name: "message_hex", Kind: "string", Required: true, Help: "the transaction's message field as hex: ZBE1 then the sealed box"}}},
 }
 
 type options struct {
@@ -582,6 +585,30 @@ func runSignMessage(v map[string]string, o *options, e *env) (int, error) {
 	return 0, nil
 }
 
+func runDecryptMessage(v map[string]string, o *options, e *env) (int, error) {
+	kp, err := zbc.KeyPairFromHex(v["sender_privkey"])
+	if err != nil {
+		return 0, zbc.Usage("Private key must be 64 hex characters (32 bytes)")
+	}
+	if !zbc.IsHex(v["message_hex"], 0) {
+		return 0, zbc.Usage("message_hex must be hex")
+	}
+	field, _ := hex.DecodeString(v["message_hex"])
+	if !zbc.IsSealed(field) {
+		return 0, zbc.Usage("message is not encrypted (no ZBE1 prefix)")
+	}
+	plaintext, ok := zbc.OpenSealed(field, kp.Seed)
+	if !ok {
+		return 0, &zbc.ToolError{Code: zbc.ExitVerifyFailed, Message: "decryption failed: the key does not open this message, or it is corrupted"}
+	}
+	if o.verbose {
+		fmt.Fprintf(e.stdout, "%s\n", plaintext)
+		return 0, nil
+	}
+	e.out(map[string]any{"success": true, "recipient": kp.Address(), "message": string(plaintext), "message_hex": hex.EncodeToString(plaintext)})
+	return 0, nil
+}
+
 func runVerifyMessage(v map[string]string, o *options, e *env) (int, error) {
 	pub := zbc.PublicKeyOfAddress(v["address"])
 	if pub == nil {
@@ -649,9 +676,6 @@ func runTransaction(def *zbc.TxDef, v map[string]string, o *options, e *env) (in
 			}
 			v[p.Name] = val
 		}
-	}
-	if o.encrypt {
-		return 0, zbc.Usage("--encrypt is not available in this implementation yet; send the message in clear or use the C++ tools")
 	}
 	sender, err := zbc.KeyPairFromHex(v[def.SenderKey])
 	if err != nil {
@@ -748,6 +772,14 @@ func runTransaction(def *zbc.TxDef, v map[string]string, o *options, e *env) (in
 	var msg []byte
 	if o.message != nil {
 		msg = []byte(*o.message)
+	}
+	if o.encrypt && len(msg) > 0 { // --encrypt: seal the message to the recipient's key (signing.md 8)
+		if len(recipient) != 36 {
+			return 0, zbc.Usage("--encrypt is only supported for ZBC recipients")
+		}
+		if msg, err = zbc.Seal(msg, recipient[4:], nil); err != nil {
+			return 0, err
+		}
 	}
 	signed, err := zbc.SignTransaction(zbc.Unsigned{Type: def.Type, Timestamp: timestamp, Sender: sender.AccountBytes(), Recipient: recipient,
 		Fee: o.fee, Body: body, Escrow: o.escrow, Message: msg}, sender, ctx)
@@ -888,6 +920,8 @@ func RunTool(cmd string, args []string, stdin io.Reader, stdout, stderr io.Write
 			return runSignMessage(values, o, e)
 		case "verify-message":
 			return runVerifyMessage(values, o, e)
+		case "decrypt-message":
+			return runDecryptMessage(values, o, e)
 		}
 		return runTransaction(zbc.CommandByName[cmd], values, o, e)
 	}()

@@ -8,9 +8,13 @@ import (
 	"math/bits"
 )
 
-// blake2b512 is BLAKE2b-512 (RFC 7693), unkeyed; used for the SS58 checksum only, so the
-// package stays on the standard library.
-func blake2b512(msg []byte) []byte {
+// blake2b512 is BLAKE2b-512 (RFC 7693), unkeyed; the SS58 checksum uses it.
+func blake2b512(msg []byte) []byte { return blake2b(msg, 64) }
+
+// blake2b is unkeyed BLAKE2b (RFC 7693) with an output of outLen bytes (1..64): 64 for the SS58
+// checksum, 24 for the nonce of a sealed message. Written here so the package stays on the
+// standard library.
+func blake2b(msg []byte, outLen int) []byte {
 	iv := [8]uint64{0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
 		0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179}
 	sigma := [12][16]int{
@@ -22,7 +26,7 @@ func blake2b512(msg []byte) []byte {
 		{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}, {14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3},
 	}
 	h := iv
-	h[0] ^= 0x01010000 ^ 64
+	h[0] ^= 0x01010000 ^ uint64(outLen)
 	padded := make([]byte, max(128, (len(msg)+127)/128*128))
 	copy(padded, msg)
 	for off := 0; off < len(padded); off += 128 {
@@ -71,5 +75,5 @@ func blake2b512(msg []byte) []byte {
 	for i := 0; i < 8; i++ {
 		binary.LittleEndian.PutUint64(out[8*i:], h[i])
 	}
-	return out
+	return out[:outLen]
 }
