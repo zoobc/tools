@@ -7,6 +7,7 @@ import foundation.zoobc.zbc.Body
 import foundation.zoobc.zbc.Client
 import foundation.zoobc.zbc.Custom
 import foundation.zoobc.zbc.Encoding
+import foundation.zoobc.zbc.Encryption
 import foundation.zoobc.zbc.Escrow
 import foundation.zoobc.zbc.ExitCode
 import foundation.zoobc.zbc.KeyPair
@@ -43,7 +44,7 @@ object Cli {
         "register-node", "update-node", "remove-node", "claim-node", "governance-vote" -> "node"
         "register-gateway", "unregister-gateway", "gateway-heartbeat", "archival-register", "archival-unregister", "relay-register", "relay-unregister" -> "gateway"
         "register-release", "revoke-release", "release-authority-propose", "release-authority-accept" -> "governance"
-        "sign-message", "verify-message" -> "keys"
+        "sign-message", "verify-message", "decrypt-message" -> "keys"
         else -> "other"
     }
 
@@ -53,6 +54,9 @@ object Cli {
         "verify-message" to ("Verify a ZBC-MSG-v1 message signature against a ZBC_ address (off-chain)" to listOf(
             ParamDef("address", "string", true, null, "signer's ZBC_ address (or 64-hex public key)"), ParamDef("message", "string", true, null, "the signed text (hex bytes with --hex)"),
             ParamDef("signature", "string", true, null, "64-byte Ed25519 signature, 128 hex"))),
+        "decrypt-message" to ("Decrypt a transaction message sealed with --encrypt, with the recipient's private key (off-chain)" to listOf(
+            ParamDef("sender_privkey", "privkey", true, null, "the recipient's private key (64 hex); '-' or omitted = ZBC_KEY"),
+            ParamDef("message_hex", "string", true, null, "the transaction's message field as hex: ZBE1 then the sealed box"))),
     )
 
     private fun commandOf(cmd: String): Triple<String, List<ParamDef>, Int>? {
@@ -272,6 +276,18 @@ Exit codes:
         return code
     }
 
+    private fun runDecryptMessage(v: Map<String, String>, o: Options, io: Io): Int {
+        val kp = try { KeyPair.fromHex(v["sender_privkey"]!!) } catch (e: IllegalArgumentException) { throw ToolError.usage("Private key must be 64 hex characters (32 bytes)") }
+        if (!Encoding.isHex(v["message_hex"]!!)) throw ToolError.usage("message_hex must be hex")
+        val field = Encoding.hexToBytes(v["message_hex"]!!)
+        if (!Encryption.isSealed(field)) throw ToolError.usage("message is not encrypted (no ZBE1 prefix)")
+        val plaintext = Encryption.openSealed(field, kp.seed) ?: throw ToolError(ExitCode.VERIFY_FAILED, "decryption failed: the key does not open this message, or it is corrupted")
+        val text = String(plaintext, Charsets.UTF_8)
+        if (o.verbose) { io.stdout.println(text); return 0 }
+        out(io, JsonObject(mapOf("success" to JsonPrimitive(true), "recipient" to JsonPrimitive(kp.address), "message" to JsonPrimitive(text), "message_hex" to JsonPrimitive(Encoding.bytesToHex(plaintext)))))
+        return 0
+    }
+
     private fun signingContext(o: Options, client: Client, io: Io): SigningContext {
         val g = o.genesis.ifEmpty { io.env("ZOOBC_GENESIS_HASH") ?: "" }
         if (g.isNotEmpty()) return try { SigningContext.of(g) } catch (e: IllegalArgumentException) { throw ToolError.usage(e.message ?: "bad --genesis") }
@@ -284,7 +300,6 @@ Exit codes:
 
     private fun runTransaction(def: TxDef, v: MutableMap<String, String>, o: Options, io: Io): Int {
         for (p in def.params) { val cur = v[p.name] ?: ""; if (cur.isNotEmpty() || p.required) v[p.name] = Body.validateParam(p, cur) }
-        if (o.encrypt) throw ToolError.usage("--encrypt is not available in this implementation yet; send the message in clear or use the C++ tools")
         val sender = try { KeyPair.fromHex(v[def.sender_key]!!) } catch (e: IllegalArgumentException) { throw ToolError.usage(e.message ?: "bad key") }
         val client = Client(o.api, o.timeout)
         val ctx = signingContext(o, client, io)
@@ -318,7 +333,12 @@ Exit codes:
             extra.remove("transaction_hash")
         }
         extra["sender"] = JsonPrimitive(sender.address)
-        val signed = try { Transaction.sign(def.type, timestamp, sender, recipient, o.fee, body, ctx, o.escrow, (o.message ?: "").toByteArray()) }
+        var message = (o.message ?: "").toByteArray()
+        if (o.encrypt && message.isNotEmpty()) {   // --encrypt: seal the message to the recipient's key (signing.md 8)
+            if (recipient.size != 36) throw ToolError.usage("--encrypt is only supported for ZBC recipients")
+            message = Encryption.seal(message, recipient.copyOfRange(4, 36))
+        }
+        val signed = try { Transaction.sign(def.type, timestamp, sender, recipient, o.fee, body, ctx, o.escrow, message) }
                      catch (e: IllegalArgumentException) { throw ToolError.usage("Invalid escrow approver: ${e.message}") }
         val fields = linkedMapOf<String, JsonElement>("transaction_hash" to JsonPrimitive(Encoding.bytesToHex(signed.hash)), "transaction_type" to JsonPrimitive(def.type),
             "sender_account_address" to signed.payload["sender_account_address"]!!, "recipient_account_address" to signed.payload["recipient_account_address"]!!,
@@ -376,7 +396,7 @@ Exit codes:
             if (o.help) { printUsage(cmd, params, io); return 0 }
             val values = resolveParams(params, positional, o, io)
             verbose = o.verbose
-            when (cmd) { "sign-message" -> runSignMessage(values, o, io); "verify-message" -> runVerifyMessage(values, o, io); else -> runTransaction(Spec.command(cmd)!!, values, o, io) }
+            when (cmd) { "sign-message" -> runSignMessage(values, o, io); "verify-message" -> runVerifyMessage(values, o, io); "decrypt-message" -> runDecryptMessage(values, o, io); else -> runTransaction(Spec.command(cmd)!!, values, o, io) }
         } catch (e: ToolError) { emitError(io, e, verbose) } catch (e: Exception) { emitError(io, ToolError.internal(e.message ?: e.javaClass.simpleName), verbose) }
     }
 }

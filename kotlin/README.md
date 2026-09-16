@@ -33,7 +33,9 @@ The contract every command follows is [`../spec/cli-contract.md`](../spec/cli-co
 58 transaction types of `../spec/transactions` are subcommands: the build copies the spec files
 into the jar (`zbc/transactions/*.json`) and the command table is read from them at run time, so
 a new type in the spec is a rebuild, not new code. The seven types the spec marks custom are in
-`Custom.kt`. Not available yet in this port: `--encrypt`.
+`Custom.kt`. `--encrypt` seals `--message` to a ZBC recipient exactly as the C++ tools do (`../spec/signing.md` 8;
+X25519, HSalsa20, XSalsa20 and Poly1305 in `Encryption.kt`, JDK only) and `zbc-cli decrypt-message <recipient key>
+<message_hex>` opens a sealed field; in the library, `Encryption.seal` and `Encryption.openSealed`.
 
 ## Use the library
 

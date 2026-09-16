@@ -173,4 +173,53 @@ class VectorsTest {
         val (code, out, _) = cli(listOf("send-zbc", s(v, "key"), p["recipient"]!!, "1", "--api", "http://127.0.0.1:9", "--genesis", "v1", "--timeout", "2"))
         assertEquals(3, code, out); assertEquals("node_unreachable", Json.parseToJsonElement(out).jsonObject["error_class"]!!.jsonPrimitive.content)
     }
+
+    @Test fun encryption() {
+        val d = load("encryption.json")
+        val hx = Encoding::hexToBytes
+        for (k in d["keys"]!!.jsonArray.map { it.jsonObject }) {
+            assertEquals(s(k, "x25519_public_key"), Encoding.bytesToHex(Encryption.ed25519PublicKeyToX25519(hx(s(k, "public_key")))))
+            assertEquals(s(k, "x25519_secret_key"), Encoding.bytesToHex(Encryption.ed25519SeedToX25519(hx(s(k, "seed")))))
+            assertEquals(s(k, "x25519_public_key"), Encoding.bytesToHex(Encryption.x25519Base(hx(s(k, "x25519_secret_key")))))
+        }
+        for (v in d["sealed"]!!.jsonArray.map { it.jsonObject }) {
+            val f = Encryption.seal(hx(s(v, "plaintext_hex")), hx(s(v, "recipient_public_key")), hx(s(v, "ephemeral_secret_key")))
+            assertEquals(s(v, "message_field"), Encoding.bytesToHex(f), s(v, "name"))
+            assertEquals(s(v, "plaintext_hex"), Encoding.bytesToHex(Encryption.openSealed(f, hx(s(v, "recipient_seed")))!!), s(v, "name"))
+        }
+        for (v in d["samples"]!!.jsonArray.map { it.jsonObject })
+            assertEquals(s(v, "plaintext_hex"), Encoding.bytesToHex(Encryption.openSealed(hx(s(v, "message_field")), hx(s(v, "recipient_seed")))!!), s(v, "name"))
+        for (v in d["invalid"]!!.jsonArray.map { it.jsonObject })
+            if (Encoding.isHex(s(v, "message_field"))) assertEquals(null, Encryption.openSealed(hx(s(v, "message_field")), hx(s(v, "recipient_seed"))), s(v, "case"))
+        val kp = KeyPair.fromHex(s(d["keys"]!!.jsonArray[0].jsonObject, "seed"))
+        val f = Encryption.seal("round trip".toByteArray(), kp.publicKey)
+        assertEquals(10 + Encryption.SEALED_OVERHEAD, f.size)
+        assertEquals("round trip", String(Encryption.openSealed(f, kp.seed)!!))
+    }
+
+    @Test fun cliEncryptAndDecrypt() {
+        val d = load("encryption.json")
+        val seed = s(d["keys"]!!.jsonArray[0].jsonObject, "seed")
+        val smp = d["samples"]!!.jsonArray[0].jsonObject
+        val (rc, out, err) = cli(listOf("send-zbc", seed, s(smp, "recipient_address"), "1", "--message", s(smp, "plaintext"), "--encrypt", "--genesis", "v1", "--offline"))
+        assertEquals(0, rc, out + err)
+        val j = Json.parseToJsonElement(out).jsonObject
+        assertEquals(s(smp, "plaintext"), s(j, "message"))
+        val field = s(j["payload"]!!.jsonObject, "message_hex")
+        assertTrue(field.startsWith("5a424531") && field.length == 2 * (s(smp, "plaintext").toByteArray().size + 52))
+        val (rc2, out2, err2) = cli(listOf("decrypt-message", s(smp, "recipient_seed"), field))
+        assertEquals(0, rc2, out2 + err2)
+        assertEquals(s(smp, "plaintext"), s(Json.parseToJsonElement(out2).jsonObject, "message"))
+        for (v in d["samples"]!!.jsonArray.map { it.jsonObject }) {
+            val (c, o, _) = cli(listOf("decrypt-message", s(v, "recipient_seed"), s(v, "message_field")))
+            assertEquals(0, c, s(v, "name")); assertEquals(s(v, "plaintext_hex"), s(Json.parseToJsonElement(o).jsonObject, "message_hex"), s(v, "name"))
+        }
+        for (v in d["invalid"]!!.jsonArray.map { it.jsonObject }) {
+            val (c, o, _) = cli(listOf("decrypt-message", s(v, "recipient_seed"), s(v, "message_field")))
+            assertEquals(v["exit_code"]!!.jsonPrimitive.content.toInt(), c, s(v, "case") + ": " + o)
+            assertEquals(s(v, "error_class"), s(Json.parseToJsonElement(o).jsonObject, "error_class"), s(v, "case"))
+        }
+        val (c3, _, _) = cli(listOf("send-zbc", seed, "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", "1", "--message", "x", "--encrypt", "--genesis", "v1", "--offline"))
+        assertEquals(2, c3)
+    }
 }
