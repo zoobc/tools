@@ -109,7 +109,8 @@ var ZBC = (() => {
     validateMnemonic: () => validateMnemonic,
     validateParam: () => validateParam,
     verifyMessage: () => verifyMessage,
-    walletAccount: () => walletAccount
+    walletAccount: () => walletAccount,
+    zbcSignificant: () => zbcSignificant
   });
 
   // src/crypto/sha3.ts
@@ -915,11 +916,14 @@ var ZBC = (() => {
     for (let i = 0; i < 7; i++) out += "_" + b32.slice(8 * i, 8 * i + 8);
     return out;
   }
+  function zbcSignificant(text) {
+    return text.replace(/[-_\s]/g, "").toUpperCase();
+  }
   function decodeZbcAddress(text) {
-    const norm = text.toUpperCase();
-    if (norm.length < 4 || norm[3] !== "_" && norm[3] !== "-") return null;
+    const norm = zbcSignificant(text);
+    if (norm.length < 3) return null;
     const prefix = norm.slice(0, 3);
-    const body = norm.slice(4).replace(/[_-]/g, "");
+    const body = norm.slice(3);
     if (body.length !== 56) return null;
     let raw;
     try {
@@ -1007,9 +1011,14 @@ var ZBC = (() => {
     if (hint === "zbc" || hint === "zbs") return zbcForm(a);
     return parseAuto(a);
   }
+  function looksZbc(a) {
+    if (a.length > 4 && (a[3] === "_" || a[3] === "-")) return true;
+    const n = zbcSignificant(a);
+    return n.length === 59 && (n.startsWith("ZBC") || n.startsWith("ZBS")) && /^[A-Z2-7]+$/.test(n.slice(3));
+  }
   function parseAuto(a) {
     if (a.length === 42 && (a.startsWith("0x") || a.startsWith("0X")) && isHex(a.slice(2), 40)) return typed(AccountType.Ethereum, hexToBytes(a.slice(2)), a);
-    if (a.length > 4 && (a[3] === "_" || a[3] === "-")) return zbcForm(a);
+    if (looksZbc(a)) return zbcForm(a);
     const low5 = a.slice(0, 5).toLowerCase();
     if (low5.startsWith("bc1") || low5.startsWith("tb1") || low5.startsWith("bcrt1")) {
       const d = segwitDecode(a);

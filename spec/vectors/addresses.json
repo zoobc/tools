@@ -31,7 +31,7 @@
    "valid": true,
    "account_type": 0,
    "address_bytes": "00000000d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
-   "type_label": "ZBC",
+   "type_label": "ZooBC",
    "display": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
   },
   {
@@ -39,7 +39,7 @@
    "valid": true,
    "account_type": 0,
    "address_bytes": "00000000d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
-   "type_label": "ZBC",
+   "type_label": "ZooBC",
    "display": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
   },
   {
@@ -236,6 +236,70 @@
   },
   {
    "input": "ZBC_",
+   "valid": false,
+   "exit_code": 2,
+   "error_class": "usage"
+  },
+  {
+   "input": "ZBCL2HLFDOMVKKKTEXXC2P2M6LGEB6ZNKSV356SJUWW5QPVHDE7EFJA3PEX",
+   "valid": true,
+   "account_type": 0,
+   "address_bytes": "000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+   "type_label": "ZooBC",
+   "display": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX"
+  },
+  {
+   "input": "zbc2bflemtufo2kwoqtnc6umfpe43icesvxdiawxl4fecrtfslxq43uiv2i",
+   "valid": true,
+   "account_type": 0,
+   "address_bytes": "00000000d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+   "type_label": "ZooBC",
+   "display": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
+  },
+  {
+   "input": "ZBSL2HLFDOMVKKKTEXXC2P2M6LGEB6ZNKSV356SJUWW5QPVHDE7EFJA3PEX",
+   "valid": false,
+   "exit_code": 2,
+   "error_class": "usage"
+  },
+  {
+   "input": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6 LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+   "valid": true,
+   "account_type": 0,
+   "address_bytes": "000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+   "type_label": "ZooBC",
+   "display": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX"
+  },
+  {
+   "input": "ZBC\tL2HLFDOM\tVKKKTEXX\tC2P2M6LG\tEB6ZNKSV\t356SJUWW\t5QPVHDE7\tEFJA3PEX",
+   "valid": true,
+   "account_type": 0,
+   "address_bytes": "000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+   "type_label": "ZooBC",
+   "display": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX"
+  },
+  {
+   "input": "  ZBC-L2HLFDOM-VKKKTEXX-C2P2M6LG-EB6ZNKSV-356SJUWW-5QPVHDE7-EFJA3PEX\n",
+   "valid": true,
+   "account_type": 0,
+   "address_bytes": "000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+   "type_label": "ZooBC",
+   "display": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX"
+  },
+  {
+   "input": "ZNKL2HLFDOMVKKKTEXXC2P2M6LGEB6ZNKSV356SJUWW5QPVHDE7EFJA3PEX",
+   "valid": false,
+   "exit_code": 2,
+   "error_class": "usage"
+  },
+  {
+   "input": "zbcl2hlfdomvkkktexxc2p2m6lgeb6znksv356sjuww5qpvhde7efja3pe8",
+   "valid": false,
+   "exit_code": 2,
+   "error_class": "usage"
+  },
+  {
+   "input": "ZBCL2HLFDOMVKKKTEXXC2P2M6LGEB6ZNKSV356SJUWW5QPVHDE7EFJA3PE",
    "valid": false,
    "exit_code": 2,
    "error_class": "usage"

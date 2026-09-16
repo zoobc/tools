@@ -249,6 +249,48 @@
    "success": true
   },
   {
+   "case": "verify-message dashed address",
+   "args": [
+    "verify-message",
+    "ZBC-2BFLEMTU-FO2KWOQT-NC6UMFPE-43ICESVX-DIAWXL4F-ECRTFSLX-Q43UIV2I",
+    "hello zoobc",
+    "4cdf8cafca5d06dd6c81c5460c9affec7eada96a63943e485b673ae33da6330570885a8b3f5dd752cbbe2b4404ae9402cdd2f6c36a09941e5d8546dbdd4ef10b"
+   ],
+   "stdin": null,
+   "exit_code": 0,
+   "error_class": "ok",
+   "success": true
+  },
+  {
+   "case": "verify-message bare address",
+   "args": [
+    "verify-message",
+    "zbc2bflemtufo2kwoqtnc6umfpe43icesvxdiawxl4fecrtfslxq43uiv2i",
+    "hello zoobc",
+    "4cdf8cafca5d06dd6c81c5460c9affec7eada96a63943e485b673ae33da6330570885a8b3f5dd752cbbe2b4404ae9402cdd2f6c36a09941e5d8546dbdd4ef10b"
+   ],
+   "stdin": null,
+   "exit_code": 0,
+   "error_class": "ok",
+   "success": true
+  },
+  {
+   "case": "send-zbc bare recipient",
+   "args": [
+    "send-zbc",
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+    "ZBCL2HLFDOMVKKKTEXXC2P2M6LGEB6ZNKSV356SJUWW5QPVHDE7EFJA3PEX",
+    "1",
+    "--genesis",
+    "v1",
+    "--offline"
+   ],
+   "stdin": null,
+   "exit_code": 0,
+   "error_class": null,
+   "success": true
+  },
+  {
    "case": "unknown command",
    "args": [
     "no-such-command"

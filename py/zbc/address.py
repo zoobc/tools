@@ -51,12 +51,17 @@ def encode_zbc_address(payload: bytes, prefix: str = "ZBC") -> str:
     return prefix + "".join("_" + b32[8 * i:8 * i + 8] for i in range(7))
 
 
+def zbc_significant(text: str) -> str:
+    """The 59 significant characters of a ZooBC address: separators (_ -) and whitespace dropped, upper case (addresses.md 2)."""
+    return "".join(c for c in text if c not in "_-" and not c.isspace()).upper()
+
+
 def decode_zbc_address(text: str) -> Optional[Tuple[str, bytes]]:
-    """(upper-case prefix, 32-byte payload) of PREFIX_... (separators _ or -, any case), or None."""
-    norm = text.upper()
-    if len(norm) < 4 or norm[3] not in "_-":
+    """(upper-case prefix, 32-byte payload) of a ZooBC address in any spelling, or None."""
+    norm = zbc_significant(text)
+    if len(norm) < 3:
         return None
-    prefix, body = norm[:3], norm[4:].replace("_", "").replace("-", "")
+    prefix, body = norm[:3], norm[3:]
     if len(body) != 56:
         return None
     try:
@@ -114,10 +119,21 @@ def _hinted(a: str, hint: str) -> ParsedAddress:
     return _auto(a)
 
 
+_B32 = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567")
+
+
+def _looks_zbc(a: str) -> bool:
+    """Shape only: PREFIX then a separator, or the bare form: 59 significant characters, ZBC/ZBS prefix, base32 body."""
+    if len(a) > 4 and a[3] in "_-":
+        return True
+    n = zbc_significant(a)
+    return len(n) == 59 and n[:3] in ("ZBC", "ZBS") and all(c in _B32 for c in n[3:])
+
+
 def _auto(a: str) -> ParsedAddress:
     if len(a) == 42 and a[:2] in ("0x", "0X") and is_hex(a[2:], 40):
         return ParsedAddress(ETHEREUM, bytes.fromhex(a[2:]), a)
-    if len(a) > 4 and a[3] in "_-":
+    if _looks_zbc(a):
         return _zbc_form(a)
     low5 = a[:5].lower()
     if low5.startswith(("bc1", "tb1", "bcrt1")):

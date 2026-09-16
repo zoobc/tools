@@ -24,6 +24,7 @@ SEED_2 = "22" * 32
 MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
 A_V = "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX"
 A_1 = "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
+V_SIG_1 = "4cdf8cafca5d06dd6c81c5460c9affec7eada96a63943e485b673ae33da6330570885a8b3f5dd752cbbe2b4404ae9402cdd2f6c36a09941e5d8546dbdd4ef10b"  # sign-message(SEED_1, "hello zoobc")
 REF_BLOCK = {"block_hash": "5a" * 32, "height": 1000}
 
 BIN = None
@@ -105,6 +106,12 @@ ADDRESS_INPUTS = [
     "addr1vx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3jcu5d8ps",       # not a valid enterprise address
     bech32_encode("addr", bytes([0x61]) + bytes(range(1, 29))),            # a valid one: header 0x61 + 28-byte key hash
     "", "hello", "ZBC_",
+    # the 59-character rule (addresses.md 2): separators and whitespace are cosmetic, case is free
+    A_V.replace("_", ""), A_1.replace("_", "").lower(), "ZBS" + A_V[3:].replace("_", ""),
+    A_V[:28] + " " + A_V[28:], A_V.replace("_", "\t"), "  " + A_V.replace("_", "-") + "\n",
+    "ZNK" + A_V[3:].replace("_", ""),                                       # bare form is ZooBC only behind ZBC/ZBS: bad checksum anyway
+    "zbc" + A_V[3:].replace("_", "").lower()[:55] + "8",                   # bare form with a character outside base32
+    A_V.replace("_", "")[:58],                                             # 58 significant characters
 ]
 def decode_recipient(unsigned_hex):
     """Recipient field of the envelope: offset 4+1+8+36 = 49; type int32 LE then the payload."""
@@ -294,6 +301,9 @@ def cli_vectors():
     case("json-input missing field", ["send-zbc", "--json-input", "--genesis", "v1", "--offline"], 2, stdin=json.dumps({"sender_privkey": SEED_V, "recipient": A_V}))
     case("json-input invalid json", ["send-zbc", "--json-input"], 2, stdin="{not json")
     case("verify-message wrong signature", ["verify-message", A_1, "hello zoobc", "00" * 64], 10)
+    case("verify-message dashed address", ["verify-message", A_1.replace("_", "-"), "hello zoobc", V_SIG_1], 0)
+    case("verify-message bare address", ["verify-message", A_1.replace("_", "").lower(), "hello zoobc", V_SIG_1], 0)
+    case("send-zbc bare recipient", ["send-zbc", SEED_V, A_V.replace("_", ""), "1", "--genesis", "v1", "--offline"], 0)
     case("unknown command", ["no-such-command"], 2)
     case("no arguments", [], 2)
     return {"description": "Exit codes and error_class for command-line mistakes (cli-contract.md 5), as zbc-cli behaves. "

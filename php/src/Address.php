@@ -30,17 +30,32 @@ final class Address
     }
 
     /** [upper-case prefix, 32-byte payload] of PREFIX_... (separators _ or -, any case), or null. */
+    /** The 59 significant characters of a ZooBC address: separators (_ -) and whitespace dropped, upper case (addresses.md 2). */
+    public static function significant(string $text): string
+    {
+        return strtoupper((string) preg_replace('/[-_\s]/', '', $text));
+    }
+
+    /** [upper-case prefix, 32-byte payload] of a ZooBC address in any spelling, or null. */
     public static function decode(string $text): ?array
     {
-        $norm = strtoupper($text);
-        if (strlen($norm) < 4 || ($norm[3] !== '_' && $norm[3] !== '-')) { return null; }
+        $norm = self::significant($text);
+        if (strlen($norm) < 3) { return null; }
         $prefix = substr($norm, 0, 3);
-        $body = str_replace(['_', '-'], '', substr($norm, 4));
+        $body = substr($norm, 3);
         if (strlen($body) !== 56) { return null; }
         $raw = Encoding::base32Decode($body);
         if ($raw === null || strlen($raw) !== 35) { return null; }
         $payload = substr($raw, 0, 32);
         return substr(Encoding::sha3($payload, $prefix), 0, 3) === substr($raw, 32) ? [$prefix, $payload] : null;
+    }
+
+    /** Shape only: PREFIX then a separator, or the bare form: 59 significant characters, ZBC/ZBS prefix, base32 body. */
+    private static function looksZbc(string $a): bool
+    {
+        if (strlen($a) > 4 && ($a[3] === '_' || $a[3] === '-')) { return true; }
+        $n = self::significant($a);
+        return strlen($n) === 59 && (str_starts_with($n, 'ZBC') || str_starts_with($n, 'ZBS')) && preg_match('/^[A-Z2-7]{56}$/', substr($n, 3)) === 1;
     }
 
     private static function zbcForm(string $a): ParsedAddress
@@ -74,7 +89,7 @@ final class Address
     private static function auto(string $a): ParsedAddress
     {
         if (strlen($a) === 42 && preg_match('/^0[xX]/', $a) && Encoding::isHex(substr($a, 2), 40)) { return new ParsedAddress(self::ETHEREUM, hex2bin(substr($a, 2)), $a); }
-        if (strlen($a) > 4 && ($a[3] === '_' || $a[3] === '-')) { return self::zbcForm($a); }
+        if (self::looksZbc($a)) { return self::zbcForm($a); }
         $low5 = strtolower(substr($a, 0, 5));
         if (str_starts_with($low5, 'bc1') || str_starts_with($low5, 'tb1') || str_starts_with($low5, 'bcrt1')) {
             $d = Encoding::segwitDecode($a);

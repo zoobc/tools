@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 // Account types (spec/addresses.md section 1).
@@ -92,14 +93,26 @@ func MustEncodeZbcAddress(payload []byte, prefix string) string {
 	return s
 }
 
-// DecodeZbcAddress reads PREFIX_... (separators _ or -, any case); returns the upper-case prefix and the 32-byte payload.
+// ZbcSignificant is the 59 significant characters of a ZooBC address: separators (_ -) and whitespace dropped, upper case (addresses.md 2).
+func ZbcSignificant(text string) string {
+	var b strings.Builder
+	for _, r := range text {
+		if r == '_' || r == '-' || unicode.IsSpace(r) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return strings.ToUpper(b.String())
+}
+
+// DecodeZbcAddress reads a ZooBC address in any spelling; returns the upper-case prefix and the 32-byte payload.
 func DecodeZbcAddress(text string) (prefix string, payload []byte, ok bool) {
-	norm := strings.ToUpper(text)
-	if len(norm) < 4 || (norm[3] != '_' && norm[3] != '-') {
+	norm := ZbcSignificant(text)
+	if len(norm) < 3 {
 		return "", nil, false
 	}
 	prefix = norm[:3]
-	body := strings.NewReplacer("_", "", "-", "").Replace(norm[4:])
+	body := norm[3:]
 	if len(body) != 56 {
 		return "", nil, false
 	}
@@ -165,12 +178,29 @@ func parseHinted(a, hint string) (ParsedAddress, error) {
 	return parseAuto(a)
 }
 
+// looksZbc is shape only: PREFIX then a separator, or the bare form: 59 significant characters, ZBC/ZBS prefix, base32 body.
+func looksZbc(a string) bool {
+	if len(a) > 4 && (a[3] == '_' || a[3] == '-') {
+		return true
+	}
+	n := ZbcSignificant(a)
+	if len(n) != 59 || !(strings.HasPrefix(n, "ZBC") || strings.HasPrefix(n, "ZBS")) {
+		return false
+	}
+	for _, c := range n[3:] {
+		if !strings.ContainsRune("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567", c) {
+			return false
+		}
+	}
+	return true
+}
+
 func parseAuto(a string) (ParsedAddress, error) {
 	if len(a) == 42 && (strings.HasPrefix(a, "0x") || strings.HasPrefix(a, "0X")) && IsHex(a[2:], 40) {
 		b, _ := hex.DecodeString(a[2:])
 		return ParsedAddress{TypeEthereum, b, a}, nil
 	}
-	if len(a) > 4 && (a[3] == '_' || a[3] == '-') {
+	if looksZbc(a) {
 		return zbcForm(a)
 	}
 	low5 := strings.ToLower(a)

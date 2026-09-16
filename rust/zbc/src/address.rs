@@ -75,14 +75,19 @@ pub fn encode_zbc_address(payload: &[u8], prefix: &str) -> Result<String, String
 }
 
 /// (upper-case prefix, 32-byte payload) of PREFIX_... (separators _ or -, any case), or None.
+/// The 59 significant characters of a ZooBC address: separators (_ -) and whitespace dropped, upper case (addresses.md 2).
+pub fn zbc_significant(text: &str) -> String {
+    text.chars().filter(|c| *c != '_' && *c != '-' && !c.is_whitespace()).collect::<String>().to_uppercase()
+}
+
+/// (upper-case prefix, 32-byte payload) of a ZooBC address in any spelling, or None.
 pub fn decode_zbc_address(text: &str) -> Option<(String, Vec<u8>)> {
-    let norm = text.to_uppercase();
-    let b = norm.as_bytes();
-    if b.len() < 4 || (b[3] != b'_' && b[3] != b'-') {
+    let norm = zbc_significant(text);
+    if norm.len() < 3 || !norm.is_ascii() {
         return None;
     }
     let prefix = &norm[..3];
-    let body: String = norm[4..].chars().filter(|&c| c != '_' && c != '-').collect();
+    let body = &norm[3..];
     if body.len() != 56 {
         return None;
     }
@@ -134,6 +139,19 @@ fn chain_of(name: &str) -> Option<&'static str> {
     })
 }
 
+/// Shape only: PREFIX then a separator, or the bare form: 59 significant characters, ZBC/ZBS prefix, base32 body.
+fn looks_zbc(a: &str) -> bool {
+    let b = a.as_bytes();
+    if a.len() > 4 && (b[3] == b'_' || b[3] == b'-') {
+        return true;
+    }
+    let n = zbc_significant(a);
+    n.len() == 59
+        && n.is_ascii()
+        && (n.starts_with("ZBC") || n.starts_with("ZBS"))
+        && n[3..].bytes().all(|c| b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".contains(&c))
+}
+
 fn zbc_form(a: &str) -> Result<ParsedAddress, String> {
     let (prefix, payload) = decode_zbc_address(a).ok_or("invalid ZooBC address checksum")?;
     let t = if prefix == "ZBS" { DATASET } else { ZOOBC };
@@ -167,7 +185,7 @@ fn parse_auto(a: &str) -> Result<ParsedAddress, String> {
     if a.len() == 42 && (a.starts_with("0x") || a.starts_with("0X")) && is_hex(&a[2..], 40) {
         return Ok(ParsedAddress { account_type: ETHEREUM, payload: hex::decode(&a[2..]).unwrap(), display: a.to_string() });
     }
-    if a.len() > 4 && (b[3] == b'_' || b[3] == b'-') {
+    if looks_zbc(a) {
         return zbc_form(a);
     }
     let low5: String = a.chars().take(5).collect::<String>().to_lowercase();

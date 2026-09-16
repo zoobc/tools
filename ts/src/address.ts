@@ -40,11 +40,17 @@ export function encodeZbcAddress(payload: Uint8Array, prefix = "ZBC"): string {
 }
 
 /** Decode `PREFIX_...` (separators `_`/`-`, any case). Returns the 32-byte payload and the upper-case prefix, or null. */
+/** The 59 significant characters of a ZooBC address: separators (_ -) and whitespace dropped, upper case (addresses.md 2). */
+export function zbcSignificant(text: string): string {
+  return text.replace(/[-_\s]/g, "").toUpperCase();
+}
+
+/** (upper-case prefix, 32-byte payload) of a ZooBC address in any spelling, or null. */
 export function decodeZbcAddress(text: string): { prefix: string; payload: Uint8Array } | null {
-  const norm = text.toUpperCase();
-  if (norm.length < 4 || (norm[3] !== "_" && norm[3] !== "-")) return null;
+  const norm = zbcSignificant(text);
+  if (norm.length < 3) return null;
   const prefix = norm.slice(0, 3);
-  const body = norm.slice(4).replace(/[_-]/g, "");
+  const body = norm.slice(3);
   if (body.length !== 56) return null;
   let raw: Uint8Array;
   try { raw = base32Decode(body); } catch { return null; }
@@ -130,9 +136,16 @@ function parseHinted(a: string, hint: Chain): ParsedAddress {
   return parseAuto(a);   // btc, ada, xrp, trx, xtz: the reference has no forced reading, detection decides
 }
 
+/** Shape only: PREFIX then a separator, or the bare form: 59 significant characters, ZBC/ZBS prefix, base32 body. */
+function looksZbc(a: string): boolean {
+  if (a.length > 4 && (a[3] === "_" || a[3] === "-")) return true;
+  const n = zbcSignificant(a);
+  return n.length === 59 && (n.startsWith("ZBC") || n.startsWith("ZBS")) && /^[A-Z2-7]+$/.test(n.slice(3));
+}
+
 function parseAuto(a: string): ParsedAddress {
   if (a.length === 42 && (a.startsWith("0x") || a.startsWith("0X")) && isHex(a.slice(2), 40)) return typed(AccountType.Ethereum, hexToBytes(a.slice(2)), a);
-  if (a.length > 4 && (a[3] === "_" || a[3] === "-")) return zbcForm(a);
+  if (looksZbc(a)) return zbcForm(a);
   const low5 = a.slice(0, 5).toLowerCase();
   if (low5.startsWith("bc1") || low5.startsWith("tb1") || low5.startsWith("bcrt1")) {
     const d = segwitDecode(a);

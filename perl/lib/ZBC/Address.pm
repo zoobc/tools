@@ -9,7 +9,7 @@ use ZBC::SHA3 ();
 use ZBC::Encoding qw(is_hex from_hex to_hex base32_encode base32_decode base58_decode base58check_decode segwit_decode
                      bech32_decode_plain ss58_decode RIPPLE_ALPHABET);
 
-our @EXPORT_OK = qw(ZOOBC BITCOIN EMPTY ESTONIA_EID ETHEREUM BITCOIN_P2PKH BITCOIN_P2SH BITCOIN_P2WPKH BITCOIN_P2WSH BITCOIN_TAPROOT
+our @EXPORT_OK = qw(zbc_significant ZOOBC BITCOIN EMPTY ESTONIA_EID ETHEREUM BITCOIN_P2PKH BITCOIN_P2SH BITCOIN_P2WPKH BITCOIN_P2WSH BITCOIN_TAPROOT
                     DATASET SOLANA POLKADOT CARDANO RIPPLE TRON TEZOS account_type_name payload_length typed_address
                     encode_zbc_address decode_zbc_address parse_address parse_key32);
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
@@ -42,13 +42,16 @@ sub encode_zbc_address {
     return $prefix . join '', map { '_' . substr($b32, 8 * $_, 8) } 0 .. 6;
 }
 
-# (upper-case prefix, 32-byte payload) of PREFIX_... (separators _ or -, any case), or an empty list.
+# The 59 significant characters of a ZooBC address: separators (_ -) and whitespace dropped, upper case (addresses.md 2).
+sub zbc_significant { my ($text) = @_; (my $n = $text // '') =~ s/[-_\s]//g; return uc $n; }
+
+# (upper-case prefix, 32-byte payload) of a ZooBC address in any spelling, or an empty list.
 sub decode_zbc_address {
     my ($text) = @_;
-    my $norm = uc $text;
-    return () if length($norm) < 4 || substr($norm, 3, 1) !~ /[_-]/;
+    my $norm = zbc_significant($text);
+    return () if length($norm) < 3;
     my $prefix = substr $norm, 0, 3;
-    (my $body = substr $norm, 4) =~ s/[_-]//g;
+    my $body = substr $norm, 3;
     return () if length($body) != 56;
     my $raw = base32_decode($body);
     return () unless defined $raw && length($raw) == 35;
@@ -67,6 +70,14 @@ sub bytes     { ZBC::Address::typed_address($_[0]->{type}, $_[0]->{payload}) }
 sub type_name { ZBC::Address::account_type_name($_[0]->{type}) }
 
 package ZBC::Address;
+
+# Shape only: PREFIX then a separator, or the bare form: 59 significant characters, ZBC/ZBS prefix, base32 body.
+sub _looks_zbc {
+    my ($a) = @_;
+    return 1 if length($a) > 4 && substr($a, 3, 1) =~ /[_-]/;
+    my $n = zbc_significant($a);
+    return (length($n) == 59 && $n =~ /^(?:ZBC|ZBS)[A-Z2-7]{56}$/) ? 1 : 0;
+}
 
 sub _zbc_form {
     my ($a) = @_;
@@ -101,7 +112,7 @@ sub _auto {
     if (length($a) == 42 && substr($a, 0, 2) =~ /^0[xX]$/ && is_hex(substr($a, 2), 40)) {
         return ZBC::Address::Parsed->new(ETHEREUM, from_hex(substr $a, 2), $a);
     }
-    return _zbc_form($a) if length($a) > 4 && substr($a, 3, 1) =~ /[_-]/;
+    return _zbc_form($a) if _looks_zbc($a);
     my $low5 = lc substr $a, 0, 5;
     if ($low5 =~ /^(bc1|tb1|bcrt1)/) {
         my ($hrp, $version, $prog) = segwit_decode($a);

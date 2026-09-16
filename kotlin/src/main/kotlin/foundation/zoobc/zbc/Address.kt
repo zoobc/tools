@@ -44,12 +44,16 @@ object Address {
         return prefix + (0 until 7).joinToString("") { "_" + s.substring(8 * it, 8 * it + 8) }
     }
 
-    /** Pair(upper-case prefix, 32-byte payload) of PREFIX_... (separators _ or -, any case), or null. */
+    /** The 59 significant characters of a ZooBC address: separators (_ -) and whitespace dropped, upper case (addresses.md 2). */
+    @JvmStatic
+    fun significant(text: String): String = text.filter { it != '_' && it != '-' && !it.isWhitespace() }.uppercase()
+
+    /** Pair(upper-case prefix, 32-byte payload) of a ZooBC address in any spelling, or null. */
     fun decode(text: String): Pair<String, ByteArray>? {
-        val norm = text.uppercase()
-        if (norm.length < 4 || (norm[3] != '_' && norm[3] != '-')) return null
+        val norm = significant(text)
+        if (norm.length < 3) return null
         val prefix = norm.substring(0, 3)
-        val body = norm.substring(4).filter { it != '_' && it != '-' }
+        val body = norm.substring(3)
         if (body.length != 56) return null
         val raw = Encoding.base32Decode(body) ?: return null
         if (raw.size != 35) return null
@@ -75,9 +79,18 @@ object Address {
         else -> auto(a)
     }
 
+    private const val B32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+
+    /** Shape only: PREFIX then a separator, or the bare form: 59 significant characters, ZBC/ZBS prefix, base32 body. */
+    private fun looksZbc(a: String): Boolean {
+        if (a.length > 4 && (a[3] == '_' || a[3] == '-')) return true
+        val n = significant(a)
+        return n.length == 59 && (n.startsWith("ZBC") || n.startsWith("ZBS")) && n.substring(3).all { it in B32_ALPHABET }
+    }
+
     private fun auto(a: String): ParsedAddress {
         if (a.length == 42 && (a.startsWith("0x") || a.startsWith("0X")) && isHex(a.substring(2), 40)) return ParsedAddress(AccountType.ETHEREUM, hexToBytes(a.substring(2)), a)
-        if (a.length > 4 && (a[3] == '_' || a[3] == '-')) return zbcForm(a)
+        if (looksZbc(a)) return zbcForm(a)
         val low5 = a.take(5).lowercase()
         if (low5.startsWith("bc1") || low5.startsWith("tb1") || low5.startsWith("bcrt1")) {
             val (_, version, prog) = segwitDecode(a) ?: throw IllegalArgumentException("invalid Bitcoin bech32 address")

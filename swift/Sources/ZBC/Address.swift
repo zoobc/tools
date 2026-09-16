@@ -41,12 +41,19 @@ public enum Address {
         return out
     }
 
-    /// (upper-case prefix, 32-byte payload) of PREFIX_... (separators _ or -, any case), or nil.
+    /// The 59 significant characters of a ZooBC address: separators (_ -) and whitespace dropped, upper case (addresses.md 2).
+    public static func significant(_ text: String) -> [UInt8] {
+        return Array(text.uppercased().utf8).filter { c in
+            !(c == UInt8(ascii: "_") || c == UInt8(ascii: "-") || c == 0x20 || (c >= 0x09 && c <= 0x0d))
+        }
+    }
+
+    /// (upper-case prefix, 32-byte payload) of a ZooBC address in any spelling, or nil.
     public static func decode(_ text: String) -> (String, [UInt8])? {
-        let norm = Array(text.uppercased().utf8)
-        guard norm.count >= 4, norm[3] == UInt8(ascii: "_") || norm[3] == UInt8(ascii: "-") else { return nil }
+        let norm = significant(text)
+        guard norm.count >= 3 else { return nil }
         let prefix = String(decoding: norm[0..<3], as: UTF8.self)
-        let body = norm[4...].filter { $0 != UInt8(ascii: "_") && $0 != UInt8(ascii: "-") }
+        let body = Array(norm[3...])
         guard body.count == 56, let raw = Enc.base32Decode(String(decoding: body, as: UTF8.self)), raw.count == 35 else { return nil }
         let payload = Array(raw[0..<32])
         let check = Array(SHA3.hash256(payload, Array(prefix.utf8))[0..<3])
@@ -58,6 +65,18 @@ public enum Address {
         "trx": "trx", "tron": "trx", "xtz": "xtz", "tezos": "xtz", "zbs": "zbs", "dataset": "zbs"]
 
     public struct Invalid: Error { public let message: String }
+
+    private static let b32Alphabet = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".utf8)
+
+    /// Shape only: PREFIX then a separator, or the bare form: 59 significant characters, ZBC/ZBS prefix, base32 body.
+    private static func looksZbc(_ a: String) -> Bool {
+        let u = Array(a.utf8)
+        if u.count > 4 && (u[3] == UInt8(ascii: "_") || u[3] == UInt8(ascii: "-")) { return true }
+        let n = significant(a)
+        guard n.count == 59 else { return false }
+        let p = String(decoding: n[0..<3], as: UTF8.self)
+        return (p == "ZBC" || p == "ZBS") && n[3...].allSatisfy { b32Alphabet.contains($0) }
+    }
 
     private static func zbcForm(_ a: String) throws -> ParsedAddress {
         guard let d = decode(a) else { throw Invalid(message: "invalid ZooBC address checksum") }
@@ -87,7 +106,7 @@ public enum Address {
         if u.count == 42 && (a.hasPrefix("0x") || a.hasPrefix("0X")) && Enc.isHex(String(a.dropFirst(2)), 40) {
             return ParsedAddress(type: AccountType.ethereum, payload: Enc.unhex(String(a.dropFirst(2)))!, display: a)
         }
-        if u.count > 4 && (u[3] == UInt8(ascii: "_") || u[3] == UInt8(ascii: "-")) { return try zbcForm(a) }
+        if looksZbc(a) { return try zbcForm(a) }
         let low5 = String(a.prefix(5)).lowercased()
         if low5.hasPrefix("bc1") || low5.hasPrefix("tb1") || low5.hasPrefix("bcrt1") {
             guard let sw = Enc.segwitDecode(a) else { throw Invalid(message: "invalid Bitcoin bech32 address") }
