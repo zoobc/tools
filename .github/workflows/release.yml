@@ -132,8 +132,47 @@ jobs:
       - name: Validate zoobc/zbc-tools (Packagist reads the tag from GitHub, nothing to upload)
         run: cd php && php tests/run.php && composer validate --strict
 
+  macos-cli:
+    # A Mac cannot run the Linux arm64 build: that is an ELF, macOS needs Mach-O. So the release
+    # carries a native one. ZBC_STATIC links libsodium, OpenSSL and secp256k1 into the binary, and
+    # the step below refuses to ship it if anything outside /usr/lib and /System is still linked,
+    # because "download one file and run it" is the whole point of the asset.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencies
+        run: brew install libsodium openssl@3 secp256k1 ninja
+      - name: Build zbc-cli, self-contained
+        run: |
+          cmake -S cpp -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DZBC_STATIC=ON \
+                -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
+          cmake --build build --target zbc-cli
+      - name: It must depend on nothing but the system
+        run: |
+          otool -L build/zbc-cli
+          if otool -L build/zbc-cli | tail -n +2 | grep -vE '^\s+(/usr/lib/|/System/)'; then
+            echo "::error::the binary still links something outside the system; it would not run on a clean Mac"
+            exit 1
+          fi
+      - name: It must reproduce the reference vectors
+        run: |
+          build/zbc-cli list | head -1
+          V=$(python3 -c "import json;d=json.load(open('spec/vectors/transactions.json'))['vectors'][0];print(d['key'],d['params']['recipient'],d['params']['amount'],d['fee'],d['timestamp'],d['genesis'],d['expected']['transaction_hash'])")
+          set -- $V
+          GOT=$(build/zbc-cli send-zbc "$1" "$2" "$3" --fee "$4" --timestamp "$5" --genesis "$6" --offline | python3 -c "import json,sys;print(json.load(sys.stdin)['transaction_hash'])")
+          echo "built $GOT"; echo "vector $7"
+          [ "$GOT" = "$7" ] || { echo "::error::the macOS build does not reproduce the reference transaction"; exit 1; }
+      - name: Name it for what it is
+        run: |
+          mkdir -p out && cp build/zbc-cli "out/zbc-cli-macos-$(uname -m)"
+          shasum -a 256 out/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-cli
+          path: out/*
+
   github-release:
-    needs: [npm, pypi, crates, maven, cpan, composer]
+    needs: [npm, pypi, crates, maven, cpan, composer, macos-cli]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:

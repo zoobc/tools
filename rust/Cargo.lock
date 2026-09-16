@@ -222,7 +222,7 @@ dependencies = [
 
 [[package]]
 name = "gen"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde_json",
 ]
@@ -946,7 +946,7 @@ dependencies = [
 
 [[package]]
 name = "zbc"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "blake2",
  "crypto_secretbox",
@@ -966,7 +966,7 @@ dependencies = [
 
 [[package]]
 name = "zbc-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "zbc",
 ]

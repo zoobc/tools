@@ -1,6 +1,6 @@
 {
   "name": "@zoobc/tools",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "ZooBC keys, addresses, transaction signing and the zbc-cli command line, for Node and the browser, no runtime dependencies",
   "license": "MIT",
   "author": "ZooBC Foundation and Roberto Capodieci",

@@ -17,5 +17,5 @@ from .transaction import (APPROVAL_ESCROW, APPROVE, EXPIRE, REJECT, SEND_ZBC, Es
                           transaction_id, unsigned_bytes)
 from ._commands import COMMANDS, COMMAND_BY_NAME
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = [n for n in dir() if not n.startswith("_")]

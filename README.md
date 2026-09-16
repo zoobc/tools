@@ -54,7 +54,8 @@ From the registries, once a release is published (see `docs/PUBLISHING.md`): `np
 `pip install zbc-tools`, `cargo add zbc` / `cargo install zbc-cli`, `foundation.zoobc:zbc` from Maven
 Central, `cpanm ZBC`, `composer require zoobc/zbc-tools`. Without a registry: `go get
 github.com/zoobc/tools/go@v0.1.0`, `.package(url: "https://github.com/zoobc/tools.git", from: "0.1.0")`
-in a Package.swift, the packages attached to each GitHub release, or a checkout of this repository
+in a Package.swift, or the packages attached to each GitHub release, which include a self-contained
+`zbc-cli-macos-arm64` that needs only `chmod +x`. Or a checkout of this repository
 (every port's README says how to build and run from it).
 
 ## Command-line contract

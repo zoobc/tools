@@ -33,7 +33,7 @@ Every port is a package in its language's registry. One version tag releases the
 | PHP | Packagist, `zoobc/zbc-tools` | none | a Packagist account; submit `https://github.com/zoobc/tools` once; Packagist then reads every tag itself (the GitHub hook is set on submission) |
 | Go | the module `github.com/zoobc/tools/go` | none | none: `go get github.com/zoobc/tools/go@v0.1.0` after the `go/v0.1.0` tag |
 | Swift | the package at the repository root | none | none: `.package(url: "https://github.com/zoobc/tools.git", from: "0.1.0")` |
-| C++ | the sources, attached to the GitHub release | none | none |
+| C++ | the sources, and a self-contained `zbc-cli-macos-arm64` built on an Apple Silicon runner, both attached to the GitHub release | none | none |
 
 Package names were checked free on every registry on 2026-09-16.
 
