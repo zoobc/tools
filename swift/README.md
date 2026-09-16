@@ -38,8 +38,9 @@ printf '%s' '{"recipient":"ZBC_...","amount":100000000}' | ZBC_KEY=<64 hex> .bui
 The contract every command follows is [`../spec/cli-contract.md`](../spec/cli-contract.md). All
 58 transaction types of `../spec/transactions` are subcommands; `swift run gen` embeds the spec
 into `Sources/ZBC/CommandsGen.swift`, so a new type in the spec is a regeneration, not new code.
-The seven types the spec marks custom are in `Custom.swift`. Not available yet in this port:
-`--encrypt`.
+The seven types the spec marks custom are in `Custom.swift`. `--encrypt` seals `--message` to a ZBC recipient exactly as the C++ tools do (`../spec/signing.md` 8: X25519 from
+CryptoKit / swift-crypto, HSalsa20, XSalsa20 and Poly1305 in `Encryption.swift`) and `zbc-cli decrypt-message <recipient key>
+<message_hex>` opens a sealed field; in the library, `Encryption.seal` and `Encryption.openSealed`.
 
 ## Use the library
 

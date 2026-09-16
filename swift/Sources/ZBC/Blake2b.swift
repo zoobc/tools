@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
 
-/// BLAKE2b-512 (RFC 7693), unkeyed; used for the SS58 checksum only.
+/// BLAKE2b (RFC 7693), unkeyed, with a chosen output length: 64 for the SS58 checksum, 24 for the nonce of a sealed message.
 public enum Blake2b {
     private static let iv: [UInt64] = [0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
                                        0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179]
@@ -15,9 +15,12 @@ public enum Blake2b {
     ]
     @inline(__always) private static func rotr(_ x: UInt64, _ n: UInt64) -> UInt64 { (x >> n) | (x << (64 - n)) }
 
-    public static func hash512(_ msg: [UInt8]) -> [UInt8] {
+    public static func hash512(_ msg: [UInt8]) -> [UInt8] { hash(msg, outLen: 64) }
+
+    /// BLAKE2b with an output of `outLen` bytes (1...64).
+    public static func hash(_ msg: [UInt8], outLen: Int) -> [UInt8] {
         var h = iv
-        h[0] ^= 0x01010000 ^ 64
+        h[0] ^= 0x01010000 ^ UInt64(outLen)
         var padded = msg
         let padLen = max(128, (msg.count + 127) / 128 * 128)
         padded.append(contentsOf: [UInt8](repeating: 0, count: padLen - msg.count))
@@ -46,6 +49,6 @@ public enum Blake2b {
         }
         var out: [UInt8] = []
         for i in 0..<8 { var x = h[i]; for _ in 0..<8 { out.append(UInt8(x & 0xff)); x >>= 8 } }
-        return out
+        return Array(out.prefix(outLen))
     }
 }

@@ -29,7 +29,7 @@ public enum Cli {
         case "register-node", "update-node", "remove-node", "claim-node", "governance-vote": return "node"
         case "register-gateway", "unregister-gateway", "gateway-heartbeat", "archival-register", "archival-unregister", "relay-register", "relay-unregister": return "gateway"
         case "register-release", "revoke-release", "release-authority-propose", "release-authority-accept": return "governance"
-        case "sign-message", "verify-message": return "keys"
+        case "sign-message", "verify-message", "decrypt-message": return "keys"
         default: return "other"
         }
     }
@@ -42,6 +42,9 @@ public enum Cli {
             ParamDef(name: "address", kind: "string", required: true, help: "signer's ZBC_ address (or 64-hex public key)", default: nil, min: nil, max: nil),
             ParamDef(name: "message", kind: "string", required: true, help: "the signed text (hex bytes with --hex)", default: nil, min: nil, max: nil),
             ParamDef(name: "signature", kind: "string", required: true, help: "64-byte Ed25519 signature, 128 hex", default: nil, min: nil, max: nil)]),
+        ("decrypt-message", "Decrypt a transaction message sealed with --encrypt, with the recipient's private key (off-chain)", [
+            ParamDef(name: "sender_privkey", kind: "privkey", required: true, help: "the recipient's private key (64 hex); '-' or omitted = ZBC_KEY", default: nil, min: nil, max: nil),
+            ParamDef(name: "message_hex", kind: "string", required: true, help: "the transaction's message field as hex: ZBE1 then the sealed box", default: nil, min: nil, max: nil)]),
     ]
 
     static func commandOf(_ cmd: String) -> (String, [ParamDef], UInt32)? {
@@ -283,6 +286,19 @@ public enum Cli {
         return code
     }
 
+    static func runDecryptMessage(_ v: [String: String], _ o: Options, _ io: Io) throws -> Int {
+        guard let kp = try? KeyPair(hex: v["sender_privkey"]!) else { throw ToolError.usage("Private key must be 64 hex characters (32 bytes)") }
+        guard Enc.isHex(v["message_hex"]!), let field = Enc.unhex(v["message_hex"]!) else { throw ToolError.usage("message_hex must be hex") }
+        guard Encryption.isSealed(field) else { throw ToolError.usage("message is not encrypted (no ZBE1 prefix)") }
+        guard let plaintext = Encryption.openSealed(field, recipientSeed: kp.seed) else {
+            throw ToolError(ExitCode.verifyFailed, "decryption failed: the key does not open this message, or it is corrupted")
+        }
+        let text = String(decoding: plaintext, as: UTF8.self)
+        if o.verbose { io.stdout(text + "\n"); return 0 }
+        out(io, [("success", true), ("recipient", kp.address), ("message", text), ("message_hex", Enc.hex(plaintext))])
+        return 0
+    }
+
     static func signingContext(_ o: Options, _ client: Client, _ io: Io) throws -> SigningContext {
         let g = o.genesis.isEmpty ? (io.env("ZOOBC_GENESIS_HASH") ?? "") : o.genesis
         if !g.isEmpty { do { return try SigningContext.of(g) } catch let e as Address.Invalid { throw ToolError.usage(e.message) } }
@@ -297,7 +313,6 @@ public enum Cli {
     static func runTransaction(_ def: TxDef, _ vIn: [String: String], _ o: Options, _ io: Io) throws -> Int {
         var v = vIn
         for p in def.params { let cur = v[p.name] ?? ""; if !cur.isEmpty || p.required { v[p.name] = try Body.validateParam(p, cur) } }
-        if o.encrypt { throw ToolError.usage("--encrypt is not available in this implementation yet; send the message in clear or use the C++ tools") }
         let sender: KeyPair
         do { sender = try KeyPair(hex: v[def.sender_key] ?? "") } catch let e as Address.Invalid { throw ToolError.usage(e.message) }
         let client = Client(api: o.api, timeoutSeconds: o.timeout)
@@ -336,7 +351,13 @@ public enum Cli {
         }
         extra.append(("sender", sender.address))
         let signed: SignedTransaction
-        do { signed = try Transaction.sign(type: def.type, timestamp: timestamp, sender: sender, recipient: recipient, fee: o.fee, body: body, ctx: ctx, escrow: o.escrow, message: Array((o.message ?? "").utf8)) }
+        var message = Array((o.message ?? "").utf8)
+        if o.encrypt && !message.isEmpty {   // --encrypt: seal the message to the recipient's key (signing.md 8)
+            if recipient.count != 36 { throw ToolError.usage("--encrypt is only supported for ZBC recipients") }
+            guard let sealed = Encryption.seal(message, recipientPublicKey: Array(recipient[4..<36])) else { throw ToolError.internalError("sealing failed") }
+            message = sealed
+        }
+        do { signed = try Transaction.sign(type: def.type, timestamp: timestamp, sender: sender, recipient: recipient, fee: o.fee, body: body, ctx: ctx, escrow: o.escrow, message: message) }
         catch let e as Address.Invalid { throw ToolError.usage("Invalid escrow approver: \(e.message)") }
         let payload = signed.payloadDictionary
         let fields: [(String, Any)] = [("transaction_hash", Enc.hex(signed.hash)), ("transaction_type", Int(def.type)), ("sender_account_address", payload["sender_account_address"]!),
@@ -397,6 +418,7 @@ public enum Cli {
             switch cmd {
             case "sign-message": return try runSignMessage(values, o, io)
             case "verify-message": return try runVerifyMessage(values, o, io)
+            case "decrypt-message": return try runDecryptMessage(values, o, io)
             default: return try runTransaction(Spec.command(cmd)!, values, o, io)
             }
         } catch let e as ToolError { return emitError(io, e, verbose: verbose) }

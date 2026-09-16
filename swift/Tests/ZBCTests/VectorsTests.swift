@@ -174,4 +174,54 @@ final class VectorsTests: XCTestCase {
         let (code, out, _) = cli(["send-zbc", s(v, "key"), p["recipient"]!, "1", "--api", "http://127.0.0.1:9", "--genesis", "v1", "--timeout", "2"])
         XCTAssertEqual(code, 3, out); XCTAssertEqual(json(out)["error_class"] as? String, "node_unreachable")
     }
+
+    func testEncryption() throws {
+        let d = try load("encryption.json")
+        for k in d["keys"] as! [[String: Any]] {
+            XCTAssertEqual(Enc.hex(Encryption.ed25519PublicKeyToX25519(Enc.unhex(s(k, "public_key"))!)!), s(k, "x25519_public_key"))
+            XCTAssertEqual(Enc.hex(Encryption.ed25519SeedToX25519(Enc.unhex(s(k, "seed"))!)), s(k, "x25519_secret_key"))
+            XCTAssertEqual(Enc.hex(Encryption.x25519Base(Enc.unhex(s(k, "x25519_secret_key"))!)!), s(k, "x25519_public_key"))
+        }
+        for v in d["sealed"] as! [[String: Any]] {
+            let f = Encryption.seal(Enc.unhex(s(v, "plaintext_hex"))!, recipientPublicKey: Enc.unhex(s(v, "recipient_public_key"))!, ephemeralSecretKey: Enc.unhex(s(v, "ephemeral_secret_key"))!)!
+            XCTAssertEqual(Enc.hex(f), s(v, "message_field"), s(v, "name"))
+            XCTAssertEqual(Enc.hex(Encryption.openSealed(f, recipientSeed: Enc.unhex(s(v, "recipient_seed"))!)!), s(v, "plaintext_hex"), s(v, "name"))
+        }
+        for v in d["samples"] as! [[String: Any]] {
+            XCTAssertEqual(Enc.hex(Encryption.openSealed(Enc.unhex(s(v, "message_field"))!, recipientSeed: Enc.unhex(s(v, "recipient_seed"))!)!), s(v, "plaintext_hex"), s(v, "name"))
+        }
+        for v in d["invalid"] as! [[String: Any]] {
+            if let f = Enc.unhex(s(v, "message_field")) { XCTAssertNil(Encryption.openSealed(f, recipientSeed: Enc.unhex(s(v, "recipient_seed"))!), s(v, "case")) }
+        }
+        let kp = try KeyPair(hex: s((d["keys"] as! [[String: Any]])[0], "seed"))
+        let f = Encryption.seal(Array("round trip".utf8), recipientPublicKey: kp.publicKey)!
+        XCTAssertEqual(f.count, 10 + Encryption.sealedOverhead)
+        XCTAssertEqual(Encryption.openSealed(f, recipientSeed: kp.seed), Array("round trip".utf8))
+    }
+
+    func testCliEncryptAndDecrypt() throws {
+        let d = try load("encryption.json")
+        let seed = s((d["keys"] as! [[String: Any]])[0], "seed")
+        let smp = (d["samples"] as! [[String: Any]])[0]
+        let (rc, out, err) = cli(["send-zbc", seed, s(smp, "recipient_address"), "1", "--message", s(smp, "plaintext"), "--encrypt", "--genesis", "v1", "--offline"])
+        XCTAssertEqual(rc, 0, out + err)
+        let j = json(out)
+        XCTAssertEqual(s(j, "message"), s(smp, "plaintext"))
+        let field = s(j["payload"] as! [String: Any], "message_hex")
+        XCTAssertTrue(field.hasPrefix("5a424531") && field.utf8.count == 2 * (s(smp, "plaintext").utf8.count + 52))
+        let (rc2, out2, err2) = cli(["decrypt-message", s(smp, "recipient_seed"), field])
+        XCTAssertEqual(rc2, 0, out2 + err2)
+        XCTAssertEqual(s(json(out2), "message"), s(smp, "plaintext"))
+        for v in d["samples"] as! [[String: Any]] {
+            let (c, o, _) = cli(["decrypt-message", s(v, "recipient_seed"), s(v, "message_field")])
+            XCTAssertEqual(c, 0, s(v, "name")); XCTAssertEqual(s(json(o), "message_hex"), s(v, "plaintext_hex"), s(v, "name"))
+        }
+        for v in d["invalid"] as! [[String: Any]] {
+            let (c, o, _) = cli(["decrypt-message", s(v, "recipient_seed"), s(v, "message_field")])
+            XCTAssertEqual(Int64(c), i64(v["exit_code"]), s(v, "case") + ": " + o)
+            XCTAssertEqual(s(json(o), "error_class"), s(v, "error_class"), s(v, "case"))
+        }
+        let (c3, _, _) = cli(["send-zbc", seed, "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", "1", "--message", "x", "--encrypt", "--genesis", "v1", "--offline"])
+        XCTAssertEqual(c3, 2)
+    }
 }
