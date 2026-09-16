@@ -14,7 +14,9 @@ import { signTransaction, signingContext, sendZbcBody, approvalEscrowBody, trans
 import { buildBody, BodyContext } from "../body.js";
 import { computeFields, customBody } from "../custom.js";
 import { COMMAND_BY_NAME } from "../generated/commands.js";
-import { bytesToHex, hexToBytes, utf8 } from "../util/bytes.js";
+import { bytesToHex, fromUtf8, hexToBytes, utf8 } from "../util/bytes.js";
+import { ed25519PublicKeyToX25519, ed25519SeedToX25519, x25519Base } from "../crypto/x25519.js";
+import { openSealed, seal } from "../encryption.js";
 import { parseJson, stringifyJson } from "../util/json.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -183,4 +185,48 @@ test("decodeZbcAddress accepts dashes and lower case, rejects a bad checksum", (
   const a = "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I";
   assert.ok(decodeZbcAddress(a.toLowerCase().replace(/_/g, "-")));
   assert.equal(decodeZbcAddress(a.slice(0, -1) + "J"), null);
+});
+
+test("encryption.json: Ed25519 -> X25519 conversions, sealed boxes byte for byte, the C++ tool's fields open, invalid cases fail", () => {
+  const d = load("encryption.json");
+  for (const k of d.keys) {
+    assert.equal(bytesToHex(ed25519PublicKeyToX25519(hexToBytes(k.public_key))), k.x25519_public_key);
+    assert.equal(bytesToHex(ed25519SeedToX25519(hexToBytes(k.seed))), k.x25519_secret_key);
+    assert.equal(bytesToHex(x25519Base(hexToBytes(k.x25519_secret_key))), k.x25519_public_key);
+  }
+  for (const s of d.sealed) {
+    const f = seal(hexToBytes(s.plaintext_hex), hexToBytes(s.recipient_public_key), hexToBytes(s.ephemeral_secret_key));
+    assert.equal(bytesToHex(f), s.message_field, s.name);
+    assert.equal(bytesToHex(openSealed(f, hexToBytes(s.recipient_seed))!), s.plaintext_hex, s.name);
+  }
+  for (const s of d.samples) assert.equal(bytesToHex(openSealed(hexToBytes(s.message_field), hexToBytes(s.recipient_seed))!), s.plaintext_hex, s.name);
+  for (const i of d.invalid) if (/^[0-9a-f]*$/.test(i.message_field)) assert.equal(openSealed(hexToBytes(i.message_field), hexToBytes(i.recipient_seed)), null, i.case);
+  const kp = keyPairFromSeed(d.keys[0].seed);
+  const random = seal(utf8("round trip"), kp.publicKey);
+  assert.equal(random.length, 10 + 52);
+  assert.equal(fromUtf8(openSealed(random, kp.seed)!), "round trip");
+});
+
+test("zbc-cli --encrypt seals the message and decrypt-message opens it; invalid cases exit as the reference does", () => {
+  const d = load("encryption.json");
+  const s = d.samples[0];
+  const r = spawnSync(process.execPath, [CLI, "send-zbc", d.keys[0].seed, s.recipient_address, "1", "--message", s.plaintext, "--encrypt", "--genesis", "v1", "--offline"], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const j = parseJson(r.stdout) as any;
+  assert.equal(j.message, s.plaintext);
+  const field: string = j.payload.message_hex;
+  assert.ok(field.startsWith("5a424531") && field.length === 2 * (utf8(s.plaintext).length + 52));
+  const dm = spawnSync(process.execPath, [CLI, "decrypt-message", s.recipient_seed, field], { encoding: "utf8" });
+  assert.equal(dm.status, 0, dm.stdout + dm.stderr);
+  assert.equal((parseJson(dm.stdout) as any).message, s.plaintext);
+  for (const smp of d.samples) {
+    const o = spawnSync(process.execPath, [CLI, "decrypt-message", smp.recipient_seed, smp.message_field], { encoding: "utf8" });
+    assert.equal(o.status, 0, smp.name); assert.equal((parseJson(o.stdout) as any).message_hex, smp.plaintext_hex, smp.name);
+  }
+  for (const i of d.invalid) {
+    const o = spawnSync(process.execPath, [CLI, "decrypt-message", i.recipient_seed, i.message_field], { encoding: "utf8" });
+    assert.equal(o.status, i.exit_code, i.case); assert.equal((parseJson(o.stdout) as any).error_class, i.error_class, i.case);
+  }
+  const bad = spawnSync(process.execPath, [CLI, "send-zbc", d.keys[0].seed, "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", "1", "--message", "x", "--encrypt", "--genesis", "v1", "--offline"], { encoding: "utf8" });
+  assert.equal(bad.status, 2);
 });

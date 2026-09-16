@@ -23,4 +23,6 @@ for (const v of load("transactions.json").vectors) {
   assert.equal(ZBC.bytesToHex(tx.hash), v.expected.transaction_hash, v.name); n++;
 }
 assert.ok(typeof ZBC.Client === "function" && ZBC.COMMANDS.length >= 58);
+for (const s of load("encryption.json").sealed) { const f = ZBC.seal(ZBC.hexToBytes(s.plaintext_hex), ZBC.hexToBytes(s.recipient_public_key), ZBC.hexToBytes(s.ephemeral_secret_key)); assert.equal(ZBC.bytesToHex(f), s.message_field); assert.equal(ZBC.bytesToHex(ZBC.openSealed(f, ZBC.hexToBytes(s.recipient_seed))), s.plaintext_hex); n++; }
+for (const s of load("encryption.json").samples) { assert.equal(ZBC.bytesToHex(ZBC.openSealed(ZBC.hexToBytes(s.message_field), ZBC.hexToBytes(s.recipient_seed))), s.plaintext_hex); n++; }
 console.log(`js/zbc.js: ${n} vector checks passed`);

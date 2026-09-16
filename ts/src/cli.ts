@@ -13,7 +13,8 @@ import { keyPairFromSeed, KeyPair } from "./keys.js";
 import { MESSAGE_SIGNING_SCHEME, messageDigest, publicKeyOfAddress, signMessage, verifyMessage } from "./message.js";
 import { COMMANDS, COMMAND_BY_NAME } from "./generated/commands.js";
 import { EscrowTerms, SigningContext, signingContext, signTransaction, transactionId, UnsignedTransaction } from "./transaction.js";
-import { bytesToHex, hexToBytes, isHex, utf8 } from "./util/bytes.js";
+import { bytesToHex, fromUtf8, hexToBytes, isHex, utf8 } from "./util/bytes.js";
+import { isSealed, openSealed, seal } from "./encryption.js";
 import { stringifyJson } from "./util/json.js";
 import { ParamDef, TxDef } from "./spec.js";
 
@@ -34,7 +35,7 @@ const CATEGORY: Record<string, string> = {
   "register-gateway": "gateway", "unregister-gateway": "gateway", "gateway-heartbeat": "gateway", "archival-register": "gateway",
   "archival-unregister": "gateway", "relay-register": "gateway", "relay-unregister": "gateway",
   "register-release": "governance", "revoke-release": "governance", "release-authority-propose": "governance", "release-authority-accept": "governance",
-  "sign-message": "keys", "verify-message": "keys",
+  "sign-message": "keys", "verify-message": "keys", "decrypt-message": "keys",
 };
 const MESSAGE_COMMANDS: Record<string, { desc: string; params: ParamDef[] }> = {
   "sign-message": { desc: "Sign a message with a private key (ZBC-MSG-v1, off-chain, no node needed)", params: [
@@ -44,6 +45,9 @@ const MESSAGE_COMMANDS: Record<string, { desc: string; params: ParamDef[] }> = {
     { name: "address", kind: "string", required: true, help: "signer's ZBC_ address (or 64-hex public key)" },
     { name: "message", kind: "string", required: true, help: "the signed text (hex bytes with --hex)" },
     { name: "signature", kind: "string", required: true, help: "64-byte Ed25519 signature, 128 hex" }] },
+  "decrypt-message": { desc: "Decrypt a transaction message sealed with --encrypt, with the recipient's private key (off-chain)", params: [
+    { name: "sender_privkey", kind: "privkey", required: true, help: "the recipient's private key (64 hex); '-' or omitted = ZBC_KEY" },
+    { name: "message_hex", kind: "string", required: true, help: "the transaction's message field as hex: ZBE1 then the sealed box" }] },
 };
 
 // ---- output ----------------------------------------------------------------------------------------
@@ -291,6 +295,19 @@ function runVerifyMessage(v: Record<string, string>, o: Options): number {
   return code;
 }
 
+function runDecryptMessage(v: Record<string, string>, o: Options): number {
+  if (!isHex(v.sender_privkey, 64)) throw usage("Private key must be 64 hex characters (32 bytes)");
+  if (!isHex(v.message_hex)) throw usage("message_hex must be hex");
+  const field = hexToBytes(v.message_hex);
+  if (!isSealed(field)) throw usage("message is not encrypted (no ZBE1 prefix)");
+  const plaintext = openSealed(field, hexToBytes(v.sender_privkey));
+  if (plaintext === null) throw new ToolError(ExitCode.verify_failed, "decryption failed: the key does not open this message, or it is corrupted");
+  const recipient = keyPairFromSeed(v.sender_privkey).address;
+  if (o.verbose) process.stdout.write(fromUtf8(plaintext) + "\n");
+  else jsonOut({ success: true, recipient, message: fromUtf8(plaintext), message_hex: bytesToHex(plaintext) });
+  return 0;
+}
+
 // ---- transactions ----------------------------------------------------------------------------------
 async function resolveSigningContext(o: Options, client: Client): Promise<SigningContext> {
   const g = o.genesis || process.env.ZOOBC_GENESIS_HASH || "";
@@ -304,7 +321,6 @@ async function resolveSigningContext(o: Options, client: Client): Promise<Signin
 
 async function runTransaction(def: TxDef, v: Record<string, string>, o: Options): Promise<number> {
   for (const p of def.params) if (v[p.name] !== "" || p.required) v[p.name] = validateParam(p, v[p.name]);
-  if (o.encrypt) throw usage("--encrypt is not available in this implementation yet; send the message in clear or use the C++ tools");
   const sender: KeyPair = keyPairFromSeed(v[def.sender_key]);
   const client = new Client({ api: o.api, timeoutSeconds: o.timeout });
   const ctx = await resolveSigningContext(o, client);
@@ -337,8 +353,13 @@ async function runTransaction(def: TxDef, v: Record<string, string>, o: Options)
     extra.escrowed_transaction_hash = v.transaction_hash; extra.transaction_id = transactionId(hexToBytes(v.transaction_hash)); delete extra.transaction_hash;
   }
   extra.sender = sender.address;
+  let messageBytes = o.message ? utf8(o.message) : undefined;
+  if (o.encrypt && messageBytes && messageBytes.length) {   // --encrypt: seal the message to the recipient's key (signing.md 8)
+    if (recipient.length !== 36) throw usage("--encrypt is only supported for ZBC recipients");
+    messageBytes = seal(messageBytes, recipient.subarray(4));
+  }
   const tx: UnsignedTransaction = { type: def.type, timestamp, sender: sender.accountBytes, recipient, fee: o.fee, body,
-                                    escrow: o.escrow.set ? (o.escrow as EscrowTerms) : null, message: o.message ? utf8(o.message) : undefined };
+                                    escrow: o.escrow.set ? (o.escrow as EscrowTerms) : null, message: messageBytes };
   let signed;
   try { signed = signTransaction(tx, sender, ctx); } catch (e) { throw usage("Invalid escrow approver: " + (e as Error).message); }
   const fields = { transaction_hash: bytesToHex(signed.hash), transaction_type: def.type, sender_account_address: signed.payload.sender_account_address,
@@ -391,6 +412,7 @@ export async function main(argv: string[]): Promise<number> {
     verbose = o.verbose;
     if (cmd === "sign-message") return runSignMessage(values, o);
     if (cmd === "verify-message") return runVerifyMessage(values, o);
+    if (cmd === "decrypt-message") return runDecryptMessage(values, o);
     return await runTransaction(COMMAND_BY_NAME.get(cmd)!, values, o);
   } catch (e) {
     if (e instanceof ToolError) return emitError(e, verbose);

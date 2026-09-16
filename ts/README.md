@@ -36,7 +36,10 @@ type in the spec is a regeneration, not new code. The seven types the spec marks
 ownership, multisig, settle-app vouchers, fee-vote and heartbeat signatures, store-file piece
 count) are in `src/custom.ts`.
 
-Not available yet in this port: `--encrypt` (sealed messages; use the C++ tools).
+`--encrypt` seals `--message` to a ZBC recipient exactly as the C++ tools do (`../spec/signing.md` 8:
+X25519, HSalsa20, XSalsa20 and Poly1305 are in `src/crypto`, no dependency), and `zbc-cli decrypt-message
+<recipient key> <message_hex>` opens a sealed field. In the library: `seal(plaintext, recipientPublicKey)` and
+`openSealed(field, recipientSeed)`.
 
 ## Use the library
 

@@ -20,7 +20,7 @@ var ZBC = (() => {
     }
     return to;
   };
-  var __toCommonJS = (mod2) => __copyProps(__defProp({}, "__esModule", { value: true }), mod2);
+  var __toCommonJS = (mod3) => __copyProps(__defProp({}, "__esModule", { value: true }), mod3);
   var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
   // src/index.ts
@@ -36,6 +36,8 @@ var ZBC = (() => {
     EscrowApproval: () => EscrowApproval,
     ExitCode: () => ExitCode,
     MESSAGE_SIGNING_SCHEME: () => MESSAGE_SIGNING_SCHEME,
+    SEALED_MAGIC: () => SEALED_MAGIC,
+    SEALED_OVERHEAD: () => SEALED_OVERHEAD,
     TX_SIGNING_TAG: () => TX_SIGNING_TAG,
     ToolError: () => ToolError,
     TransactionType: () => TransactionType,
@@ -57,6 +59,8 @@ var ZBC = (() => {
     concat: () => concat,
     customBody: () => customBody,
     decodeZbcAddress: () => decodeZbcAddress,
+    ed25519PublicKeyToX25519: () => ed25519PublicKeyToX25519,
+    ed25519SeedToX25519: () => ed25519SeedToX25519,
     ed25519Sign: () => sign,
     ed25519Verify: () => verify,
     encodeField: () => encodeField,
@@ -67,24 +71,31 @@ var ZBC = (() => {
     generateMnemonic: () => generateMnemonic,
     hexToBytes: () => hexToBytes,
     hmacSha512: () => hmacSha512,
+    hsalsa20: () => hsalsa20,
     isHex: () => isHex,
+    isSealed: () => isSealed,
     isZbcAddress: () => isZbcAddress,
     keyPairFromSeed: () => keyPairFromSeed,
     messageDigest: () => messageDigest,
     mnemonicFromEntropy: () => mnemonicFromEntropy,
     mnemonicToSeed: () => mnemonicToSeed,
     multisigAddress: () => multisigAddress,
+    openSealed: () => openSealed,
     parseAddress: () => parseAddress,
     parseInteger: () => parseInteger,
     parseJson: () => parseJson,
     parseKey32: () => parseKey32,
     payloadLength: () => payloadLength,
     pbkdf2Sha512: () => pbkdf2Sha512,
+    poly1305: () => poly1305,
     proofOfOwnership: () => proofOfOwnership,
     publicKeyFromSeed: () => publicKeyFromSeed,
     publicKeyHex: () => publicKeyHex,
     publicKeyOfAddress: () => publicKeyOfAddress,
     randomSeed: () => randomSeed,
+    seal: () => seal,
+    secretbox: () => secretbox,
+    secretboxOpen: () => secretboxOpen,
     seedFromHex: () => seedFromHex,
     seedHex: () => seedHex,
     segwitDecode: () => segwitDecode,
@@ -110,6 +121,9 @@ var ZBC = (() => {
     validateParam: () => validateParam,
     verifyMessage: () => verifyMessage,
     walletAccount: () => walletAccount,
+    x25519: () => x25519,
+    x25519Base: () => x25519Base,
+    xsalsa20Stream: () => xsalsa20Stream,
     zbcSignificant: () => zbcSignificant
   });
 
@@ -3903,6 +3917,214 @@ var ZBC = (() => {
     const w = new ByteWriter().i64(appId).u32(cells.length).u32(cells.length);
     for (const e of entries) w.bytes(e);
     return { body: w.finish(), extra: { app_id: Number(appId), opening_turn: turn, final_seq: cells.length } };
+  }
+
+  // src/crypto/salsa.ts
+  var SIGMA2 = new Uint32Array([1634760805, 857760878, 2036477234, 1797285236]);
+  var ROUNDS = [[0, 4, 8, 12], [5, 9, 13, 1], [10, 14, 2, 6], [15, 3, 7, 11], [0, 1, 2, 3], [5, 6, 7, 4], [10, 11, 8, 9], [15, 12, 13, 14]];
+  function u32le(b, off) {
+    return (b[off] | b[off + 1] << 8 | b[off + 2] << 16 | b[off + 3] << 24) >>> 0;
+  }
+  function putU32le(out, off, v) {
+    out[off] = v & 255;
+    out[off + 1] = v >>> 8 & 255;
+    out[off + 2] = v >>> 16 & 255;
+    out[off + 3] = v >>> 24 & 255;
+  }
+  function rotl2(v, c) {
+    return (v << c | v >>> 32 - c) >>> 0;
+  }
+  function salsaRounds(x) {
+    for (let i = 0; i < 10; i++) for (const [a, b, c, d] of ROUNDS) {
+      x[b] ^= rotl2(x[a] + x[d] >>> 0, 7);
+      x[c] ^= rotl2(x[b] + x[a] >>> 0, 9);
+      x[d] ^= rotl2(x[c] + x[b] >>> 0, 13);
+      x[a] ^= rotl2(x[d] + x[c] >>> 0, 18);
+    }
+  }
+  function hsalsa20(key, input) {
+    const x = new Uint32Array(16);
+    x[0] = SIGMA2[0];
+    x[5] = SIGMA2[1];
+    x[10] = SIGMA2[2];
+    x[15] = SIGMA2[3];
+    for (let i = 0; i < 4; i++) {
+      x[1 + i] = u32le(key, 4 * i);
+      x[11 + i] = u32le(key, 16 + 4 * i);
+      x[6 + i] = u32le(input, 4 * i);
+    }
+    salsaRounds(x);
+    const out = new Uint8Array(32);
+    [0, 5, 10, 15, 6, 7, 8, 9].forEach((w, i) => putU32le(out, 4 * i, x[w]));
+    return out;
+  }
+  function salsa20Block(key, nonce8, counter) {
+    const x0 = new Uint32Array(16);
+    x0[0] = SIGMA2[0];
+    x0[5] = SIGMA2[1];
+    x0[10] = SIGMA2[2];
+    x0[15] = SIGMA2[3];
+    for (let i = 0; i < 4; i++) {
+      x0[1 + i] = u32le(key, 4 * i);
+      x0[11 + i] = u32le(key, 16 + 4 * i);
+    }
+    x0[6] = u32le(nonce8, 0);
+    x0[7] = u32le(nonce8, 4);
+    x0[8] = counter >>> 0;
+    x0[9] = Math.floor(counter / 4294967296) >>> 0;
+    const x = new Uint32Array(x0);
+    salsaRounds(x);
+    const out = new Uint8Array(64);
+    for (let i = 0; i < 16; i++) putU32le(out, 4 * i, x[i] + x0[i] >>> 0);
+    return out;
+  }
+  function xsalsa20Stream(key, nonce24, length) {
+    const sub = hsalsa20(key, nonce24.subarray(0, 16)), nonce8 = nonce24.subarray(16, 24);
+    const out = new Uint8Array(length);
+    for (let i = 0, c = 0; i < length; i += 64, c++) out.set(salsa20Block(sub, nonce8, c).subarray(0, Math.min(64, length - i)), i);
+    return out;
+  }
+  function poly1305(key32, msg) {
+    const le = (b) => {
+      let v = 0n;
+      for (let i = b.length - 1; i >= 0; i--) v = v << 8n | BigInt(b[i]);
+      return v;
+    };
+    const r = le(key32.subarray(0, 16)) & 0x0ffffffc0ffffffc0ffffffc0fffffffn, s = le(key32.subarray(16, 32));
+    const p = (1n << 130n) - 5n;
+    let acc = 0n;
+    for (let i = 0; i < msg.length; i += 16) {
+      const blk = msg.subarray(i, Math.min(i + 16, msg.length));
+      acc = (acc + le(blk) + (1n << BigInt(8 * blk.length))) * r % p;
+    }
+    let t = acc + s & (1n << 128n) - 1n;
+    const out = new Uint8Array(16);
+    for (let i = 0; i < 16; i++) {
+      out[i] = Number(t & 0xffn);
+      t >>= 8n;
+    }
+    return out;
+  }
+  function secretbox(key, nonce, plaintext) {
+    const stream = xsalsa20Stream(key, nonce, 32 + plaintext.length);
+    const c = new Uint8Array(plaintext.length);
+    for (let i = 0; i < c.length; i++) c[i] = plaintext[i] ^ stream[32 + i];
+    const out = new Uint8Array(16 + c.length);
+    out.set(poly1305(stream.subarray(0, 32), c), 0);
+    out.set(c, 16);
+    return out;
+  }
+  function secretboxOpen(key, nonce, boxed) {
+    if (boxed.length < 16) return null;
+    const c = boxed.subarray(16), stream = xsalsa20Stream(key, nonce, 32 + c.length);
+    const tag = poly1305(stream.subarray(0, 32), c);
+    let diff = 0;
+    for (let i = 0; i < 16; i++) diff |= tag[i] ^ boxed[i];
+    if (diff !== 0) return null;
+    const out = new Uint8Array(c.length);
+    for (let i = 0; i < c.length; i++) out[i] = c[i] ^ stream[32 + i];
+    return out;
+  }
+
+  // src/crypto/x25519.ts
+  var P2 = (1n << 255n) - 19n;
+  var A24 = 121665n;
+  function mod2(a) {
+    const r = a % P2;
+    return r < 0n ? r + P2 : r;
+  }
+  function pow2(b, e) {
+    let r = 1n;
+    b = mod2(b);
+    while (e > 0n) {
+      if (e & 1n) r = r * b % P2;
+      b = b * b % P2;
+      e >>= 1n;
+    }
+    return r;
+  }
+  function leToBig2(b) {
+    let v = 0n;
+    for (let i = b.length - 1; i >= 0; i--) v = v << 8n | BigInt(b[i]);
+    return v;
+  }
+  function bigToLe2(v, n) {
+    const o = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      o[i] = Number(v & 0xffn);
+      v >>= 8n;
+    }
+    return o;
+  }
+  function x25519(scalar, u) {
+    const k = new Uint8Array(scalar);
+    k[0] &= 248;
+    k[31] &= 127;
+    k[31] |= 64;
+    const s = leToBig2(k);
+    const x1 = leToBig2(u) & (1n << 255n) - 1n;
+    let x2 = 1n, z2 = 0n, x3 = x1, z3 = 1n, swap = 0n;
+    for (let t = 254; t >= 0; t--) {
+      const kt = s >> BigInt(t) & 1n;
+      swap ^= kt;
+      if (swap) {
+        [x2, x3] = [x3, x2];
+        [z2, z3] = [z3, z2];
+      }
+      swap = kt;
+      const a = mod2(x2 + z2), aa = a * a % P2, b = mod2(x2 - z2), bb = b * b % P2, e = mod2(aa - bb);
+      const c = mod2(x3 + z3), d = mod2(x3 - z3), da = d * a % P2, cb = c * b % P2;
+      x3 = pow2(mod2(da + cb), 2n);
+      z3 = x1 * pow2(mod2(da - cb), 2n) % P2;
+      x2 = aa * bb % P2;
+      z2 = e * mod2(aa + A24 * e) % P2;
+    }
+    if (swap) {
+      [x2, x3] = [x3, x2];
+      [z2, z3] = [z3, z2];
+    }
+    return bigToLe2(x2 * pow2(z2, P2 - 2n) % P2, 32);
+  }
+  function x25519Base(scalar) {
+    const nine = new Uint8Array(32);
+    nine[0] = 9;
+    return x25519(scalar, nine);
+  }
+  function ed25519PublicKeyToX25519(pk) {
+    const y = leToBig2(pk) & (1n << 255n) - 1n;
+    return bigToLe2(mod2(1n + y) * pow2(mod2(1n - y), P2 - 2n) % P2, 32);
+  }
+  function ed25519SeedToX25519(seed) {
+    const h = sha512(seed).slice(0, 32);
+    h[0] &= 248;
+    h[31] &= 127;
+    h[31] |= 64;
+    return h;
+  }
+
+  // src/encryption.ts
+  var SEALED_MAGIC = new Uint8Array([90, 66, 69, 49]);
+  var SEALED_OVERHEAD = 52;
+  function isSealed(field) {
+    return field.length >= 4 && field[0] === 90 && field[1] === 66 && field[2] === 69 && field[3] === 49;
+  }
+  function boxKey(sk, pk) {
+    return hsalsa20(x25519(sk, pk), new Uint8Array(16));
+  }
+  function nonceOf(ephemeralPk, recipientPkX) {
+    return blake2b(concat(ephemeralPk, recipientPkX), 24);
+  }
+  function seal(plaintext, recipientPublicKey, ephemeralSecretKey) {
+    if (recipientPublicKey.length !== 32) throw new Error("recipient public key must be 32 bytes");
+    const esk = ephemeralSecretKey ?? globalThis.crypto.getRandomValues(new Uint8Array(32));
+    if (esk.length !== 32) throw new Error("ephemeral secret key must be 32 bytes");
+    const rpk = ed25519PublicKeyToX25519(recipientPublicKey), epk = x25519Base(esk);
+    return concat(SEALED_MAGIC, epk, secretbox(boxKey(esk, rpk), nonceOf(epk, rpk), plaintext));
+  }
+  function openSealed(field, recipientSeed) {
+    if (!isSealed(field) || field.length < SEALED_OVERHEAD || recipientSeed.length !== 32) return null;
+    const sk = ed25519SeedToX25519(recipientSeed), pk = x25519Base(sk), epk = field.subarray(4, 36);
+    return secretboxOpen(boxKey(sk, epk), nonceOf(epk, pk), field.subarray(36));
   }
 
   // src/generated/commands.ts
