@@ -18,6 +18,7 @@ use ZBC::Message qw(sign_message verify_message);
 use ZBC::Transaction qw(sign_transaction send_zbc_body approval_escrow_body transaction_id);
 
 my $V = "$FindBin::Bin/../../spec/vectors";
+plan skip_all => "spec/vectors is not in this tree (a CPAN tarball carries the code, the vectors live in the repository)" unless -d $V;
 my $JSON = JSON::PP->new->utf8->canonical;
 my %ENV_CLEAN = map { $_ => $ENV{$_} } grep { !/^(ZBC_KEY|ZBC_API|ZBC_TIMEOUT|ZOOBC_GENESIS_HASH)$/ } keys %ENV;
 

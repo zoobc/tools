@@ -4,7 +4,7 @@
   "description": "ZooBC keys, addresses, transaction signing and the zbc-cli command line, for Node and the browser, no runtime dependencies",
   "license": "MIT",
   "author": "ZooBC Foundation and Roberto Capodieci",
-  "homepage": "https://github.com/zoobc/tools",
+  "homepage": "https://github.com/zoobc/tools/tree/main/ts",
   "repository": {
     "type": "git",
     "url": "https://github.com/zoobc/tools.git",
@@ -24,6 +24,7 @@
   },
   "files": [
     "dist",
+    "!dist/test",
     "README.md"
   ],
   "engines": {
@@ -39,5 +40,15 @@
     "@types/node": "^22.20.3",
     "esbuild": "^0.28.2",
     "typescript": "^5.9.3"
+  },
+  "keywords": [
+    "zoobc",
+    "blockchain",
+    "ed25519",
+    "wallet",
+    "cli"
+  ],
+  "bugs": {
+    "url": "https://github.com/zoobc/tools/issues"
   }
 }

@@ -1,0 +1,24 @@
+bin/zbc-cli
+lib/ZBC.pm
+lib/ZBC/Address.pm
+lib/ZBC/Bip39Words.pm
+lib/ZBC/Blake2b.pm
+lib/ZBC/Body.pm
+lib/ZBC/CLI.pm
+lib/ZBC/Client.pm
+lib/ZBC/Commands.pm
+lib/ZBC/Custom.pm
+lib/ZBC/Ed25519.pm
+lib/ZBC/Encoding.pm
+lib/ZBC/Encryption.pm
+lib/ZBC/Error.pm
+lib/ZBC/ExitCode.pm
+lib/ZBC/Keys.pm
+lib/ZBC/Message.pm
+lib/ZBC/SHA3.pm
+lib/ZBC/Transaction.pm
+Makefile.PL
+MANIFEST			This list of files
+MANIFEST.SKIP
+README.md
+t/vectors.t

@@ -5,3 +5,8 @@ target/
 *.o
 *.a
 .DS_Store
+
+# SwiftPM build directories of the root Package.swift
+/.build/
+/.build-*/
+/Package.resolved

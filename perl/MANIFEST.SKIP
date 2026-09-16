@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
+# Files that never belong in the CPAN tarball.
+\bblib/
+\bpm_to_blib$
+^Makefile$
+^Makefile\.old$
+^MYMETA\.
+^ZBC-[\d.v]+\.tar\.gz$
+^\.gitignore$
+^script/
