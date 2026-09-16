@@ -55,7 +55,7 @@ static std::string category_of(const std::string& c){
         {"register-node","node"},{"update-node","node"},{"remove-node","node"},{"claim-node","node"},
         {"register-gateway","gateway"},{"unregister-gateway","gateway"},
         {"register-release","governance"},{"revoke-release","governance"},{"release-authority-propose","governance"},{"release-authority-accept","governance"},
-        {"sign-message","keys"},{"verify-message","keys"},
+        {"sign-message","keys"},{"verify-message","keys"},{"decrypt-message","keys"},
     };
     auto it = cat.find(c); return it==cat.end() ? "other" : it->second;
 }
@@ -597,6 +597,32 @@ static std::map<std::string, Cmd> registry() {
                 std::cout<<(valid?"VALID":"INVALID")<<" signature for "<<addr<<"\n";
             }
             return valid ? exit_code::OK : exit_code::VERIFY_FAILED; }};
+    // ---- off-chain: read a message sealed with --encrypt (message_encryption.h) ----
+    // The field is 'ZBE1' ‖ libsodium sealed box to the recipient's Curve25519 key (converted from the
+    // Ed25519 account key). Only the recipient's seed opens it; nothing in it identifies the sender.
+    // The same operation as zbc-message-decrypt, under the CLI's JSON shape and exit codes: 2 when the
+    // field is not a sealed message, 10 when the key does not open it (the authentication tag fails).
+    m["decrypt-message"] = {"Decrypt a transaction message sealed with --encrypt, with the recipient's private key (off-chain)", 0, false,
+        {{"Recipient private key","sender_privkey","the recipient's private key (64 hex); '-' or omitted = ZBC_KEY","",true,nullptr},
+         P("Message","message_hex","the transaction's message field as hex: ZBE1 then the sealed box")},
+        nullptr,
+        [](std::vector<std::string>& v, ParsedParams& params) -> int {
+            auto emit_error = make_emitter(params.json_output);
+            auto kp=derive_zbc_keypair(v[0]); if(!kp.IsOk()) return fail(emit_error, exit_code::USAGE, kp.GetError().ToString());
+            std::vector<uint8_t> field;
+            try { field=hexb(v[1]); } catch(const std::exception&){ return fail(emit_error, exit_code::USAGE, "message_hex must be hex"); }
+            if(!zoobc::crypto::MessageEncryption::IsEncrypted(field)) return fail(emit_error, exit_code::USAGE, "message is not encrypted (no ZBE1 prefix)");
+            auto dec=zoobc::crypto::MessageEncryption::Decrypt(field, hex_to_bytes(v[0]));
+            if(dec.IsErr()) return fail(emit_error, exit_code::VERIFY_FAILED, "decryption failed: the key does not open this message, or it is corrupted");
+            const auto& pt=dec.Value();
+            std::string addr=zoobc::crypto::ZoobcAddress::Encode(kp.Value().public_key,"ZBC");
+            if(params.json_output){
+                json out={{"success",true},{"recipient",addr},{"message_hex",to_hex(pt)},{"message",std::string(pt.begin(),pt.end())}};
+                std::cout<<out.dump(2,' ',false,json::error_handler_t::replace)<<std::endl;
+            } else {
+                std::cout.write(reinterpret_cast<const char*>(pt.data()), static_cast<std::streamsize>(pt.size())); std::cout<<"\n";
+            }
+            return exit_code::OK; }};
     return m;
 }
 

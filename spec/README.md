@@ -5,7 +5,7 @@ reference and checked against its output:
 
 - `transactions/` one file per transaction type: fields, byte layout, an example; `index.json`
   lists them with the encoding vocabulary; `README.md` explains the schema
-- `signing.md` keys, the transaction envelope, the chain-bound digest (`ZBC-TX`), message
+- `signing.md` keys, the transaction envelope, the chain-bound digest (`ZBC-TX`), sealed messages (`ZBE1`), message
   signing (`ZBC-MSG-v1`), proof of ownership and the other in-body signatures
 - `addresses.md` account types, the `ZBC_`/`ZNK_`/`ZBS_` text form, what a recipient may be
 - `api.md` the node HTTP calls the tools use, the submit payload, replies and error classes,

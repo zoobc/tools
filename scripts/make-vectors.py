@@ -177,6 +177,70 @@ def messages_vectors():
                            "`hex_input` = the message was given as hex bytes. `invalid` lists verify-message outcomes that must fail.",
             "vectors": out, "invalid": neg}
 
+# ---------------------------------------------------------------- encryption ----------------
+# The sealed-message construction (signing.md 9) is libsodium's crypto_box_seal, which draws a random
+# ephemeral key, so the tools' own output cannot be compared byte for byte. The `sealed` vectors are
+# therefore built by libsodium itself (the library the tools link) with a FIXED ephemeral key, opened
+# back by libsodium and by the C++ tool; the `samples` are the tools' own random-key output, which every
+# implementation must open. --check ignores the samples (they differ on every run) and re-checks the rest.
+def _sodium():
+    import ctypes, ctypes.util
+    lib = ctypes.CDLL(ctypes.util.find_library("sodium") or "libsodium.so.23")
+    assert lib.sodium_init() >= 0
+    return lib
+
+def encryption_vectors():
+    import ctypes
+    lib = _sodium()
+    def buf(n): return ctypes.create_string_buffer(max(n, 1))
+    def convert(seed_hex):
+        edpk, edsk, xpk, xsk = buf(32), buf(64), buf(32), buf(32)
+        assert lib.crypto_sign_seed_keypair(edpk, edsk, bytes.fromhex(seed_hex)) == 0
+        assert lib.crypto_sign_ed25519_pk_to_curve25519(xpk, edpk) == 0 and lib.crypto_sign_ed25519_sk_to_curve25519(xsk, edsk) == 0
+        return edpk.raw, xpk.raw, xsk.raw
+    keys = []
+    for seed in (SEED_V, SEED_1, SEED_2):
+        edpk, xpk, xsk = convert(seed)
+        keys.append({"seed": seed, "public_key": edpk.hex(), "x25519_public_key": xpk.hex(), "x25519_secret_key": xsk.hex()})
+    sealed = []
+    for name, seed, pt, esk_hex in [("text", SEED_1, b"hello sealed", "22" * 32), ("empty", SEED_1, b"", "33" * 32),
+                                    ("utf8", SEED_V, "h\u00e9llo \u2713 sealed".encode(), "44" * 32), ("binary-64", SEED_2, bytes(range(64)), "55" * 32),
+                                    ("plain-256", SEED_V, bytes([0x5a]) * 256, "66" * 32)]:
+        edpk, xpk, xsk = convert(seed)
+        esk = bytes.fromhex(esk_hex); epk, nonce, c = buf(32), buf(24), buf(len(pt) + 16)
+        assert lib.crypto_scalarmult_base(epk, esk) == 0
+        assert lib.crypto_generichash(nonce, 24, epk.raw + xpk, 64, None, 0) == 0
+        assert lib.crypto_box_easy(c, pt, len(pt), nonce, xpk, esk) == 0
+        field = b"ZBE1" + epk.raw + c.raw[:len(pt) + 16]
+        out = buf(len(pt))
+        assert lib.crypto_box_seal_open(out, field[4:], len(field) - 4, xpk, xsk) == 0 and out.raw[:len(pt)] == pt   # libsodium opens its own construction
+        j = must_json(*cli("decrypt-message", seed, field.hex()), "decrypt-message " + name)                            # and so does the C++ tool
+        assert j["message_hex"] == pt.hex(), name
+        sealed.append({"name": name, "recipient_seed": seed, "recipient_public_key": edpk.hex(), "plaintext_hex": pt.hex(),
+                       "ephemeral_secret_key": esk_hex, "ephemeral_public_key": epk.raw.hex(), "nonce": nonce.raw.hex(), "message_field": field.hex()})
+    samples = []
+    for name, seed, addr, text in [("send-zbc", SEED_1, A_1, "hello sealed"), ("send-zbc-utf8", SEED_V, A_V, "h\u00e9llo \u2713 sealed")]:
+        j = must_json(*cli("send-zbc", SEED_V, addr, "1", "--message", text, "--encrypt", "--genesis", GENESIS, "--timestamp", str(T0), "--offline"), "send-zbc --encrypt")
+        field = j["payload"]["message_hex"]
+        assert field.startswith("5a424531") and j["message"] == text and len(bytes.fromhex(field)) == len(text.encode()) + 52, name
+        assert must_json(*cli("decrypt-message", seed, field), "decrypt-message " + name)["message"] == text
+        samples.append({"name": name, "recipient_seed": seed, "recipient_address": addr, "plaintext": text, "plaintext_hex": text.encode().hex(),
+                        "message_field": field, "unsigned_bytes": j["unsigned_bytes"], "transaction_hash": j["transaction_hash"]})
+    f0 = sealed[0]["message_field"]
+    def flip(h, i): return h[:i] + ("00" if h[i:i + 2] != "00" else "01") + h[i + 2:]
+    invalid = []
+    for name, seed, field, code in [("wrong key", SEED_V, f0, 10), ("tag altered", SEED_1, flip(f0, 8 + 64), 10), ("ciphertext altered", SEED_1, flip(f0, len(f0) - 2), 10),
+                                    ("ephemeral key altered", SEED_1, flip(f0, 8), 10), ("box too short", SEED_1, f0[:8 + 64 + 30], 10),
+                                    ("not encrypted", SEED_1, b"hello".hex(), 2), ("prefix only", SEED_1, "5a424531", 10), ("not hex", SEED_1, "5a4245zz", 2)]:
+        rc, o, e = cli("decrypt-message", seed, field)
+        assert rc == code, (name, rc, o, e)
+        invalid.append({"case": name, "recipient_seed": seed, "message_field": field, "exit_code": rc, "error_class": json.loads(o)["error_class"]})
+    return {"description": "Sealed messages (signing.md 9): 'ZBE1' || crypto_box_seal to the recipient's Curve25519 key converted from the Ed25519 account key. "
+                           "`keys`: the conversion. `sealed`: built by libsodium with the given ephemeral secret key, so the field is reproducible; opened by libsodium "
+                           "and by zbc-cli decrypt-message. `samples`: fields produced by zbc-cli send-zbc --encrypt --offline (random ephemeral key) that every "
+                           "implementation must open. `invalid`: decrypt-message outcomes that must fail with the given exit code.",
+            "keys": keys, "sealed": sealed, "samples": samples, "invalid": invalid}
+
 # ---------------------------------------------------------------- transactions --------------
 class FakeNode(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -320,18 +384,20 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     core, every = transactions_vectors()
     files = {"keys.json": keys_vectors(), "addresses.json": addresses_vectors(), "messages.json": messages_vectors(),
-             "transactions.json": core, "transactions-all.json": every, "cli.json": cli_vectors()}
+             "transactions.json": core, "transactions-all.json": every, "cli.json": cli_vectors(), "encryption.json": encryption_vectors()}
     for name, data in files.items():
         data = {"license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci", **data}
         (out / name).write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n")
     if a.check:
-        bad = [n for n in files if (out / n).read_text() != (pathlib.Path(a.out) / n).read_text()]
+        def stable(path):   # encryption.json: the tool-made samples carry a random ephemeral key and differ on every run
+            d = json.loads(path.read_text()); d.pop("samples", None); return json.dumps(d, sort_keys=True)
+        bad = [n for n in files if stable(out / n) != stable(pathlib.Path(a.out) / n)]
         shutil.rmtree(out)
         if bad: sys.exit("vectors differ from the C++ tools' output: " + ", ".join(bad))
         print("vectors match the C++ tools' output (%d files)" % len(files))
     else:
         for name, data in files.items():
-            n = len(data.get("vectors", data.get("seeds", []))); print("%-22s %d vectors" % (name, n))
+            n = len(data.get("vectors", data.get("seeds", data.get("sealed", [])))); print("%-22s %d vectors" % (name, n))
 
 if __name__ == "__main__":
     main()

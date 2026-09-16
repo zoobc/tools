@@ -2,7 +2,9 @@
 # Test vectors
 
 Every value here was printed by the C++ reference tools (`scripts/make-vectors.py` runs them;
-nothing is computed by the script). Every port runs every file in its test suite; CI regenerates
+nothing is computed by the script), with one exception: the `sealed` boxes of `encryption.json`
+are produced by libsodium itself, the library the tools link, with a fixed ephemeral key, because
+the tools draw a random one; the script then has the C++ tool open every one of them. Every port runs every file in its test suite; CI regenerates
 the files from a fresh C++ build and fails if a byte differs (`.github/workflows/spec.yml`).
 
 | File | What a port must reproduce |
@@ -13,6 +15,7 @@ the files from a fresh C++ build and fails if a byte differs (`.github/workflows
 | `transactions.json` | the core set: `SendZBC` (plain, message, escrow, foreign recipient, signing v1, another genesis, large fee) and `ApprovalEscrow`; unsigned bytes, digest, signature, transaction bytes, hash and submit payload |
 | `transactions-all.json` | one vector per transaction type, from each `../transactions/*.json` example, plus the liquid-payment token variant |
 | `cli.json` | exit code and `error_class` of `zbc-cli` for a list of wrong invocations |
+| `encryption.json` | sealed messages (`signing.md` 8): Ed25519 → X25519 key conversion; sealed boxes built with a given ephemeral key, to reproduce byte for byte; fields sealed by the C++ tool with a random key, to open; `invalid` cases with their exit code |
 
 Conventions: hex is lower case; `key` is the 32-byte seed; `params` are the command-line strings
 in `../transactions` order after the key; `genesis` is the chain the transaction was signed for

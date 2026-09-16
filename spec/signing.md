@@ -118,7 +118,36 @@ and the proof is `message ‖ signature` (136 bytes). The reference block is fet
 - **SettleApp**: each move voucher is the seat key's signature over
   `SHA3-256(app_id (8) ‖ seq (4) ‖ SHA3-256(state_before) ‖ move_bytes)`.
 
-## 8. Signature lengths by sender account type
+## 8. Sealed messages (`ZBE1`, `--encrypt`)
+
+`--encrypt` seals `--message` so that only the recipient can read it. The recipient must be a
+ZooBC account (its 32-byte Ed25519 public key is in the typed address); with any other recipient
+`--encrypt` is a usage error. The sealed bytes replace the plaintext in field 11 of the envelope
+and in the payload's `message_hex`; the signature covers the sealed bytes; the tool's own output
+still prints the plaintext as `message`. The construction is libsodium's anonymous sealed box
+(`crypto_box_seal`) over the recipient's key converted to Curve25519, behind a 4-byte marker:
+
+    recipient_pk_x = ed25519_to_x25519(recipient public key)      birational map u = (1 + y) / (1 - y) mod 2^255 - 19
+    recipient_sk_x = clamp(SHA-512(seed)[0..32])                  what the recipient opens with
+    e_sk           = 32 random bytes;  e_pk = X25519(e_sk, 9)     one ephemeral key per message
+    nonce          = BLAKE2b-24(e_pk ‖ recipient_pk_x)            unkeyed, 24-byte output
+    k              = HSalsa20(X25519(e_sk, recipient_pk_x), 0^16) crypto_box key derivation
+    box            = XSalsa20-Poly1305(k, nonce, plaintext)       tag (16) ‖ ciphertext (crypto_box_easy layout)
+    message_field  = "ZBE1" ‖ e_pk (32) ‖ box
+
+`"ZBE1"` is the 4 ASCII bytes `5a 42 45 31`. The field is 52 bytes longer than the plaintext.
+Nothing in it identifies the sender. XSalsa20-Poly1305 is NaCl's `crypto_secretbox`: the
+subkey is `HSalsa20(k, nonce[0..16])`, the Salsa20 stream runs with that subkey and
+`nonce[16..24]`, its first 32 bytes are the one-time Poly1305 key, the rest is XORed with the
+plaintext, and the tag authenticates the ciphertext. To read a message the recipient converts
+its own key pair the same way and opens the box: `decrypt-message <recipient_privkey>
+<message_hex>`. A field without the marker is not a sealed message (exit 2); a box the key
+does not open, or that was altered or cut short, fails authentication (exit 10). The ephemeral
+key is random, so two seals of the same text differ: the vectors fix it to check the
+construction byte for byte, and record fields sealed by the C++ tool that every implementation
+must open.
+
+## 9. Signature lengths by sender account type
 
 The node reads a fixed signature length after the message, by the sender's account type: 64 for
 ZooBC (type 0), Estonia eID (3) and Polkadot (12); 65 for Ethereum (4); 98 for Tezos (16) and

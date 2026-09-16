@@ -22,7 +22,7 @@ prints it) the key may be omitted, or given as `-`, and `ZBC_KEY` supplies it. C
 field has another name (`owner_privkey` for gateways, archivals and relays, `node_privkey` for
 governance votes, `requester_privkey` for escrow requests) always take the key explicitly.
 `verify-message` is the exception: its first parameter is a ZBC address, because verification needs
-no key.
+no key. `decrypt-message` takes the recipient's own key first, under the same `ZBC_KEY` rule.
 
 Positional parameters and the JSON fields of `--json-input` are the same names, in the same order,
 as printed by `zbc-cli help <command>`. The stdin object may also carry the options `fee`,
@@ -40,7 +40,7 @@ as printed by `zbc-cli help <command>`. The stdin object may also carry the opti
 | `--json-input` | Read the parameters as one JSON object from stdin. |
 | `--verbose`, `-v` | Interactive prompts and text output instead of JSON. |
 | `--message <text>` | Optional transaction message (plain messages are capped at 256 bytes). |
-| `--encrypt` | Encrypt `--message` to the recipient (ZBC recipients only). |
+| `--encrypt` | Seal `--message` to the recipient (`signing.md` 8; ZBC recipients only). The payload carries the sealed bytes in `message_hex`; the output still prints the plaintext as `message`. |
 | `--chain <name>` | Read the recipient as an address of this chain: `zbc`, `btc`, `eth`, `sol`, `dot`, `ada`, `xrp`, `trx`, `xtz`. Detection is automatic; this only forces a reading. |
 | `--escrow-approver <addr>`, `--escrow-commission <n>`, `--escrow-timeout <unix s>`, `--escrow-instruction <s>` | Turn a transfer into an escrow. The timeout is an absolute future Unix time in seconds. |
 | `--hex` | `sign-message` and `verify-message` only: the message is given as hex bytes, not text. |
@@ -109,7 +109,9 @@ plus `message`, `escrow` and the command's own fields when present. Nothing else
 
 **`sign-message`** returns `address`, `public_key`, `message`, `message_hex`, `digest`, `scheme`
 (`ZBC-MSG-v1`) and `signature` (hex). **`verify-message`** returns `valid`, `address`, `digest`,
-`scheme`, `exit_code` and `error_class`.
+`scheme`, `exit_code` and `error_class`. **`decrypt-message`** `<recipient_privkey> <message_hex>`
+opens a field sealed with `--encrypt` and returns `recipient` (the `ZBC_` address of the key),
+`message` (the plaintext as text) and `message_hex` (its bytes).
 
 ## 5. Exit codes
 
@@ -125,7 +127,7 @@ plus `message`, `escrow` and the command's own fields when present. Nothing else
 | 7 | `not_found` | Unknown transaction, escrow or token. |
 | 8 | `timeout` | The node did not answer within `--timeout`. |
 | 9 | `node_busy` | The node answered 5xx: emergency mode, backpressure. |
-| 10 | `verify_failed` | `verify-message` only: the signature does not verify. |
+| 10 | `verify_failed` | `verify-message`: the signature does not verify. `decrypt-message`: the key does not open the message, or the sealed bytes were altered or cut short. |
 
 A script can branch on the exit code alone; the JSON carries the same information for logging.
 

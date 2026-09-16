@@ -56,6 +56,115 @@ except ImportError:
 check("signing.md 5: digest = SHA3-256('ZBC-MSG' || message)", all(hashlib.sha3_256(b"ZBC-MSG" + bytes.fromhex(m["message_hex"])).hexdigest() == m["digest"] for m in msgs["vectors"]))
 check("messages.json: message_hex is the UTF-8 of message", all(m["hex_input"] or bytes.fromhex(m["message_hex"]).decode() == m["message"] for m in msgs["vectors"]))
 
+# signing.md 8: sealed messages. A standard-library rendering of the formulas (X25519 ladder, HSalsa20, XSalsa20,
+# Poly1305, the Ed25519 -> X25519 conversions) applied to encryption.json.
+enc = json.load(open(V / "encryption.json"))
+P = 2 ** 255 - 19
+
+def x25519(k: bytes, u: bytes) -> bytes:
+    """RFC 7748 X25519(scalar bytes, u-coordinate bytes) -> 32 bytes."""
+    kk = bytearray(k); kk[0] &= 248; kk[31] &= 127; kk[31] |= 64
+    s = int.from_bytes(kk, "little"); x1 = int.from_bytes(u, "little") & ((1 << 255) - 1)
+    x2, z2, x3, z3, swap = 1, 0, x1, 1, 0
+    for t in range(254, -1, -1):
+        kt = (s >> t) & 1
+        swap ^= kt
+        if swap: x2, x3 = x3, x2; z2, z3 = z3, z2
+        swap = kt
+        a = (x2 + z2) % P; aa = a * a % P; b = (x2 - z2) % P; bb = b * b % P; e = (aa - bb) % P
+        c = (x3 + z3) % P; d = (x3 - z3) % P; da = d * a % P; cb = c * b % P
+        x3 = pow((da + cb) % P, 2, P); z3 = x1 * pow((da - cb) % P, 2, P) % P
+        x2 = aa * bb % P; z2 = e * ((aa + 121665 * e) % P) % P
+    if swap: x2, x3 = x3, x2; z2, z3 = z3, z2
+    return (x2 * pow(z2, P - 2, P) % P).to_bytes(32, "little")
+
+def x25519_base(k: bytes) -> bytes: return x25519(k, (9).to_bytes(32, "little"))
+
+def ed25519_pk_to_x25519(pk: bytes) -> bytes:
+    """u = (1 + y) / (1 - y) mod p."""
+    y = int.from_bytes(pk, "little") & ((1 << 255) - 1)
+    return ((1 + y) * pow(1 - y, P - 2, P) % P).to_bytes(32, "little")
+
+def ed25519_seed_to_x25519(seed: bytes) -> bytes:
+    h = bytearray(hashlib.sha512(seed).digest()[:32]); h[0] &= 248; h[31] &= 127; h[31] |= 64
+    return bytes(h)
+
+_SIGMA = b"expand 32-byte k"
+def _rotl(v, c): return ((v << c) & 0xFFFFFFFF) | (v >> (32 - c))
+def _salsa_rounds(x):
+    for _ in range(10):
+        for (a, b, c, d) in ((0, 4, 8, 12), (5, 9, 13, 1), (10, 14, 2, 6), (15, 3, 7, 11), (0, 1, 2, 3), (5, 6, 7, 4), (10, 11, 8, 9), (15, 12, 13, 14)):
+            x[b] ^= _rotl((x[a] + x[d]) & 0xFFFFFFFF, 7); x[c] ^= _rotl((x[b] + x[a]) & 0xFFFFFFFF, 9)
+            x[d] ^= _rotl((x[c] + x[b]) & 0xFFFFFFFF, 13); x[a] ^= _rotl((x[d] + x[c]) & 0xFFFFFFFF, 18)
+    return x
+
+def hsalsa20(key: bytes, inp: bytes) -> bytes:
+    """HSalsa20(key 32, input 16) -> 32 bytes (no feed-forward; words 0,5,10,15,6,7,8,9)."""
+    c = struct.unpack("<4I", _SIGMA); k = struct.unpack("<8I", key); n = struct.unpack("<4I", inp)
+    x = [c[0], k[0], k[1], k[2], k[3], c[1], n[0], n[1], n[2], n[3], c[2], k[4], k[5], k[6], k[7], c[3]]
+    x = _salsa_rounds(x)
+    return struct.pack("<8I", x[0], x[5], x[10], x[15], x[6], x[7], x[8], x[9])
+
+def salsa20_block(key: bytes, nonce8: bytes, counter: int) -> bytes:
+    c = struct.unpack("<4I", _SIGMA); k = struct.unpack("<8I", key); n = struct.unpack("<2I", nonce8)
+    x0 = [c[0], k[0], k[1], k[2], k[3], c[1], n[0], n[1], counter & 0xFFFFFFFF, (counter >> 32) & 0xFFFFFFFF, c[2], k[4], k[5], k[6], k[7], c[3]]
+    x = _salsa_rounds(list(x0))
+    return struct.pack("<16I", *[(x[i] + x0[i]) & 0xFFFFFFFF for i in range(16)])
+
+def xsalsa20_stream(key: bytes, nonce24: bytes, length: int) -> bytes:
+    sub = hsalsa20(key, nonce24[:16]); out = b""; i = 0
+    while len(out) < length: out += salsa20_block(sub, nonce24[16:], i); i += 1
+    return out[:length]
+
+def poly1305(key32: bytes, msg: bytes) -> bytes:
+    r = int.from_bytes(key32[:16], "little") & 0x0ffffffc0ffffffc0ffffffc0fffffff; s = int.from_bytes(key32[16:], "little")
+    p = (1 << 130) - 5; acc = 0
+    for i in range(0, len(msg), 16):
+        blk = msg[i:i + 16]; n = int.from_bytes(blk, "little") + (1 << (8 * len(blk)))
+        acc = (acc + n) * r % p
+    return ((acc + s) & ((1 << 128) - 1)).to_bytes(16, "little")
+
+def secretbox(key: bytes, nonce: bytes, plaintext: bytes) -> bytes:
+    """crypto_secretbox_easy: tag (16) || ciphertext."""
+    stream = xsalsa20_stream(key, nonce, 32 + len(plaintext))
+    c = bytes(a ^ b for a, b in zip(plaintext, stream[32:]))
+    return poly1305(stream[:32], c) + c
+
+def secretbox_open(key: bytes, nonce: bytes, boxed: bytes):
+    if len(boxed) < 16: return None
+    stream = xsalsa20_stream(key, nonce, 32 + len(boxed) - 16)
+    if poly1305(stream[:32], boxed[16:]) != boxed[:16]: return None
+    return bytes(a ^ b for a, b in zip(boxed[16:], stream[32:]))
+
+def box_key(sk: bytes, pk: bytes) -> bytes: return hsalsa20(x25519(sk, pk), bytes(16))
+
+def blake2b_24(data: bytes) -> bytes: return hashlib.blake2b(data, digest_size=24).digest()
+
+MAGIC = b"ZBE1"
+def seal(plaintext: bytes, recipient_ed25519_pk: bytes, ephemeral_sk: bytes) -> bytes:
+    rpk = ed25519_pk_to_x25519(recipient_ed25519_pk); epk = x25519_base(ephemeral_sk)
+    nonce = blake2b_24(epk + rpk)
+    return MAGIC + epk + secretbox(box_key(ephemeral_sk, rpk), nonce, plaintext)
+
+def open_sealed(field: bytes, recipient_seed: bytes):
+    if len(field) < 4 + 48 or field[:4] != MAGIC: return None
+    sk = ed25519_seed_to_x25519(recipient_seed); pk = x25519_base(sk); epk = field[4:36]
+    return secretbox_open(box_key(sk, epk), blake2b_24(epk + pk), field[36:])
+
+
+check("signing.md 8: recipient_pk_x = (1 + y) / (1 - y) mod p, recipient_sk_x = clamp(SHA-512(seed)[0..32]), X25519(sk, 9) = pk",
+      all(ed25519_pk_to_x25519(bytes.fromhex(k["public_key"])).hex() == k["x25519_public_key"] and ed25519_seed_to_x25519(bytes.fromhex(k["seed"])).hex() == k["x25519_secret_key"]
+          and x25519_base(bytes.fromhex(k["x25519_secret_key"])).hex() == k["x25519_public_key"] for k in enc["keys"]))
+check("signing.md 8: e_pk = X25519(e_sk, 9), nonce = BLAKE2b-24(e_pk || recipient_pk_x)",
+      all(x25519_base(bytes.fromhex(s["ephemeral_secret_key"])).hex() == s["ephemeral_public_key"]
+          and blake2b_24(bytes.fromhex(s["ephemeral_public_key"]) + ed25519_pk_to_x25519(bytes.fromhex(s["recipient_public_key"]))).hex() == s["nonce"] for s in enc["sealed"]))
+check("signing.md 8: message_field = 'ZBE1' || e_pk || XSalsa20-Poly1305(HSalsa20(X25519(e_sk, recipient_pk_x)), nonce, plaintext)",
+      all(seal(bytes.fromhex(s["plaintext_hex"]), bytes.fromhex(s["recipient_public_key"]), bytes.fromhex(s["ephemeral_secret_key"])).hex() == s["message_field"] for s in enc["sealed"]))
+check("signing.md 8: the recipient's converted key opens every sealed vector and every field the C++ tool sealed",
+      all(open_sealed(bytes.fromhex(s["message_field"]), bytes.fromhex(s["recipient_seed"])) == bytes.fromhex(s["plaintext_hex"]) for s in enc["sealed"] + enc["samples"]))
+check("encryption.json: every invalid case fails to open", all(open_sealed(bytes.fromhex(i["message_field"]), bytes.fromhex(i["recipient_seed"])) is None
+                                                             for i in enc["invalid"] if all(c in "0123456789abcdef" for c in i["message_field"])))
+
 # signing.md 2-4: envelope, escrow block, digest, hash
 def digest(v):
     u = bytes.fromhex(v["expected"]["unsigned_bytes"])
