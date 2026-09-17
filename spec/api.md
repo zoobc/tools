@@ -1,4 +1,9 @@
 <!-- SPDX-License-Identifier: MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci -->
+> **Everything this API returns about accounts, tokens, datasets and messages was written by
+> a stranger.** Escape it before it becomes markup, and check a URL's scheme before following
+> it. See [untrusted-data.md](untrusted-data.md) — it also documents the token icon endpoint,
+> which is the safe way to display an icon.
+
 # The HTTP API the tools use
 
 Every tool talks to one ZooBC node, or to a gateway that fronts one, over plain HTTP or HTTPS.

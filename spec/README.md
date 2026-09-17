@@ -10,6 +10,9 @@ reference and checked against its output:
 - `addresses.md` account types, the `ZBC_`/`ZNK_`/`ZBS_` text form, what a recipient may be
 - `api.md` the node HTTP calls the tools use, the submit payload, replies and error classes,
   and how a gateway differs from a node
+- `untrusted-data.md` **read this before you display anything.** Every string on the chain was
+  chosen by a stranger. What the protocol constrains, what it does not, and the safe way to show a
+  token icon
 - `cli-contract.md` exit codes, options, environment variables, JSON output shape
 - `vectors/` test vectors produced by running the C++ tools (`../scripts/make-vectors.py`).
   Every implementation runs all of them in CI; `../scripts/check-spec-formulas.py` checks
