@@ -21,11 +21,11 @@ int main(int argc, char* argv[]) {
     emit_error=make_emitter(params.json_output); if(!init_sodium(emit_error)) return 1;
     try {
         auto kp=derive_zbc_keypair(params.values[0]); if(!kp.IsOk()){emit_error(kp.GetError().ToString());return 1;}
-        int64_t trigger_id=std::stoll(params.values[1]);
+        int64_t trigger_id=parse_id_i64(params.values[1], "trigger_id");
         std::vector<uint8_t> body; putU64(body,trigger_id);
         std::string sender_addr=zoobc::crypto::ZoobcAddress::Encode(kp.Value().public_key,"ZBC");
         json extra={{"sender_address",sender_addr},{"trigger_id",trigger_id}};
         return run_transaction(params,config.tx_type,kp.Value().public_key,std::vector<uint8_t>{},body,
                                kp.Value(),KeyType::ZBC,extra,emit_error,"SUCCESS: Trigger cancelled!");
-    } catch(const std::exception& e){ emit_error(e.what()); return 1; }
+    } catch(const std::exception& e){ const int c=last_exit_code(); emit_error(e.what()); return c; }
 }

@@ -35,7 +35,7 @@ int main(int argc, char* argv[]) {
         auto kp=derive_zbc_keypair(params.values[0]); if(!kp.IsOk()){emit_error(kp.GetError().ToString());return 1;}
         // Signed, and deliberately so: transaction ids are the first 8 bytes of the hash read as a
         // little-endian int64, so half of them are negative. Parsing unsigned would reject them.
-        int64_t target=std::stoll(params.values[1]);
+        int64_t target=parse_id_i64(params.values[1],"target_tx_id");
         int64_t amount=std::stoll(params.values[2]);
         if(target==0){emit_error("target transaction id must not be 0");return 1;}
         if(amount<10000000){emit_error("amount is below the minimum deposit (10000000 = 0.1 ZBC)");return 1;}
@@ -44,5 +44,5 @@ int main(int argc, char* argv[]) {
         json extra={{"sponsor_address",sender_addr},{"target_tx_id",std::to_string(target)},{"amount",amount}};
         return run_transaction(params,config.tx_type,kp.Value().public_key,std::vector<uint8_t>{},body,
                                kp.Value(),KeyType::ZBC,extra,emit_error,"SUCCESS: longevity funded!");
-    } catch(const std::exception& e){ emit_error(e.what()); return 1; }
+    } catch(const std::exception& e){ const int c=last_exit_code(); emit_error(e.what()); return c; }
 }

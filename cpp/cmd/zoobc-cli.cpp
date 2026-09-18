@@ -83,68 +83,68 @@ static std::map<std::string, Cmd> registry() {
     m["mint-token"] = {"Mint a mintable token (add backing)", (uint32_t)TT::MintToken, false,
         {PK(), P("Token id","token_id","token id"), P("Amount","amount","amount (atomic)")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int64_t t=std::stoll(v[1]),a=std::stoll(v[2]); u64(body,t); u64(body,a); ex={{"token_id",t},{"amount",a}}; }};
+            int64_t t=parse_id_i64(v[1],"token_id"),a=std::stoll(v[2]); u64(body,t); u64(body,a); ex={{"token_id",t},{"amount",a}}; }};
     m["burn-token"] = {"Burn a token (redeem backing if redeemable)", (uint32_t)TT::BurnToken, false,
         {PK(), P("Token id","token_id","token id"), P("Amount","amount","amount (atomic)")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int64_t t=std::stoll(v[1]),a=std::stoll(v[2]); u64(body,t); u64(body,a); ex={{"token_id",t},{"amount",a}}; }};
+            int64_t t=parse_id_i64(v[1],"token_id"),a=std::stoll(v[2]); u64(body,t); u64(body,a); ex={{"token_id",t},{"amount",a}}; }};
     m["finance-token"] = {"Top up a token's survival financing", (uint32_t)TT::FinanceToken, false,
         {PK(), P("Token id","token_id","token id")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int64_t t=std::stoll(v[1]); u64(body,t); ex={{"token_id",t}}; }};
+            int64_t t=parse_id_i64(v[1],"token_id"); u64(body,t); ex={{"token_id",t}}; }};
     // ---- exchange: swap offers ----
     m["swap-create"] = {"Create an atomic swap offer", (uint32_t)TT::CreateSwapOffer, false,
         {PK(), P("Give token","give_token","token to give (0=ZBC)"), P("Give amount","give_amount","atomic"),
          P("Want token","want_token","token to want (0=ZBC)"), P("Want amount","want_amount","atomic"), P("Expiry","expiry","unix secs (0=GTC)","0",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int64_t gt=std::stoll(v[1]),ga=std::stoll(v[2]),wt=std::stoll(v[3]),wa=std::stoll(v[4]),e=(v.size()>5&&!v[5].empty())?std::stoll(v[5]):0;
+            int64_t gt=parse_id_i64(v[1],"give_token"),ga=std::stoll(v[2]),wt=parse_id_i64(v[3],"want_token"),wa=std::stoll(v[4]),e=(v.size()>5&&!v[5].empty())?std::stoll(v[5]):0;
             u64(body,gt);u64(body,ga);u64(body,wt);u64(body,wa);u64(body,e); ex={{"give_token",gt},{"want_token",wt}}; }};
     m["swap-accept"] = {"Accept (fill) a swap offer", (uint32_t)TT::AcceptSwapOffer, false,
         {PK(), P("Offer id","offer_id","the swap offer id")},
-        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t o=std::stoll(v[1]); u64(body,o); ex={{"offer_id",o}}; }};
+        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t o=parse_id_i64(v[1],"offer_id"); u64(body,o); ex={{"offer_id",o}}; }};
     m["swap-cancel"] = {"Cancel an open swap offer", (uint32_t)TT::CancelSwapOffer, false,
         {PK(), P("Offer id","offer_id","the swap offer id")},
-        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t o=std::stoll(v[1]); u64(body,o); ex={{"offer_id",o}}; }};
+        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t o=parse_id_i64(v[1],"offer_id"); u64(body,o); ex={{"offer_id",o}}; }};
     // ---- exchange: order-book CLOB ----
     m["market-create"] = {"Open a (base,quote) CLOB market", (uint32_t)TT::CreateMarket, false,
         {PK(), P("Base token","base_token","base (0=ZBC)"), P("Quote token","quote_token","quote (0=ZBC)"), P("Deposit","deposit","rent atomic (0 ok)","0",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int64_t b=std::stoll(v[1]),q=std::stoll(v[2]),d=(v.size()>3&&!v[3].empty())?std::stoll(v[3]):0; u64(body,b);u64(body,q);u64(body,d); ex={{"base",b},{"quote",q}}; }};
+            int64_t b=parse_id_i64(v[1],"base_token"),q=parse_id_i64(v[2],"quote_token"),d=(v.size()>3&&!v[3].empty())?std::stoll(v[3]):0; u64(body,b);u64(body,q);u64(body,d); ex={{"base",b},{"quote",q}}; }};
     m["order-place"] = {"Place a limit/market order", (uint32_t)TT::PlaceOrder, false,
         {PK(), P("Market id","market_id","market id"), P("Side","side","0=buy 1=sell"), P("Price","price","quote per base * 1e8"),
          P("Amount","amount","base amount atomic"), P("Flags","flags","bit0 market,bit1 post-only","0",false), P("Expiry","expiry","unix secs (0=GTC)","0",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int64_t mk=std::stoll(v[1]); int side=std::stoi(v[2]); int64_t pr=std::stoll(v[3]),am=std::stoll(v[4]);
+            int64_t mk=parse_id_i64(v[1],"market_id"); int side=std::stoi(v[2]); int64_t pr=std::stoll(v[3]),am=std::stoll(v[4]);
             int fl=(v.size()>5&&!v[5].empty())?std::stoi(v[5]):0; int64_t e=(v.size()>6&&!v[6].empty())?std::stoll(v[6]):0;
             u64(body,mk); body.push_back((uint8_t)side); u64(body,pr); u64(body,am); body.push_back((uint8_t)fl); u64(body,e);
             ex={{"market_id",mk},{"side",side},{"price",pr},{"amount",am}}; }};
     m["order-cancel"] = {"Cancel a resting order", (uint32_t)TT::CancelOrder, false,
         {PK(), P("Order id","order_id","order id")},
-        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t o=std::stoll(v[1]); u64(body,o); ex={{"order_id",o}}; }};
+        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t o=parse_id_i64(v[1],"order_id"); u64(body,o); ex={{"order_id",o}}; }};
     // ---- on-chain apps (docs/APPS_DESIGN.md) ----
     m["app-create"] = {"Create an app (2P or solo-vs-house)", (uint32_t)TT::CreateApp, false,
         {PK(), P("App type","app_type","1 ttt,3 c4,6 gomoku,16 dice,17 coinflip"), P("Stake token","stake_token","0=ZBC"),
          P("Stake amount","stake_amount","atomic"), P("Seats","seats","2=PvP, 1=solo","2",false),
          P("Params (hex)","params_hex","solo bet e.g. coinflip choice '00'","",false), P("Opponent (hex)","opponent_hex","36-byte opponent (open if empty)","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int gt=std::stoi(v[1]); int64_t st=std::stoll(v[2]),sa=std::stoll(v[3]); int seats=(v.size()>4&&!v[4].empty())?std::stoi(v[4]):2;
+            int gt=std::stoi(v[1]); int64_t st=parse_id_i64(v[2],"stake_token"),sa=std::stoll(v[3]); int seats=(v.size()>4&&!v[4].empty())?std::stoi(v[4]):2;
             std::vector<uint8_t> prm=(v.size()>5&&!v[5].empty())?hx(v[5]):std::vector<uint8_t>();
             body.push_back((uint8_t)gt); u64(body,st); u64(body,sa); body.push_back((uint8_t)seats); u16(body,(int)prm.size()); body.insert(body.end(),prm.begin(),prm.end());
             if(v.size()>6&&!v[6].empty()){ auto op=hx(v[6]); body.insert(body.end(),op.begin(),op.end()); }
             ex={{"app_type",gt},{"stake_token",st},{"stake_amount",sa},{"seats",seats}}; }};
     m["app-join"] = {"Join an open app", (uint32_t)TT::JoinApp, false,
         {PK(), P("App id","app_id","app id")},
-        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t g=std::stoll(v[1]); u64(body,g); ex={{"app_id",g}}; }};
+        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t g=parse_id_i64(v[1],"app_id"); u64(body,g); ex={{"app_id",g}}; }};
     m["app-move"] = {"Submit a move (move bytes as hex)", (uint32_t)TT::AppMove, false,
         {PK(), P("App id","app_id","app id"), P("Move (hex)","move_hex","move bytes (ttt cell '04')")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int64_t g=std::stoll(v[1]); auto mv=hx(v[2]); u64(body,g); u16(body,(int)mv.size()); body.insert(body.end(),mv.begin(),mv.end()); ex={{"app_id",g},{"move",v[2]}}; }};
+            int64_t g=parse_id_i64(v[1],"app_id"); auto mv=hx(v[2]); u64(body,g); u16(body,(int)mv.size()); body.insert(body.end(),mv.begin(),mv.end()); ex={{"app_id",g},{"move",v[2]}}; }};
     m["app-resign"] = {"Resign an app", (uint32_t)TT::ResignApp, false,
         {PK(), P("App id","app_id","app id")},
-        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t g=std::stoll(v[1]); u64(body,g); ex={{"app_id",g}}; }};
+        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t g=parse_id_i64(v[1],"app_id"); u64(body,g); ex={{"app_id",g}}; }};
     m["app-claim"] = {"Claim a timed-out app", (uint32_t)TT::ClaimAppTimeout, false,
         {PK(), P("App id","app_id","app id")},
-        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t g=std::stoll(v[1]); u64(body,g); ex={{"app_id",g}}; }};
+        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t g=parse_id_i64(v[1],"app_id"); u64(body,g); ex={{"app_id",g}}; }};
     // ---- liquid payments / escrow / triggers / storage / oracle ----
     m["liquid-payment"] = {"Stream ZBC over time (vesting)", (uint32_t)TT::LiquidPayment, true,
         {PK(), P("Recipient","recipient","recipient address"), P("Amount","amount","atomic"), P("Complete minutes","complete_minutes","full-vesting period (min)")},
@@ -154,7 +154,7 @@ static std::map<std::string, Cmd> registry() {
             body=TransactionUtil::GetLiquidPaymentBodyBytes(amt, mins, 0); ex={{"amount",amt},{"complete_minutes",mins}}; }};
     m["liquid-payment-stop"] = {"Stop a liquid payment", (uint32_t)TT::LiquidPaymentStop, false,
         {PK(), P("Transaction id","transaction_id","the liquid payment tx id")},
-        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t t=std::stoll(v[1]); body=TransactionUtil::GetLiquidPaymentStopBodyBytes(t); ex={{"transaction_id",t}}; }};
+        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t t=parse_id_i64(v[1],"transaction_id"); body=TransactionUtil::GetLiquidPaymentStopBodyBytes(t); ex={{"transaction_id",t}}; }};
     m["approve-escrow"] = {"Approve/reject/expire an escrow", (uint32_t)TT::ApprovalEscrow, false,
         {PK(), P("Approval","approval","0=approve 1=reject 2=expire"), P("Transaction hash","transaction_hash","escrowed tx hash (64 hex)")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
@@ -175,7 +175,7 @@ static std::map<std::string, Cmd> registry() {
             ex={{"fire_height",fh},{"amount",amt}}; }};
     m["cancel-trigger"] = {"Cancel a pending trigger (refund)", (uint32_t)TT::CancelTrigger, false,
         {PK(), P("Trigger id","trigger_id","the trigger id")},
-        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t t=std::stoll(v[1]); u64(body,t); ex={{"trigger_id",t}}; }};
+        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t t=parse_id_i64(v[1],"trigger_id"); u64(body,t); ex={{"trigger_id",t}}; }};
     m["add-prepaid-storage"] = {"Fund dataset storage rent", (uint32_t)TT::AddPrepaidStorage, false,
         {PK(), P("Amount","amount","atomic ZBC")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t a=std::stoll(v[1]); u64(body,a); ex={{"amount",a}}; }};
@@ -244,7 +244,7 @@ static std::map<std::string, Cmd> registry() {
          P("Token id","token_id","token id (decimal int64)"), P("Amount","amount","amount (atomic)")},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
             auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid recipient address"); rec=r.Value().address;
-            int64_t tid=std::stoll(v[2]), amt=std::stoll(v[3]);
+            int64_t tid=parse_id_i64(v[2],"token_id"), amt=std::stoll(v[3]);
             if(amt<=0) throw std::runtime_error("amount must be > 0");
             u64(body,tid); u64(body,amt); ex={{"token_id",tid},{"amount",amt}}; }};
     // ---- account / escrow ----
@@ -310,12 +310,12 @@ static std::map<std::string, Cmd> registry() {
     m["cancel-schedule"] = {"Cancel a pending scheduled transfer", (uint32_t)TT::CancelSchedule, false,
         {PK(), P("Schedule id","schedule_id","the schedule id")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int64_t s=std::stoll(v[1]); u64(body,s); ex={{"schedule_id",s}}; }};
+            int64_t s=parse_id_i64(v[1],"schedule_id"); u64(body,s); ex={{"schedule_id",s}}; }};
     m["reassign-schedule"] = {"Reassign a scheduled transfer to a new recipient", (uint32_t)TT::ReassignSchedule, false,
         {PK(), P("Schedule id","schedule_id","the schedule id"),
          P("New recipient","new_recipient","new recipient address")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int64_t s=std::stoll(v[1]); u64(body,s);
+            int64_t s=parse_id_i64(v[1],"schedule_id"); u64(body,s);
             auto r=parse_address(v[2]); if(!r.IsOk()) throw std::runtime_error("invalid new recipient");
             body.insert(body.end(), r.Value().address.begin(), r.Value().address.end());
             ex={{"schedule_id",s},{"new_recipient",r.Value().display}}; }};
@@ -383,7 +383,7 @@ static std::map<std::string, Cmd> registry() {
          P("Opening seat","opening_turn","seat that moves first, 0 or 1","0",false),
          P("Moves","moves","ttt cells in play order, comma-separated e.g. 0,3,1,4,2")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int64_t gid=std::stoll(v[1]);
+            int64_t gid=parse_id_i64(v[1],"app_id");
             auto p0=derive_zbc_keypair(v[2]); if(!p0.IsOk()) throw std::runtime_error("bad seat-0 key");
             auto p1=derive_zbc_keypair(v[3]); if(!p1.IsOk()) throw std::runtime_error("bad seat-1 key");
             int turn=(v.size()>4&&!v[4].empty())?std::stoi(v[4]):0;
@@ -652,6 +652,28 @@ int main(int argc, char* argv[]) {
         }
         std::cout << "Sample: " << sample.dump() << "\n";
         std::cout << "Run with --verbose to be prompted for each field and get human-readable output.\n";
+        return 0;
+    }
+    // ---- `version` : what this build is and what it can do -------------------------------
+    // An integrator supporting more than one build needs to branch on capability, and before this
+    // the only way was to probe `list` for a discriminator command. Asked for by the StarTasks
+    // integration 2026-09-17. Capability names are stable; new ones are only ever added.
+    if (cmd == "version" || cmd == "--version" || cmd == "-V") {
+        json caps = json::array();
+        caps.push_back("exit_codes");        // distinct usage/network/chain exit codes, 0-10
+        caps.push_back("timeout");           // --timeout / ZBC_TIMEOUT / timeout_seconds
+        caps.push_back("env_key");           // ZBC_KEY, and '-' / '@env' as the key placeholder
+        caps.push_back("message_signing");   // sign-message / verify-message (ZBC-MSG-v1)
+        caps.push_back("json_input");        // --json-input, JSON on stdin
+        caps.push_back("offline");           // --offline + --genesis, unsigned/signed bytes, no node
+        caps.push_back("escrow_string_ints");// escrow.commission / escrow.timeout accept strings
+        json out;
+        out["version"] = ZOOBC_VERSION;
+        out["commit"] = ZOOBC_GIT_COMMIT;
+        out["signing_version"] = 2;
+        out["commands"] = reg.size();
+        out["capabilities"] = caps;
+        std::cout << out.dump() << std::endl;
         return 0;
     }
     // ---- `list` / `--help` : all commands, grouped by category ----

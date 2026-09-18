@@ -30,12 +30,12 @@ int main(int argc, char* argv[]) {
     emit_error=make_emitter(params.json_output); if(!init_sodium(emit_error)) return 1;
     try {
         auto kp=derive_zbc_keypair(params.values[0]); if(!kp.IsOk()){emit_error(kp.GetError().ToString());return 1;}
-        int64_t target=std::stoll(params.values[1]);
+        int64_t target=parse_id_i64(params.values[1],"target_tx_id");
         if(target==0){emit_error("target transaction id must not be 0");return 1;}
         std::vector<uint8_t> body; putU64(body,target);
         std::string sender_addr=zoobc::crypto::ZoobcAddress::Encode(kp.Value().public_key,"ZBC");
         json extra={{"sponsor_address",sender_addr},{"target_tx_id",std::to_string(target)}};
         return run_transaction(params,config.tx_type,kp.Value().public_key,std::vector<uint8_t>{},body,
                                kp.Value(),KeyType::ZBC,extra,emit_error,"SUCCESS: longevity cancelled, remainder refunded!");
-    } catch(const std::exception& e){ emit_error(e.what()); return 1; }
+    } catch(const std::exception& e){ const int c=last_exit_code(); emit_error(e.what()); return c; }
 }

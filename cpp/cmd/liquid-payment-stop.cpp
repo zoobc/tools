@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
         auto sender_kp = derive_zbc_keypair(params.values[0]);
         if (!sender_kp.IsOk()) { emit_error(sender_kp.GetError().ToString()); return 1; }
 
-        int64_t transaction_id = std::stoll(params.values[1]);
+        int64_t transaction_id = parse_id_i64(params.values[1], "transaction_id");
 
         auto body_bytes = TransactionUtil::GetLiquidPaymentStopBodyBytes(transaction_id);
 
@@ -49,8 +49,5 @@ int main(int argc, char* argv[]) {
             extra, emit_error,
             "SUCCESS: Liquid payment stop transaction submitted!");
 
-    } catch (const std::exception& e) {
-        emit_error(e.what());
-        return 1;
-    }
+    } catch(const std::exception& e){ const int c=last_exit_code(); emit_error(e.what()); return c; }
 }

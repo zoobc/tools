@@ -41,7 +41,7 @@ int main(int argc, char* argv[]) {
     emit_error=make_emitter(params.json_output); if(!init_sodium(emit_error)) return 1;
     try {
         auto sender=derive_zbc_keypair(params.values[0]); if(!sender.IsOk()){emit_error(sender.GetError().ToString());return 1;}
-        int64_t gid=std::stoll(params.values[1]);
+        int64_t gid=parse_id_i64(params.values[1],"app_id");
         auto p0=derive_zbc_keypair(params.values[2]); if(!p0.IsOk()){emit_error(p0.GetError().ToString());return 1;}
         auto p1=derive_zbc_keypair(params.values[3]); if(!p1.IsOk()){emit_error(p1.GetError().ToString());return 1;}
         int turn=params.values[4].empty()?0:std::stoi(params.values[4]);
@@ -82,5 +82,5 @@ int main(int argc, char* argv[]) {
 
         json extra={{"app_id",gid},{"opening_turn",turn},{"final_seq",cells.size()},{"moves",movesJson}};
         return run_transaction(params,config.tx_type,sender.Value().public_key,std::vector<uint8_t>{},body,sender.Value(),KeyType::ZBC,extra,emit_error,"SUCCESS: Settlement submitted!");
-    } catch(const std::exception& e){ emit_error(e.what()); return 1; }
+    } catch(const std::exception& e){ const int c=last_exit_code(); emit_error(e.what()); return c; }
 }

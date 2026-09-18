@@ -24,12 +24,12 @@ int main(int argc, char* argv[]) {
     emit_error=make_emitter(params.json_output); if(!init_sodium(emit_error)) return 1;
     try {
         auto kp=derive_zbc_keypair(params.values[0]); if(!kp.IsOk()){emit_error(kp.GetError().ToString());return 1;}
-        int gt=std::stoi(params.values[1]); int64_t stok=std::stoll(params.values[2]), samt=std::stoll(params.values[3]);
+        int gt=std::stoi(params.values[1]); int64_t stok=parse_id_i64(params.values[2],"stake_token"), samt=std::stoll(params.values[3]);
         int seats=params.values[4].empty()?2:std::stoi(params.values[4]);
         int channel=params.values[5].empty()?0:std::stoi(params.values[5]);
         std::vector<uint8_t> body; body.push_back((uint8_t)gt); putU64(body,stok); putU64(body,samt); body.push_back((uint8_t)seats); putU16(body,0);
         if(channel!=0) body.push_back((uint8_t)channel);  // a single trailing byte after params = the channel flag
         json extra={{"app_type",gt},{"stake_token",stok},{"stake_amount",samt},{"seats",seats},{"channel",channel}};
         return run_transaction(params,config.tx_type,kp.Value().public_key,std::vector<uint8_t>{},body,kp.Value(),KeyType::ZBC,extra,emit_error,"SUCCESS: App created!");
-    } catch(const std::exception& e){ emit_error(e.what()); return 1; }
+    } catch(const std::exception& e){ const int c=last_exit_code(); emit_error(e.what()); return c; }
 }

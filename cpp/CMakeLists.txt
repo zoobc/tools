@@ -9,6 +9,21 @@ project(zoobc-tools LANGUAGES CXX)
 # Ethereum style keys). Debian/Ubuntu: libsodium-dev libssl-dev libsecp256k1-dev.
 # macOS (Homebrew): libsodium openssl@3 secp256k1, then -DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3).
 
+# `zbc-cli version` reports the tools release and the commit it was built from. In the node
+# repository these come from its VERSION file; a public checkout has neither, so they come from
+# here — keep the version in step with ts/package.json, py/pyproject.toml and rust/Cargo.toml.
+set(ZBC_TOOLS_VERSION "0.1.1")
+find_package(Git QUIET)
+if(GIT_FOUND)
+    execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --short HEAD
+                    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+                    OUTPUT_VARIABLE ZBC_GIT_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+endif()
+if(NOT ZBC_GIT_COMMIT)
+    set(ZBC_GIT_COMMIT "unknown")
+endif()
+add_compile_definitions(ZOOBC_VERSION="${ZBC_TOOLS_VERSION}" ZOOBC_GIT_COMMIT="${ZBC_GIT_COMMIT}")
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)

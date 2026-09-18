@@ -13,10 +13,10 @@ int main(int argc, char* argv[]) {
     int rc=parse_params(config,argc,argv,params,[&](const std::string& m){emit_error(m);}); if(rc!=0) return rc==-1?0:rc;
     emit_error=make_emitter(params.json_output); if(!init_sodium(emit_error)) return 1;
     try { auto kp=derive_zbc_keypair(params.values[0]); if(!kp.IsOk()){emit_error(kp.GetError().ToString());return 1;}
-        int64_t gid=std::stoll(params.values[1]); std::string h=params.values[2];
+        int64_t gid=parse_id_i64(params.values[1],"app_id"); std::string h=params.values[2];
         std::vector<uint8_t> mv; for(size_t i=0;i+1<h.size();i+=2) mv.push_back((uint8_t)std::stoi(h.substr(i,2),nullptr,16));
         std::vector<uint8_t> body; putU64(body,gid); putU16(body,(int)mv.size()); body.insert(body.end(),mv.begin(),mv.end());
         json extra={{"app_id",gid},{"move",h}};
         return run_transaction(params,config.tx_type,kp.Value().public_key,std::vector<uint8_t>{},body,kp.Value(),KeyType::ZBC,extra,emit_error,"SUCCESS: Move submitted!");
-    } catch(const std::exception& e){ emit_error(e.what()); return 1; }
+    } catch(const std::exception& e){ const int c=last_exit_code(); emit_error(e.what()); return c; }
 }

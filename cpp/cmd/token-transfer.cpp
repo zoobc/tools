@@ -22,10 +22,10 @@ int main(int argc, char* argv[]) {
     try {
         auto kp=derive_zbc_keypair(params.values[0]); if(!kp.IsOk()){emit_error(kp.GetError().ToString());return 1;}
         auto recip=parse_address(params.values[1]); if(!recip.IsOk()){emit_error("Invalid recipient: "+recip.GetError().ToString());return 1;}
-        int64_t token_id=std::stoll(params.values[2]); int64_t amount=std::stoll(params.values[3]);
+        int64_t token_id=parse_id_i64(params.values[2],"token_id"); int64_t amount=std::stoll(params.values[3]);
         if(amount<=0){emit_error("amount must be > 0");return 1;}
         std::vector<uint8_t> body; putU64(body,token_id); putU64(body,amount);
         json extra={{"token_id",token_id},{"amount",amount},{"recipient",recip.Value().display}};
         return run_transaction(params,config.tx_type,kp.Value().public_key,recip.Value().address,body,kp.Value(),KeyType::ZBC,extra,emit_error,"SUCCESS: Token transferred!");
-    } catch(const std::exception& e){ emit_error(e.what()); return 1; }
+    } catch(const std::exception& e){ const int c=last_exit_code(); emit_error(e.what()); return c; }
 }

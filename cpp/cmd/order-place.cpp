@@ -24,12 +24,12 @@ int main(int argc, char* argv[]) {
     emit_error=make_emitter(params.json_output); if(!init_sodium(emit_error)) return 1;
     try {
         auto kp=derive_zbc_keypair(params.values[0]); if(!kp.IsOk()){emit_error(kp.GetError().ToString());return 1;}
-        int64_t mkt=std::stoll(params.values[1]); int side=std::stoi(params.values[2]);
+        int64_t mkt=parse_id_i64(params.values[1],"market_id"); int side=std::stoi(params.values[2]);
         int64_t price=std::stoll(params.values[3]), amount=std::stoll(params.values[4]);
         uint8_t flags=(uint8_t)(params.values[5].empty()?0:std::stoi(params.values[5]));
         int64_t exp=params.values[6].empty()?0:std::stoll(params.values[6]);
         std::vector<uint8_t> body; putU64(body,mkt); body.push_back((uint8_t)side); putU64(body,price); putU64(body,amount); body.push_back(flags); putU64(body,exp);
         json extra={{"market_id",mkt},{"side",side},{"price",price},{"amount",amount}};
         return run_transaction(params,config.tx_type,kp.Value().public_key,std::vector<uint8_t>{},body,kp.Value(),KeyType::ZBC,extra,emit_error,"SUCCESS: Order placed!");
-    } catch(const std::exception& e){ emit_error(e.what()); return 1; }
+    } catch(const std::exception& e){ const int c=last_exit_code(); emit_error(e.what()); return c; }
 }

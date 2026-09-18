@@ -996,6 +996,55 @@ inline zoobc::Result<std::vector<uint8_t>> build_escrow_data(
 // CLI parameter framework
 // ============================================================================
 
+// A user-facing 64-bit identifier, parsed strictly.
+//
+// std::stoll stops at the first character it cannot use and returns the prefix it managed, WITHOUT
+// throwing. So a pasted 64-hex transaction hash beginning "0b82…" parses as 0, the command is built
+// against an id that cannot exist, the node correctly says it does not, and the tool reports
+// success on an operation that did nothing. That is the worst shape a failure can take: the
+// operator is told the liquid payment is stopped while it carries on streaming.
+//
+// Reported against liquid-payment-stop by a tester on 2026-09-18, who then swept the family and
+// found the same parse on trigger_id and schedule_id. Refusing input is always better than
+// reinterpreting it.
+inline int64_t parse_id_i64(const std::string& in, const char* field) {
+    // A malformed id is a usage error, not an internal one: the JSON and the process exit code
+    // both have to say so, or a script cannot tell "you typed it wrong" from "the tool broke".
+    auto refuse = [field](const std::string& why) -> std::runtime_error {
+        pending_exit_code() = exit_code::USAGE;
+        last_exit_code() = exit_code::USAGE;
+        return std::runtime_error(std::string(field) + " " + why);
+    };
+
+    std::string s;
+    for (char c : in) if (c != ' ' && c != '\t' && c != ',' && c != '_') s.push_back(c);
+    if (s.empty()) throw refuse("is empty");
+
+    // Name the mistake people actually make. The explorer, the wallet and every bug report show a
+    // transaction as 64 hex characters, so that is what a tester pastes; this field wants the id.
+    if (s.size() == 64) {
+        bool hex = true;
+        for (char c : s) if (!std::isxdigit(static_cast<unsigned char>(c))) { hex = false; break; }
+        if (hex)
+            throw refuse("looks like a 64-character transaction HASH, not an id. This field wants the "
+                         "numeric id: the first 8 bytes of that hash read as a little-endian signed "
+                         "64-bit integer. The explorer shows it beside the hash.");
+    }
+
+    size_t i = (s[0] == '-' || s[0] == '+') ? 1 : 0;
+    if (i >= s.size()) throw refuse("is not a number: " + in);
+    for (size_t k = i; k < s.size(); k++)
+        if (!std::isdigit(static_cast<unsigned char>(s[k]))) throw refuse("must be a whole number, got: " + in);
+    try {
+        size_t pos = 0;
+        long long v = std::stoll(s, &pos);
+        if (pos != s.size()) throw std::out_of_range("trailing");
+        return static_cast<int64_t>(v);
+    } catch (const std::exception&) {
+        throw refuse("is out of range for a 64-bit id: " + in);
+    }
+}
+
 struct ParamDef {
     std::string name;            // Display name for help
     std::string json_key;        // Key in JSON input
@@ -1303,10 +1352,27 @@ inline int parse_params(const ToolConfig& config, int argc, char* argv[], Parsed
         // Escrow from JSON
         if (j.contains("escrow")) {
             auto& ej = j["escrow"];
-            if (ej.contains("approver")) out.escrow.approver = ej["approver"].get<std::string>();
-            if (ej.contains("commission")) out.escrow.commission = ej["commission"].get<int64_t>();
-            if (ej.contains("timeout")) out.escrow.timeout = ej["timeout"].get<int64_t>();
-            if (ej.contains("instruction")) out.escrow.instruction = ej["instruction"].get<std::string>();
+            // commission/timeout accept a JSON number OR a decimal string, like `fee`, `timestamp`
+            // and every per-command amount. A caller that stringifies all integers to stay clear of
+            // JavaScript's 2^53 limit sends strings everywhere; before this these two threw an
+            // UNCAUGHT nlohmann type_error, which aborted the process (exit 134, core dumped)
+            // instead of producing a usage error. Reported by the StarTasks integration 2026-09-17.
+            try {
+                if (ej.contains("approver")) out.escrow.approver = ej["approver"].get<std::string>();
+                if (ej.contains("commission"))
+                    out.escrow.commission = ej["commission"].is_number()
+                        ? ej["commission"].get<int64_t>()
+                        : std::stoll(ej["commission"].get<std::string>());
+                if (ej.contains("timeout"))
+                    out.escrow.timeout = ej["timeout"].is_number()
+                        ? ej["timeout"].get<int64_t>()
+                        : std::stoll(ej["timeout"].get<std::string>());
+                if (ej.contains("instruction")) out.escrow.instruction = ej["instruction"].get<std::string>();
+            } catch (const std::exception&) {
+                return fail(emit_error, exit_code::USAGE,
+                            "escrow.commission / escrow.timeout must be whole numbers, "
+                            "and escrow.approver / escrow.instruction must be strings");
+            }
         }
 
     } else if (positional.empty() && is_stdin_terminal()) {
