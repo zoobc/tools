@@ -78,6 +78,24 @@ function conditionHolds(when: string, params: Record<string, string>): boolean {
 }
 
 /** Serialise one body field. */
+// Split policy (type 54): shares are basis points, 1 = 0.01%. Integer arithmetic only — never a
+// float — so 29.5 is exactly 2950 here, in every other port, and in the C++ reference.
+export const SPLIT_POLICY_MAX_RECIPIENTS = 10;
+export const SPLIT_POLICY_SCALE = 10000;
+
+export function percentToBasisPoints(pct: string, src = "share"): number {
+  const dot = pct.indexOf(".");
+  const intPart = dot < 0 ? pct : pct.slice(0, dot);
+  let frac = dot < 0 ? "" : pct.slice(dot + 1);
+  if (frac.length > 2) throw usage(`${src}: share "${pct}" takes at most two decimals`);
+  while (frac.length < 2) frac += "0";
+  const digits = (intPart || "0") + frac;
+  if (!/^[0-9]+$/.test(digits)) throw usage(`${src}: share "${pct}" is not a number`);
+  const n = Number(digits);
+  if (n < 1 || n > SPLIT_POLICY_SCALE) throw usage(`${src}: share "${pct}" must be between 0.01 and 100`);
+  return n;
+}
+
 export function encodeField(f: FieldDef, params: Record<string, string>, ctx: BodyContext): Uint8Array {
   const w = new ByteWriter();
   if (ctx.computed && f.name in ctx.computed) return ctx.computed[f.name];
@@ -107,6 +125,23 @@ export function encodeField(f: FieldDef, params: Record<string, string>, ctx: Bo
       if (items.length > 255) throw usage(`${f.from}: at most 255 entries`);
       w.u8(items.length);
       for (const a of items) w.bytes(parseAddress(a).bytes);
+      return w.finish();
+    }
+    case "split_list8": {
+      let items = splitList(value);
+      if (items.length === 1 && (items[0] === "clear" || items[0] === "none")) items = [];
+      if (items.length > SPLIT_POLICY_MAX_RECIPIENTS) throw usage(`${f.from}: at most ${SPLIT_POLICY_MAX_RECIPIENTS} recipients`);
+      w.u8(items.length);
+      let total = 0;
+      for (const it of items) {
+        const eq = it.indexOf("=");
+        if (eq < 0) throw usage(`${f.from}: "${it}" is not ADDRESS=PERCENT`);
+        const bp = percentToBasisPoints(it.slice(eq + 1).trim(), f.from);
+        total += bp;
+        const a = parseAddress(it.slice(0, eq).trim()).bytes;
+        w.u8(a.length).bytes(a).u16(bp);
+      }
+      if (total > SPLIT_POLICY_SCALE) throw usage(`${f.from}: shares add up to more than 100%`);
       return w.finish();
     }
     case "sender_address": return ctx.sender.accountBytes;

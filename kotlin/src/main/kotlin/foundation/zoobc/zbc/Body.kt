@@ -65,6 +65,24 @@ object Body {
             "address" -> addr(value, f.from).bytes
             "address_list" -> splitList(value).fold(ByteArray(0)) { acc, a -> acc + addr(a, f.from).bytes }
             "address_list8" -> { val items = splitList(value); if (items.size > 255) throw ToolError.usage("${f.from}: at most 255 entries"); items.fold(byteArrayOf(items.size.toByte())) { acc, a -> acc + addr(a, f.from).bytes } }
+            "split_list8" -> {
+                var items = splitList(value)
+                if (items.size == 1 && (items[0] == "clear" || items[0] == "none")) items = emptyList()
+                if (items.size > SPLIT_POLICY_MAX_RECIPIENTS)
+                    throw ToolError.usage("${f.from}: at most $SPLIT_POLICY_MAX_RECIPIENTS recipients")
+                var out = byteArrayOf(items.size.toByte())
+                var total = 0
+                for (it in items) {
+                    val eq = it.indexOf('=')
+                    if (eq < 0) throw ToolError.usage("${f.from}: \"$it\" is not ADDRESS=PERCENT")
+                    val bp = percentToBasisPoints(it.substring(eq + 1).trim(), f.from)
+                    total += bp
+                    val a = addr(it.substring(0, eq).trim(), f.from).bytes
+                    out += byteArrayOf(a.size.toByte()) + a + Bytes.le16(bp)
+                }
+                if (total > SPLIT_POLICY_SCALE) throw ToolError.usage("${f.from}: shares add up to more than 100%")
+                out
+            }
             "sender_address" -> (ctx.sender ?: throw ToolError.internal("no sender")).accountBytes
             "pubkey_of_key" -> try { KeyPair.fromHex(value).publicKey } catch (e: IllegalArgumentException) { throw ToolError.usage("${f.from} must be 64 hex characters (a 32-byte private key)") }
             "key32" -> try { Address.parseKey32(value) } catch (e: IllegalArgumentException) { throw ToolError.usage("invalid ${f.from}: ${e.message}") }
@@ -72,6 +90,24 @@ object Body {
             "custom" -> throw ToolError.internal("field ${f.name} needs a custom hook")
             else -> throw ToolError.internal("unknown encoding ${f.encoding}")
         }
+    }
+
+    // Split policy (type 54): shares are basis points, 1 = 0.01%. Integer arithmetic only — never a
+    // float — so 29.5 is exactly 2950 here, in every other port, and in the C++ reference.
+    const val SPLIT_POLICY_MAX_RECIPIENTS = 10
+    const val SPLIT_POLICY_SCALE = 10000
+
+    fun percentToBasisPoints(pct: String, src: String = "share"): Int {
+        val dot = pct.indexOf('.')
+        val intPart = if (dot < 0) pct else pct.substring(0, dot)
+        var frac = if (dot < 0) "" else pct.substring(dot + 1)
+        if (frac.length > 2) throw ToolError.usage("$src: share \"$pct\" takes at most two decimals")
+        while (frac.length < 2) frac += "0"
+        val digits = (if (intPart.isEmpty()) "0" else intPart) + frac
+        if (!digits.all { it in '0'..'9' }) throw ToolError.usage("$src: share \"$pct\" is not a number")
+        val n = digits.toLongOrNull() ?: throw ToolError.usage("$src: share \"$pct\" is not a number")
+        if (n < 1 || n > SPLIT_POLICY_SCALE) throw ToolError.usage("$src: share \"$pct\" must be between 0.01 and 100")
+        return n.toInt()
     }
 
     private fun hexOrUsage(v: String, name: String) = if (Encoding.isHex(v)) Encoding.hexToBytes(v) else throw ToolError.usage("$name must be hex")

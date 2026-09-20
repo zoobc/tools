@@ -23,6 +23,25 @@ def parse_integer(value: str, kind: str, name: str) -> int:
     return v
 
 
+# Split policy (type 54): shares are basis points, 1 = 0.01%. Converted with integer arithmetic —
+# never a float — so 29.5 is exactly 2950 here, in every other port, and in the C++ reference.
+SPLIT_POLICY_MAX_RECIPIENTS = 10
+SPLIT_POLICY_SCALE = 10000
+
+
+def percent_to_basis_points(pct: str, src: str = "share") -> int:
+    int_part, _, frac_part = pct.partition(".")
+    if len(frac_part) > 2:
+        raise usage("%s: share %r takes at most two decimals" % (src, pct))
+    digits = (int_part or "0") + frac_part.ljust(2, "0")
+    if not digits.isdigit():
+        raise usage("%s: share %r is not a number" % (src, pct))
+    n = int(digits)
+    if n < 1 or n > SPLIT_POLICY_SCALE:
+        raise usage("%s: share %r must be between 0.01 and 100" % (src, pct))
+    return n
+
+
 def split_list(s: str) -> List[str]:
     return [x.strip() for x in s.split(",") if x.strip()]
 
@@ -112,6 +131,25 @@ def encode_field(f: dict, params: Dict[str, str], sender: KeyPair, files: Option
         if len(items) > 255:
             raise usage("%s: at most 255 entries" % src)
         return bytes([len(items)]) + b"".join(parse_address(a).bytes for a in items)
+    if enc == "split_list8":
+        items = split_list(value)
+        if len(items) == 1 and items[0] in ("clear", "none"):
+            items = []
+        if len(items) > SPLIT_POLICY_MAX_RECIPIENTS:
+            raise usage("%s: at most %d recipients" % (src, SPLIT_POLICY_MAX_RECIPIENTS))
+        out = bytes([len(items)])
+        total = 0
+        for it in items:
+            if "=" not in it:
+                raise usage("%s: %r is not ADDRESS=PERCENT" % (src, it))
+            addr, pct = it.split("=", 1)
+            bp = percent_to_basis_points(pct.strip(), src)
+            total += bp
+            a = parse_address(addr.strip()).bytes
+            out += bytes([len(a)]) + a + struct.pack("<H", bp)
+        if total > SPLIT_POLICY_SCALE:
+            raise usage("%s: shares add up to more than 100%%" % src)
+        return out
     if enc == "sender_address":
         return sender.account_bytes
     if enc == "pubkey_of_key":

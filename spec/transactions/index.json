@@ -14,6 +14,7 @@
     "address": "the typed account address bytes (addresses.md section 1; 36 bytes for a ZooBC account)",
     "address_list": "the typed address bytes of each entry, concatenated",
     "address_list8": "u8 count, then the typed address bytes of each entry",
+    "split_list8": "u8 count, then per entry: u8 address byte-length, the typed address bytes, u16le share in basis points. Written as ADDRESS=PERCENT, comma separated; PERCENT takes at most two decimals and is multiplied by 100 with integer arithmetic (70 -> 7000, 29.5 -> 2950)",
     "sender_address": "the signing account's 36-byte typed address (00000000 ‖ public key)",
     "pubkey_of_key": "the 32-byte Ed25519 public key derived from the named private-key parameter",
     "key32": "32 bytes from a `key` parameter: 64 hex, or a ZNK_/ZBG_/ZBR_/ZBC_ text address decoded (addresses.md)",
@@ -24,6 +25,7 @@
     "privkey": "64 hex characters, a 32-byte Ed25519 seed",
     "address": "any address form of addresses.md section 3",
     "address_list": "comma-separated addresses; may be empty",
+    "split_list": "comma-separated ADDRESS=PERCENT entries (max 10); PERCENT takes at most two decimals; 'clear', 'none' or empty removes the policy",
     "key": "64 hex characters (optionally 0x-prefixed) or a ZNK_/ZBG_/ZBR_/ZBC_ text address",
     "int64": "decimal, may be negative",
     "uint64": "decimal",
@@ -310,6 +312,15 @@
       "type": 42,
       "name": "TransferDataset",
       "binary": null,
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "set-split-policy",
+      "type": 54,
+      "name": "SetSplitPolicy",
+      "binary": "zbc-split-policy",
       "recipient": "none",
       "needs_node": false,
       "custom": null

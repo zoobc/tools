@@ -218,6 +218,19 @@ def body_of(spec, v, files):
         elif enc == "address": out += typed_addr(val)
         elif enc == "address_list8":
             items = [x for x in val.split(",") if x]; out += bytes([len(items)]) + b"".join(typed_addr(x) for x in items)
+        elif enc == "split_list8":
+            # Split policy (type 54): u8 count, then per entry u8 address length, the typed address
+            # and the share in basis points. The percentage is scaled with integer arithmetic (two
+            # decimals at most), which is what every port and the C++ reference do.
+            items = [x.strip() for x in val.split(",") if x.strip()]
+            if items in (["clear"], ["none"]): items = []
+            out += bytes([len(items)])
+            for it in items:
+                addr_s, _, pct = it.partition("=")
+                whole, _, frac = pct.strip().partition(".")
+                bp = int((whole or "0") + frac.ljust(2, "0"))
+                a = typed_addr(addr_s.strip())
+                out += bytes([len(a)]) + a + struct.pack("<H", bp)
         elif enc == "sender_address": out += b"\0\0\0\0" + bytes.fromhex(KEYS[v["key"]]["public_key"])
         elif enc == "pubkey_of_key": out += bytes.fromhex(KEYS[val]["public_key"])
         elif enc == "key32": out += bytes.fromhex(val)

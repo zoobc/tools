@@ -8,6 +8,24 @@ namespace Zoobc\Zbc;
 /** Parameter validation and the generic body serialiser driven by spec/transactions (encodings of index.json). */
 final class Body
 {
+    // Split policy (type 54): shares are basis points, 1 = 0.01%. Integer arithmetic only — never a
+    // float — so 29.5 is exactly 2950 here, in every other port, and in the C++ reference.
+    public const SPLIT_POLICY_MAX_RECIPIENTS = 10;
+    public const SPLIT_POLICY_SCALE = 10000;
+
+    public static function percentToBasisPoints(string $pct, string $src = 'share'): int
+    {
+        $dot = strpos($pct, '.');
+        $intPart = $dot === false ? $pct : substr($pct, 0, $dot);
+        $frac = $dot === false ? '' : substr($pct, $dot + 1);
+        if (strlen($frac) > 2) { throw ToolError::usage("$src: share \"$pct\" takes at most two decimals"); }
+        $digits = ($intPart === '' ? '0' : $intPart) . str_pad($frac, 2, '0');
+        if (!ctype_digit($digits)) { throw ToolError::usage("$src: share \"$pct\" is not a number"); }
+        $n = (int)$digits;
+        if ($n < 1 || $n > self::SPLIT_POLICY_SCALE) { throw ToolError::usage("$src: share \"$pct\" must be between 0.01 and 100"); }
+        return $n;
+    }
+
     public static function parseInteger(string $value, string $kind, string $name): int
     {
         $v = trim($value);
@@ -100,6 +118,24 @@ final class Body
                 $items = self::splitList($value);
                 if (count($items) > 255) { throw ToolError::usage("{$f['from']}: at most 255 entries"); }
                 return chr(count($items)) . implode('', array_map(fn($a) => self::addr($a, $f['from'])->bytes(), $items));
+            case 'split_list8': {
+                $items = self::splitList($value);
+                if (count($items) === 1 && in_array($items[0], ['clear', 'none'], true)) { $items = []; }
+                if (count($items) > self::SPLIT_POLICY_MAX_RECIPIENTS) {
+                    throw ToolError::usage("{$f['from']}: at most " . self::SPLIT_POLICY_MAX_RECIPIENTS . " recipients");
+                }
+                $out = chr(count($items)); $total = 0;
+                foreach ($items as $it) {
+                    $eq = strpos($it, '=');
+                    if ($eq === false) { throw ToolError::usage("{$f['from']}: \"$it\" is not ADDRESS=PERCENT"); }
+                    $bp = self::percentToBasisPoints(trim(substr($it, $eq + 1)), $f['from']);
+                    $total += $bp;
+                    $a = self::addr(trim(substr($it, 0, $eq)), $f['from'])->bytes();
+                    $out .= chr(strlen($a)) . $a . pack('v', $bp);
+                }
+                if ($total > self::SPLIT_POLICY_SCALE) { throw ToolError::usage("{$f['from']}: shares add up to more than 100%"); }
+                return $out;
+            }
             case 'sender_address': return ($ctx->sender ?? throw ToolError::internal('no sender'))->accountBytes();
             case 'pubkey_of_key': try { return KeyPair::fromHex($value)->publicKey; } catch (\InvalidArgumentException) { throw ToolError::usage("{$f['from']} must be 64 hex characters (a 32-byte private key)"); }
             case 'key32': try { return Address::parseKey32($value); } catch (\InvalidArgumentException $e) { throw ToolError::usage("invalid {$f['from']}: {$e->getMessage()}"); }

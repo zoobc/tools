@@ -107,12 +107,131 @@ bool TransactionUtil::IsEmptyAccountAddress(
     return ExtractAccountType(account_address) == ACCOUNT_TYPE_EMPTY;
 }
 
+bool TransactionUtil::TokenIconMediaType(const std::string& v, std::string& out_media) {
+    const size_t n = v.size();
+    if (n < 16 || n > 4096) return false;
+    const unsigned char* p = reinterpret_cast<const unsigned char*>(v.data());
+    auto be32 = [&](size_t o) -> uint32_t {
+        return (static_cast<uint32_t>(p[o]) << 24) | (static_cast<uint32_t>(p[o+1]) << 16) |
+               (static_cast<uint32_t>(p[o+2]) << 8) | static_cast<uint32_t>(p[o+3]);
+    };
+    // PNG: 8-byte signature, then a 13-byte IHDR whose first two u32be are width and height.
+    static const unsigned char kPng[8] = {0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A};
+    if (n >= 24 && std::memcmp(p, kPng, 8) == 0 &&
+        p[12]=='I' && p[13]=='H' && p[14]=='D' && p[15]=='R') {
+        const uint32_t w = be32(16), h = be32(20);
+        if (w < 1 || h < 1 || w > 512 || h > 512) return false;
+        out_media = "image/png";
+        return true;
+    }
+    // WebP: "RIFF" .... "WEBP" then a chunk fourcc. Three variants carry the canvas size.
+    if (n >= 30 && p[0]=='R'&&p[1]=='I'&&p[2]=='F'&&p[3]=='F' &&
+        p[8]=='W'&&p[9]=='E'&&p[10]=='B'&&p[11]=='P') {
+        if (p[12]=='V'&&p[13]=='P'&&p[14]=='8'&&p[15]==' ') {          // lossy
+            if (!(p[23]==0x9D && p[24]==0x01 && p[25]==0x2A)) return false;  // frame sync
+            const uint32_t w = (p[26] | (static_cast<uint32_t>(p[27]) << 8)) & 0x3FFF;
+            const uint32_t h = (p[28] | (static_cast<uint32_t>(p[29]) << 8)) & 0x3FFF;
+            if (w < 1 || h < 1 || w > 512 || h > 512) return false;
+            out_media = "image/webp";
+            return true;
+        }
+        if (p[12]=='V'&&p[13]=='P'&&p[14]=='8'&&p[15]=='L') {          // lossless
+            if (p[20] != 0x2F) return false;                            // signature byte
+            const uint32_t bits = p[21] | (static_cast<uint32_t>(p[22]) << 8) |
+                                  (static_cast<uint32_t>(p[23]) << 16) |
+                                  (static_cast<uint32_t>(p[24]) << 24);
+            const uint32_t w = (bits & 0x3FFF) + 1;
+            const uint32_t h = ((bits >> 14) & 0x3FFF) + 1;
+            if (w > 512 || h > 512) return false;
+            out_media = "image/webp";
+            return true;
+        }
+        if (p[12]=='V'&&p[13]=='P'&&p[14]=='8'&&p[15]=='X') {          // extended
+            const uint32_t w = (p[24] | (static_cast<uint32_t>(p[25]) << 8) |
+                                (static_cast<uint32_t>(p[26]) << 16)) + 1;
+            const uint32_t h = (p[27] | (static_cast<uint32_t>(p[28]) << 8) |
+                                (static_cast<uint32_t>(p[29]) << 16)) + 1;
+            if (w > 512 || h > 512) return false;
+            out_media = "image/webp";
+            return true;
+        }
+        return false;
+    }
+    return false;
+}
+
+bool TransactionUtil::HasValidRegistryDomain(const std::string& domain) {
+    if (domain.empty() || domain.size() > 256) return false;
+    for (unsigned char c : domain) {
+        const bool ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                        (c >= '0' && c <= '9') || c == '.' || c == '-';
+        if (!ok) return false;
+    }
+    return true;
+}
+
+bool TransactionUtil::HasValidRegistryUrl(const std::string& url, bool allow_http) {
+    if (url.empty() || url.size() > 1024) return false;
+    const std::string https = "https://";
+    const std::string http = "http://";
+    const bool is_https = url.compare(0, https.size(), https) == 0;
+    const bool is_http = allow_http && url.compare(0, http.size(), http) == 0;
+    if (!is_https && !is_http) return false;
+    // Nothing after the scheme may be a control character, whitespace, or a character that ends
+    // an attribute in HTML. Byte comparisons only: no URL parser, no locale, no library version.
+    for (unsigned char c : url) {
+        if (c < 0x21 || c == 0x7F) return false;                  // controls, space, DEL
+        if (c == '"' || c == '\'' || c == '<' || c == '>' || c == '`') return false;
+    }
+    return true;
+}
+
 bool TransactionUtil::HasValidTokenSymbolCharset(const std::string& symbol) {
     const size_t n = symbol.size();
     if (n < 2 || n > 10) return false;
     for (char c : symbol) {
         const bool ok = (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
         if (!ok) return false;
+    }
+    return true;
+}
+
+bool TransactionUtil::HasValidTokenNameShape(const std::string& name, std::string* why) {
+    auto fail = [&](const char* r) { if (why) *why = r; return false; };
+    if (name.empty()) return fail("name is empty");
+    if (name.size() > kMaxTokenNameBytes) return fail("name is longer than 64 bytes");
+    if (name.front() == ' ' || name.back() == ' ') return fail("name has a leading or trailing space");
+    size_t i = 0;
+    while (i < name.size()) {
+        const unsigned char c = static_cast<unsigned char>(name[i]);
+        uint32_t cp = 0; size_t len = 0;
+        if (c < 0x80)              { cp = c;        len = 1; }
+        else if ((c & 0xE0) == 0xC0) { cp = c & 0x1F; len = 2; }
+        else if ((c & 0xF0) == 0xE0) { cp = c & 0x0F; len = 3; }
+        else if ((c & 0xF8) == 0xF0) { cp = c & 0x07; len = 4; }
+        else return fail("name is not valid UTF-8");
+        if (i + len > name.size()) return fail("name is not valid UTF-8");
+        for (size_t k = 1; k < len; ++k) {
+            const unsigned char cc = static_cast<unsigned char>(name[i + k]);
+            if ((cc & 0xC0) != 0x80) return fail("name is not valid UTF-8");
+            cp = (cp << 6) | (cc & 0x3F);
+        }
+        // Overlong encodings, surrogates and anything past U+10FFFF are not UTF-8 either.
+        if ((len == 2 && cp < 0x80) || (len == 3 && cp < 0x800) || (len == 4 && cp < 0x10000)
+            || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF))
+            return fail("name is not valid UTF-8");
+        i += len;
+        if (cp == '<' || cp == '>' || cp == '"' || cp == '\'' || cp == '`')
+            return fail("name contains one of < > \" ' `");
+        const bool control_or_format =
+            cp < 0x20 || (cp >= 0x7F && cp <= 0x9F) || cp == 0xAD || cp == 0x61C || cp == 0x180E
+            || (cp >= 0x200B && cp <= 0x200F) || (cp >= 0x2028 && cp <= 0x202E)
+            || (cp >= 0x2060 && cp <= 0x2064) || (cp >= 0x2066 && cp <= 0x2069)
+            || cp == 0xFEFF || (cp >= 0xFFF9 && cp <= 0xFFFB) || (cp >= 0xE0000 && cp <= 0xE007F);
+        if (control_or_format) return fail("name contains a control, zero-width or bidi character");
+        const bool other_space = cp == 0xA0 || cp == 0x1680 || (cp >= 0x2000 && cp <= 0x200A)
+            || cp == 0x202F || cp == 0x205F || cp == 0x3000;
+        if (other_space) return fail("name contains a space other than U+0020");
     }
     return true;
 }

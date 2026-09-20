@@ -88,6 +88,11 @@ enum class TransactionType : uint32_t {
     // Anyone may sponsor anything; the sponsor may cancel, forfeiting the remainder (owner's rule).
     FundLongevity             = 52,     // body: target_tx_id(8 LE) | amount(8 LE)
     CancelLongevity           = 53,     // body: target_tx_id(8 LE) — sponsor only; refunds the remainder less the period being consumed (owner rule 2026-08-31)
+    // Split policy (docs/SPLIT_POLICY.md, owner decisions 2026-09-20): the sender's own account forwards
+    // every INCOMING credit to up to 10 recipients by basis-point shares; what the shares do not cover
+    // (an unassigned remainder, or an amount too small to divide) stays in the account. Body:
+    // count(u8) | count x [addr_len(u8) | address | share_bp(u16 LE)]; count 0 clears. Consensus.
+    SetSplitPolicy            = 54,
     NodeRegistrationUpdate    = 258,    // UpdateNodeRegistrationTransaction [2,1,0,0]
     RemoveAccountDataset      = 259,    // RemoveAccountDatasetTransaction [3,1,0,0]
     LiquidPaymentStop         = 262,    // LiquidPaymentStopTransaction [6,1,0,0]

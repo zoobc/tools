@@ -23,7 +23,7 @@ var ZBC = (() => {
   var __toCommonJS = (mod3) => __copyProps(__defProp({}, "__esModule", { value: true }), mod3);
   var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
-  // src/index.ts
+  // ts/src/index.ts
   var index_exports = {};
   __export(index_exports, {
     AccountType: () => AccountType,
@@ -38,6 +38,8 @@ var ZBC = (() => {
     MESSAGE_SIGNING_SCHEME: () => MESSAGE_SIGNING_SCHEME,
     SEALED_MAGIC: () => SEALED_MAGIC,
     SEALED_OVERHEAD: () => SEALED_OVERHEAD,
+    SPLIT_POLICY_MAX_RECIPIENTS: () => SPLIT_POLICY_MAX_RECIPIENTS,
+    SPLIT_POLICY_SCALE: () => SPLIT_POLICY_SCALE,
     TX_SIGNING_TAG: () => TX_SIGNING_TAG,
     ToolError: () => ToolError,
     TransactionType: () => TransactionType,
@@ -87,6 +89,7 @@ var ZBC = (() => {
     parseKey32: () => parseKey32,
     payloadLength: () => payloadLength,
     pbkdf2Sha512: () => pbkdf2Sha512,
+    percentToBasisPoints: () => percentToBasisPoints,
     poly1305: () => poly1305,
     proofOfOwnership: () => proofOfOwnership,
     publicKeyFromSeed: () => publicKeyFromSeed,
@@ -127,7 +130,7 @@ var ZBC = (() => {
     zbcSignificant: () => zbcSignificant
   });
 
-  // src/crypto/sha3.ts
+  // ts/src/crypto/sha3.ts
   var RC = [
     0x0000000000000001n,
     0x0000000000008082n,
@@ -197,7 +200,7 @@ var ZBC = (() => {
     return out;
   }
 
-  // src/util/base32.ts
+  // ts/src/util/base32.ts
   var ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
   function base32Encode(data) {
     let out = "", buf = 0, bits = 0;
@@ -228,7 +231,7 @@ var ZBC = (() => {
     return new Uint8Array(out);
   }
 
-  // src/crypto/sha2.ts
+  // ts/src/crypto/sha2.ts
   var K256 = new Uint32Array([
     1116352408,
     1899447441,
@@ -579,7 +582,7 @@ var ZBC = (() => {
     return out;
   }
 
-  // src/util/base58.ts
+  // ts/src/util/base58.ts
   var BITCOIN_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
   var RIPPLE_ALPHABET = "rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz";
   function base58Decode(s, alphabet = BITCOIN_ALPHABET) {
@@ -625,7 +628,7 @@ var ZBC = (() => {
     return body;
   }
 
-  // src/util/bech32.ts
+  // ts/src/util/bech32.ts
   var CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
   var GEN = [996825010, 642813549, 513874426, 1027748829, 705979059];
   function polymod(values) {
@@ -699,7 +702,7 @@ var ZBC = (() => {
     return { hrp: d.hrp, bytes: new Uint8Array(bytes) };
   }
 
-  // src/crypto/blake2b.ts
+  // ts/src/crypto/blake2b.ts
   var IV = [
     0x6a09e667f3bcc908n,
     0xbb67ae8584caa73bn,
@@ -769,7 +772,7 @@ var ZBC = (() => {
     return out;
   }
 
-  // src/util/bytes.ts
+  // ts/src/util/bytes.ts
   function hexToBytes(hex) {
     const h = hex.startsWith("0x") || hex.startsWith("0X") ? hex.slice(2) : hex;
     if (h.length % 2 !== 0) throw new Error("hex must have an even length");
@@ -844,7 +847,7 @@ var ZBC = (() => {
     return new DataView(b.buffer, b.byteOffset, b.byteLength).getBigInt64(off, true);
   }
 
-  // src/util/ss58.ts
+  // ts/src/util/ss58.ts
   function ss58Decode(s) {
     const raw = base58Decode(s);
     if (!raw) return null;
@@ -863,7 +866,7 @@ var ZBC = (() => {
     return { prefix, accountId: raw.slice(prefixLen, bodyLen) };
   }
 
-  // src/address.ts
+  // ts/src/address.ts
   var AccountType = {
     ZooBC: 0,
     Bitcoin: 1,
@@ -1103,7 +1106,7 @@ var ZBC = (() => {
     return hexToBytes(h);
   }
 
-  // src/crypto/ed25519.ts
+  // ts/src/crypto/ed25519.ts
   var P = (1n << 255n) - 19n;
   var L = (1n << 252n) + 27742317777372353535851937790883648493n;
   var D = -121665n * inv(121666n) % P;
@@ -1234,7 +1237,7 @@ var ZBC = (() => {
     }
   }
 
-  // src/util/bip39-words.ts
+  // ts/src/util/bip39-words.ts
   var BIP39_WORDS = [
     "abandon",
     "ability",
@@ -3286,7 +3289,7 @@ var ZBC = (() => {
     "zoo"
   ];
 
-  // src/keys.ts
+  // ts/src/keys.ts
   function keyPairFromSeed(seed) {
     const s = typeof seed === "string" ? seedFromHex(seed) : seed;
     if (s.length !== 32) throw new Error("Private key must be 64 hex characters (32 bytes)");
@@ -3366,7 +3369,7 @@ var ZBC = (() => {
   var seedHex = (kp) => bytesToHex(kp.seed);
   var publicKeyHex = (kp) => bytesToHex(kp.publicKey);
 
-  // src/message.ts
+  // ts/src/message.ts
   var MESSAGE_SIGNING_SCHEME = "ZBC-MSG-v1";
   var TAG = utf8("ZBC-MSG");
   function messageDigest(message) {
@@ -3397,7 +3400,7 @@ var ZBC = (() => {
     return d && d.prefix === "ZBC" ? d.payload : null;
   }
 
-  // src/transaction.ts
+  // ts/src/transaction.ts
   var TX_SIGNING_TAG = utf8("ZBC-TX");
   var EMPTY_ACCOUNT = new ByteWriter().u32(AccountType.Empty).finish();
   function signingContext(genesis) {
@@ -3469,7 +3472,7 @@ var ZBC = (() => {
     return new ByteWriter().u32(approval).bytes(escrowedTransactionHash).finish();
   }
 
-  // src/errors.ts
+  // ts/src/errors.ts
   var ExitCode = {
     ok: 0,
     internal: 1,
@@ -3513,7 +3516,7 @@ var ZBC = (() => {
     return ExitCode.rejected;
   }
 
-  // src/util/json.ts
+  // ts/src/util/json.ts
   var MARK = "~bigint~";
   function stringifyJson(value, indent) {
     const text = JSON.stringify(value, (_k, v) => typeof v === "bigint" ? MARK + v.toString() + MARK : v, indent);
@@ -3524,7 +3527,7 @@ var ZBC = (() => {
     return JSON.parse(marked, (_k, v) => typeof v === "string" && v.startsWith(MARK) ? BigInt(v.slice(MARK.length, -MARK.length)) : v);
   }
 
-  // src/api.ts
+  // ts/src/api.ts
   var Client = class {
     constructor(opts = {}) {
       __publicField(this, "api");
@@ -3635,7 +3638,7 @@ var ZBC = (() => {
     return String(e);
   }
 
-  // src/body.ts
+  // ts/src/body.ts
   var INT_LIMITS = {
     int64: [-(1n << 63n), (1n << 63n) - 1n],
     uint64: [0n, (1n << 64n) - 1n],
@@ -3708,6 +3711,20 @@ var ZBC = (() => {
     const v = params[m[1]] ?? "";
     return m[2] === "0" ? BigInt(v || "0") !== 0n : v !== "";
   }
+  var SPLIT_POLICY_MAX_RECIPIENTS = 10;
+  var SPLIT_POLICY_SCALE = 1e4;
+  function percentToBasisPoints(pct, src = "share") {
+    const dot = pct.indexOf(".");
+    const intPart = dot < 0 ? pct : pct.slice(0, dot);
+    let frac = dot < 0 ? "" : pct.slice(dot + 1);
+    if (frac.length > 2) throw usage(`${src}: share "${pct}" takes at most two decimals`);
+    while (frac.length < 2) frac += "0";
+    const digits = (intPart || "0") + frac;
+    if (!/^[0-9]+$/.test(digits)) throw usage(`${src}: share "${pct}" is not a number`);
+    const n = Number(digits);
+    if (n < 1 || n > SPLIT_POLICY_SCALE) throw usage(`${src}: share "${pct}" must be between 0.01 and 100`);
+    return n;
+  }
   function encodeField(f, params, ctx) {
     const w = new ByteWriter();
     if (ctx.computed && f.name in ctx.computed) return ctx.computed[f.name];
@@ -3756,6 +3773,23 @@ var ZBC = (() => {
         for (const a of items) w.bytes(parseAddress(a).bytes);
         return w.finish();
       }
+      case "split_list8": {
+        let items = splitList(value);
+        if (items.length === 1 && (items[0] === "clear" || items[0] === "none")) items = [];
+        if (items.length > SPLIT_POLICY_MAX_RECIPIENTS) throw usage(`${f.from}: at most ${SPLIT_POLICY_MAX_RECIPIENTS} recipients`);
+        w.u8(items.length);
+        let total = 0;
+        for (const it of items) {
+          const eq = it.indexOf("=");
+          if (eq < 0) throw usage(`${f.from}: "${it}" is not ADDRESS=PERCENT`);
+          const bp = percentToBasisPoints(it.slice(eq + 1).trim(), f.from);
+          total += bp;
+          const a = parseAddress(it.slice(0, eq).trim()).bytes;
+          w.u8(a.length).bytes(a).u16(bp);
+        }
+        if (total > SPLIT_POLICY_SCALE) throw usage(`${f.from}: shares add up to more than 100%`);
+        return w.finish();
+      }
       case "sender_address":
         return ctx.sender.accountBytes;
       case "pubkey_of_key": {
@@ -3781,7 +3815,7 @@ var ZBC = (() => {
     return w.finish();
   }
 
-  // src/custom.ts
+  // ts/src/custom.ts
   function proofOfOwnership(owner, block) {
     const msg = new ByteWriter().bytes(owner.accountBytes).bytes(block.hash).u32(block.height).finish();
     return concat(msg, sign(msg, owner.seed));
@@ -3919,7 +3953,7 @@ var ZBC = (() => {
     return { body: w.finish(), extra: { app_id: Number(appId), opening_turn: turn, final_seq: cells.length } };
   }
 
-  // src/crypto/salsa.ts
+  // ts/src/crypto/salsa.ts
   var SIGMA2 = new Uint32Array([1634760805, 857760878, 2036477234, 1797285236]);
   var ROUNDS = [[0, 4, 8, 12], [5, 9, 13, 1], [10, 14, 2, 6], [15, 3, 7, 11], [0, 1, 2, 3], [5, 6, 7, 4], [10, 11, 8, 9], [15, 12, 13, 14]];
   function u32le(b, off) {
@@ -4026,7 +4060,7 @@ var ZBC = (() => {
     return out;
   }
 
-  // src/crypto/x25519.ts
+  // ts/src/crypto/x25519.ts
   var P2 = (1n << 255n) - 19n;
   var A24 = 121665n;
   function mod2(a) {
@@ -4102,7 +4136,7 @@ var ZBC = (() => {
     return h;
   }
 
-  // src/encryption.ts
+  // ts/src/encryption.ts
   var SEALED_MAGIC = new Uint8Array([90, 66, 69, 49]);
   var SEALED_OVERHEAD = 52;
   function isSealed(field) {
@@ -4127,7 +4161,7 @@ var ZBC = (() => {
     return secretboxOpen(boxKey(sk, epk), nonceOf(epk, pk), field.subarray(36));
   }
 
-  // src/generated/commands.ts
+  // ts/src/generated/commands.ts
   var COMMANDS = [
     {
       "name": "AcceptDataset",
@@ -7112,6 +7146,50 @@ var ZBC = (() => {
         "remove": ""
       },
       "notes": []
+    },
+    {
+      "name": "SetSplitPolicy",
+      "type": 54,
+      "command": "set-split-policy",
+      "binary": "zbc-split-policy",
+      "description": "Forward every incoming credit of the sender's own account to up to 10 recipients by share. Shares are basis points and may sum below 10000: what they do not cover stays in the account, and so does anything too small to divide. Tokens split the same way. A forwarded share is a plain credit, so a recipient's own policy does not cascade. An empty list clears the policy.",
+      "sender_key": "sender_privkey",
+      "recipient": "none",
+      "options": [
+        "message",
+        "encrypt"
+      ],
+      "needs_node": false,
+      "custom": null,
+      "params": [
+        {
+          "name": "sender_privkey",
+          "kind": "privkey",
+          "required": true,
+          "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+        },
+        {
+          "name": "recipients",
+          "kind": "split_list",
+          "required": true,
+          "help": "ADDRESS=PERCENT, comma separated (max 10); 'clear' or empty removes the policy"
+        }
+      ],
+      "body": [
+        {
+          "name": "recipients",
+          "encoding": "split_list8",
+          "from": "recipients"
+        }
+      ],
+      "example": {
+        "recipients": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I=70,ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX=29.5"
+      },
+      "notes": [
+        "Consensus: accepted only by a chain launched with node v0.4.5 or later.",
+        "No zbc-cli subcommand.",
+        "The account cannot be its own recipient; leave the share unassigned instead."
+      ]
     },
     {
       "name": "SetupAccountDataset",

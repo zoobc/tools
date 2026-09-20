@@ -29,6 +29,25 @@ static std::string& chain_hint(){ static std::string s; return s; }
 static ParamDef PK(){ return {"Sender private key","sender_privkey","Sender private key (64 hex)","",true,nullptr}; }
 static ParamDef P(const char* n,const char* k,const char* pr,const char* d="",bool req=true){ return {n,k,pr,d,req,nullptr}; }
 // Decode a hex string to bytes (for object ids). Throws on odd length / non-hex.
+
+// Decode base64 into raw bytes. Needed because a JSON string is UTF-8, so arbitrary bytes cannot
+// survive the `value` field: every byte above 0x7F would be re-encoded as two. Without this there
+// is no way to put a PNG on chain at all, which would make the tokenicon: raster rule unusable.
+static std::string b64d(const std::string& in) {
+    static const std::string T =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out; int val = 0, bits = -8;
+    for (unsigned char c : in) {
+        if (c == '=' ) break;
+        if (c == '\n' || c == '\r' || c == ' ' || c == '\t') continue;
+        auto pos = T.find(static_cast<char>(c));
+        if (pos == std::string::npos) throw std::runtime_error("not valid base64");
+        val = (val << 6) + static_cast<int>(pos); bits += 6;
+        if (bits >= 0) { out.push_back(static_cast<char>((val >> bits) & 0xFF)); bits -= 8; }
+    }
+    return out;
+}
+
 static std::vector<uint8_t> hexb(const std::string& s){
     if(s.size()%2) throw std::runtime_error("hex must be even length");
     auto nib=[](char c)->int{ if(c>='0'&&c<='9')return c-'0'; if(c>='a'&&c<='f')return c-'a'+10; if(c>='A'&&c<='F')return c-'A'+10; return -1; };
@@ -191,19 +210,25 @@ static std::map<std::string, Cmd> registry() {
             auto h=hx(v[1]); if(h.size()!=32) throw std::runtime_error("vote_hash must be 32 bytes (64 hex)");
             body=TransactionUtil::GetFeeVoteCommitBodyBytes(h); ex={{"vote_hash",v[1]}}; }};
     m["setup-dataset"] = {"Set an account-dataset property", (uint32_t)TT::SetupAccountDataset, true,
-        {PK(), P("Subject","recipient","dataset subject address (ZBC_)"), P("Property","property","key"), P("Value","value","value")},
+        {PK(), P("Subject","recipient","dataset subject address (ZBC_)"), P("Property","property","key"), P("Value","value","value","",false), P("Value (base64)","value_b64","value as base64, for bytes a JSON string cannot carry","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
             auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid subject address"); rec=r.Value().address;
             auto kp=derive_zbc_keypair(v[0]); if(!kp.IsOk()) throw std::runtime_error("bad key");
             auto setter=TransactionUtil::BuildAccountAddress(TransactionUtil::ACCOUNT_TYPE_ZBC, kp.Value().public_key);
-            body=TransactionUtil::GetSetupAccountDatasetBodyBytes(v[2], v[3], setter, rec); ex={{"property",v[2]},{"value",v[3]}}; }};
+            std::string dsval=v[3];
+            if(v.size()>4 && !v[4].empty()){ try { dsval=b64d(v[4]); } catch(const std::exception& e){ throw std::runtime_error(std::string("value_b64 is not valid base64: ")+e.what()); } }
+            if(dsval.empty()) throw std::runtime_error("give value or value_b64");
+            body=TransactionUtil::GetSetupAccountDatasetBodyBytes(v[2], dsval, setter, rec); ex={{"property",v[2]},{"value_bytes",(int)dsval.size()}}; }};
     m["remove-dataset"] = {"Remove an account-dataset property", (uint32_t)TT::RemoveAccountDataset, true,
-        {PK(), P("Subject","recipient","dataset subject address (ZBC_)"), P("Property","property","key"), P("Value","value","value")},
+        {PK(), P("Subject","recipient","dataset subject address (ZBC_)"), P("Property","property","key"), P("Value","value","value","",false), P("Value (base64)","value_b64","value as base64, for bytes a JSON string cannot carry","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
             auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid subject address"); rec=r.Value().address;
             auto kp=derive_zbc_keypair(v[0]); if(!kp.IsOk()) throw std::runtime_error("bad key");
             auto setter=TransactionUtil::BuildAccountAddress(TransactionUtil::ACCOUNT_TYPE_ZBC, kp.Value().public_key);
-            body=TransactionUtil::GetRemoveAccountDatasetBodyBytes(v[2], v[3], setter, rec); ex={{"property",v[2]},{"value",v[3]}}; }};
+            std::string dsval=v[3];
+            if(v.size()>4 && !v[4].empty()){ try { dsval=b64d(v[4]); } catch(const std::exception& e){ throw std::runtime_error(std::string("value_b64 is not valid base64: ")+e.what()); } }
+            if(dsval.empty()) throw std::runtime_error("give value or value_b64");
+            body=TransactionUtil::GetRemoveAccountDatasetBodyBytes(v[2], dsval, setter, rec); ex={{"property",v[2]},{"value_bytes",(int)dsval.size()}}; }};
     // ---- dataset objects: transfer / accept / policy / delete ----
     m["transfer-dataset"] = {"Propose transfer of a dataset object", (uint32_t)TT::TransferDataset, false,
         {PK(), P("Object id","object_id","dataset object id (64 hex = creating tx hash)"), P("New owner","new_owner","new owner address (ZBC_)")},

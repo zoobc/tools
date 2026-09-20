@@ -2993,6 +2993,50 @@ our $JSON = <<'END_OF_SPEC';
   "type" : 43
  },
  {
+  "binary" : "zbc-split-policy",
+  "body" : [
+   {
+    "encoding" : "split_list8",
+    "from" : "recipients",
+    "name" : "recipients"
+   }
+  ],
+  "command" : "set-split-policy",
+  "custom" : null,
+  "description" : "Forward every incoming credit of the sender's own account to up to 10 recipients by share. Shares are basis points and may sum below 10000: what they do not cover stays in the account, and so does anything too small to divide. Tokens split the same way. A forwarded share is a plain credit, so a recipient's own policy does not cascade. An empty list clears the policy.",
+  "example" : {
+   "recipients" : "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I=70,ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX=29.5"
+  },
+  "name" : "SetSplitPolicy",
+  "needs_node" : false,
+  "notes" : [
+   "Consensus: accepted only by a chain launched with node v0.4.5 or later.",
+   "No zbc-cli subcommand.",
+   "The account cannot be its own recipient; leave the share unassigned instead."
+  ],
+  "options" : [
+   "message",
+   "encrypt"
+  ],
+  "params" : [
+   {
+    "help" : "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY",
+    "kind" : "privkey",
+    "name" : "sender_privkey",
+    "required" : true
+   },
+   {
+    "help" : "ADDRESS=PERCENT, comma separated (max 10); 'clear' or empty removes the policy",
+    "kind" : "split_list",
+    "name" : "recipients",
+    "required" : true
+   }
+  ],
+  "recipient" : "none",
+  "sender_key" : "sender_privkey",
+  "type" : 54
+ },
+ {
   "binary" : "zbc-dataset-setup",
   "body" : [
    {

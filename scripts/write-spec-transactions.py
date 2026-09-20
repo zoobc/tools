@@ -177,6 +177,18 @@ T("remove-dataset", 259, "RemoveAccountDataset", "Deactivate a key-value propert
 T("transfer-dataset", 42, "TransferDataset", "Propose transferring a dataset object to a new owner.",
   [P("object_id", "hex32", "dataset object id = the creating transaction hash"), P("new_owner", "address", "new owner")],
   [F("object_id", "hex", size=32), F("new_owner", "address")], example={"object_id": H32, "new_owner": A_OTHER}),
+T("set-split-policy", 54, "SetSplitPolicy",
+  "Forward every incoming credit of the sender's own account to up to 10 recipients by share. "
+  "Shares are basis points and may sum below 10000: what they do not cover stays in the account, "
+  "and so does anything too small to divide. Tokens split the same way. A forwarded share is a plain "
+  "credit, so a recipient's own policy does not cascade. An empty list clears the policy.",
+  [P("recipients", "split_list", "ADDRESS=PERCENT, comma separated (max 10); 'clear' or empty removes the policy")],
+  [F("recipients", "split_list8")], binary="zbc-split-policy",
+  example={"recipients": A_OTHER + "=70," + A_SELF + "=29.5"},
+  notes=("Consensus: accepted only by a chain launched with node v0.4.5 or later.",
+         "No zbc-cli subcommand.",
+         "The account cannot be its own recipient; leave the share unassigned instead.")),
+
 T("accept-dataset", 44, "AcceptDataset", "Accept a pending dataset transfer.", [P("object_id", "hex32", "dataset object id")], [F("object_id", "hex", size=32)], example={"object_id": H32}),
 T("delete-dataset", 45, "DeleteDataset", "Delete a dataset object and refund its deposit.", [P("object_id", "hex32", "dataset object id")], [F("object_id", "hex", size=32)], example={"object_id": H32}),
 T("set-dataset-policy", 43, "SetDatasetPolicy", "Set a dataset object's manage policy and edit its access lists.",
@@ -302,6 +314,7 @@ ENCODINGS = {
     "address": "the typed account address bytes (addresses.md section 1; 36 bytes for a ZooBC account)",
     "address_list": "the typed address bytes of each entry, concatenated",
     "address_list8": "u8 count, then the typed address bytes of each entry",
+    "split_list8": "u8 count, then per entry: u8 address byte-length, the typed address bytes, u16le share in basis points. Written as ADDRESS=PERCENT, comma separated; PERCENT takes at most two decimals and is multiplied by 100 with integer arithmetic (70 -> 7000, 29.5 -> 2950)",
     "sender_address": "the signing account's 36-byte typed address (00000000 ‖ public key)",
     "pubkey_of_key": "the 32-byte Ed25519 public key derived from the named private-key parameter",
     "key32": "32 bytes from a `key` parameter: 64 hex, or a ZNK_/ZBG_/ZBR_/ZBC_ text address decoded (addresses.md)",
@@ -312,6 +325,7 @@ KINDS = {
     "privkey": "64 hex characters, a 32-byte Ed25519 seed",
     "address": "any address form of addresses.md section 3",
     "address_list": "comma-separated addresses; may be empty",
+    "split_list": "comma-separated ADDRESS=PERCENT entries (max 10); PERCENT takes at most two decimals; 'clear', 'none' or empty removes the policy",
     "key": "64 hex characters (optionally 0x-prefixed) or a ZNK_/ZBG_/ZBR_/ZBC_ text address",
     "int64": "decimal, may be negative", "uint64": "decimal", "uint32": "decimal", "uint8": "decimal 0-255",
     "hex32": "exactly 64 hex characters", "hexbytes": "hex of any even length, may be empty",

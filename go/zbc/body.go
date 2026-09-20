@@ -52,6 +52,48 @@ func SplitList(s string) []string {
 	return out
 }
 
+// Split policy (type 54): shares are basis points, 1 = 0.01%. A percentage is converted with
+// integer arithmetic — never a float — so 29.5 is exactly 2950 in every port and in the C++
+// reference. At most two decimals; the value must be at least one basis point.
+const (
+	SplitPolicyMaxRecipients = 10
+	SplitPolicyScale         = 10000
+)
+
+func PercentToBasisPoints(pct string) (uint16, error) {
+	intPart, fracPart := pct, ""
+	if dot := strings.IndexByte(pct, '.'); dot >= 0 {
+		intPart, fracPart = pct[:dot], pct[dot+1:]
+	}
+	if len(fracPart) > 2 {
+		return 0, fmt.Errorf("share %q takes at most two decimals", pct)
+	}
+	for len(fracPart) < 2 {
+		fracPart += "0"
+	}
+	if intPart == "" {
+		intPart = "0"
+	}
+	digits := intPart + fracPart
+	if digits == "" {
+		return 0, fmt.Errorf("share %q is not a number", pct)
+	}
+	n := 0
+	for _, c := range digits {
+		if c < '0' || c > '9' {
+			return 0, fmt.Errorf("share %q is not a number", pct)
+		}
+		n = n*10 + int(c-'0')
+		if n > SplitPolicyScale {
+			return 0, fmt.Errorf("share %q must be between 0.01 and 100", pct)
+		}
+	}
+	if n == 0 {
+		return 0, fmt.Errorf("share %q must be between 0.01 and 100", pct)
+	}
+	return uint16(n), nil
+}
+
 // ValidateParam checks one value against its parameter kind; returns the value to keep.
 func ValidateParam(p ParamDef, value string) (string, error) {
 	switch p.Kind {
@@ -216,6 +258,37 @@ func EncodeField(f FieldDef, params map[string]string, ctx *BodyContext) ([]byte
 				return nil, Usage("invalid %s entry %s: %v", f.From, x, err)
 			}
 			w.Bytes(a.Bytes())
+		}
+		return w.Finish(), nil
+	case "split_list8":
+		items := SplitList(value)
+		if len(items) == 1 && (items[0] == "clear" || items[0] == "none") {
+			items = nil
+		}
+		if len(items) > SplitPolicyMaxRecipients {
+			return nil, Usage("%s: at most %d recipients", f.From, SplitPolicyMaxRecipients)
+		}
+		w.U8(byte(len(items)))
+		total := 0
+		for _, it := range items {
+			eq := strings.IndexByte(it, '=')
+			if eq < 0 {
+				return nil, Usage("%s: %q is not ADDRESS=PERCENT", f.From, it)
+			}
+			a, err := ParseAddress(strings.TrimSpace(it[:eq]), "")
+			if err != nil {
+				return nil, Usage("invalid %s entry %s: %v", f.From, it[:eq], err)
+			}
+			bp, err := PercentToBasisPoints(strings.TrimSpace(it[eq+1:]))
+			if err != nil {
+				return nil, Usage("%s: %v", f.From, err)
+			}
+			total += int(bp)
+			b := a.Bytes()
+			w.U8(byte(len(b))).Bytes(b).U16(bp)
+		}
+		if total > SplitPolicyScale {
+			return nil, Usage("%s: shares add up to more than 100%%", f.From)
 		}
 		return w.Finish(), nil
 	case "sender_address":

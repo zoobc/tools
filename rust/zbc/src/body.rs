@@ -32,6 +32,34 @@ pub fn parse_integer(value: &str, kind: &str, name: &str) -> Result<i64, ToolErr
     Ok(n as u64 as i64)
 }
 
+// Split policy (type 54): shares are basis points, 1 = 0.01%. Integer arithmetic only — never a
+// float — so 29.5 is exactly 2950 here, in every other port, and in the C++ reference.
+pub const SPLIT_POLICY_MAX_RECIPIENTS: usize = 10;
+pub const SPLIT_POLICY_SCALE: u16 = 10000;
+
+pub fn percent_to_basis_points(pct: &str, src: &str) -> Result<u16, ToolError> {
+    let (int_part, frac) = match pct.find('.') {
+        Some(dot) => (&pct[..dot], &pct[dot + 1..]),
+        None => (pct, ""),
+    };
+    if frac.len() > 2 {
+        return Err(usage(format!("{src}: share \"{pct}\" takes at most two decimals")));
+    }
+    let mut digits = String::from(if int_part.is_empty() { "0" } else { int_part });
+    digits.push_str(frac);
+    for _ in frac.len()..2 {
+        digits.push('0');
+    }
+    if digits.is_empty() || !digits.bytes().all(|c| c.is_ascii_digit()) {
+        return Err(usage(format!("{src}: share \"{pct}\" is not a number")));
+    }
+    let n: u32 = digits.parse().unwrap_or(u32::MAX);
+    if n < 1 || n > SPLIT_POLICY_SCALE as u32 {
+        return Err(usage(format!("{src}: share \"{pct}\" must be between 0.01 and 100")));
+    }
+    Ok(n as u16)
+}
+
 pub fn split_list(s: &str) -> Vec<String> {
     s.split(',').map(str::trim).filter(|x| !x.is_empty()).map(String::from).collect()
 }
@@ -148,6 +176,30 @@ pub fn encode_field(f: &FieldDef, params: &Params, ctx: &BodyContext) -> Result<
             }
             for a in items {
                 w = w.bytes(&parse_address(&a, "").map_err(|e| usage(format!("invalid {} entry {a}: {e}", f.from)))?.bytes());
+            }
+            w.finish()
+        }
+        "split_list8" => {
+            let mut items = split_list(&value);
+            if items.len() == 1 && (items[0] == "clear" || items[0] == "none") {
+                items.clear();
+            }
+            if items.len() > SPLIT_POLICY_MAX_RECIPIENTS {
+                return Err(usage(format!("{}: at most {} recipients", f.from, SPLIT_POLICY_MAX_RECIPIENTS)));
+            }
+            let mut w = w.u8(items.len() as u8);
+            let mut total: u32 = 0;
+            for it in items {
+                let eq = it.find('=').ok_or_else(|| usage(format!("{}: \"{it}\" is not ADDRESS=PERCENT", f.from)))?;
+                let bp = percent_to_basis_points(it[eq + 1..].trim(), &f.from)?;
+                total += bp as u32;
+                let a = parse_address(it[..eq].trim(), "")
+                    .map_err(|e| usage(format!("invalid {} entry {}: {e}", f.from, &it[..eq])))?
+                    .bytes();
+                w = w.u8(a.len() as u8).bytes(&a).u16(bp);
+            }
+            if total > SPLIT_POLICY_SCALE as u32 {
+                return Err(usage(format!("{}: shares add up to more than 100%", f.from)));
             }
             w.finish()
         }

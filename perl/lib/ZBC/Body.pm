@@ -66,6 +66,25 @@ sub _holds {
 }
 
 # The bytes of one body field. `files` maps file parameters to their bytes; `computed` holds what custom hooks produced.
+# Split policy (type 54): shares are basis points, 1 = 0.01%. Integer arithmetic only — never a
+# float — so 29.5 is exactly 2950 here, in every other port, and in the C++ reference.
+our $SPLIT_POLICY_MAX_RECIPIENTS = 10;
+our $SPLIT_POLICY_SCALE = 10000;
+
+sub percent_to_basis_points {
+    my ($pct, $src) = @_;
+    $src //= 'share';
+    my ($int_part, $frac) = split /\./, $pct, 2;
+    $int_part //= ''; $frac //= '';
+    die usage("$src: share \"$pct\" takes at most two decimals") if length($frac) > 2;
+    $frac .= '0' while length($frac) < 2;
+    my $digits = ($int_part eq '' ? '0' : $int_part) . $frac;
+    die usage("$src: share \"$pct\" is not a number") unless $digits =~ /^[0-9]+$/;
+    my $n = 0 + $digits;
+    die usage("$src: share \"$pct\" must be between 0.01 and 100") if $n < 1 || $n > $SPLIT_POLICY_SCALE;
+    return $n;
+}
+
 sub encode_field {
     my ($f, $params, $sender, $files, $computed) = @_;
     return $computed->{ $f->{name} } if $computed && exists $computed->{ $f->{name} };
@@ -91,6 +110,25 @@ sub encode_field {
         my @items = split_list($value);
         die usage("$src: at most 255 entries") if @items > 255;
         return chr(scalar @items) . join('', map { parse_address($_)->bytes } @items);
+    }
+    if ($enc eq 'split_list8') {
+        my @items = split_list($value);
+        @items = () if @items == 1 && ($items[0] eq 'clear' || $items[0] eq 'none');
+        die usage("$src: at most $SPLIT_POLICY_MAX_RECIPIENTS recipients") if @items > $SPLIT_POLICY_MAX_RECIPIENTS;
+        my $out = chr(scalar @items);
+        my $total = 0;
+        for my $it (@items) {
+            my $eq = index($it, '=');
+            die usage("$src: \"$it\" is not ADDRESS=PERCENT") if $eq < 0;
+            my $addr = substr($it, 0, $eq); $addr =~ s/^\s+|\s+$//g;
+            my $pct  = substr($it, $eq + 1); $pct  =~ s/^\s+|\s+$//g;
+            my $bp = percent_to_basis_points($pct, $src);
+            $total += $bp;
+            my $a = parse_address($addr)->bytes;
+            $out .= chr(length $a) . $a . pack('v', $bp);
+        }
+        die usage("$src: shares add up to more than 100%") if $total > $SPLIT_POLICY_SCALE;
+        return $out;
     }
     return $sender->account_bytes if $enc eq 'sender_address';
     if ($enc eq 'pubkey_of_key') {

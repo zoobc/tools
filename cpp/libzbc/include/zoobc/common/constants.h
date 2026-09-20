@@ -602,6 +602,14 @@ constexpr int32_t EVENT_TYPE_LONGEVITY_RENT   = 38;          // rent drawn from 
 constexpr int32_t EVENT_TYPE_LONGEVITY_PAYOUT = 39;          // pool paid out to a node that kept the data
 constexpr int32_t EVENT_TYPE_LONGEVITY_REFUND = 40;          // cancelled sponsorship: remainder returned to the sponsor
 
+// Split policy (SetSplitPolicy, type 54 — docs/SPLIT_POLICY.md). A ZBC credit forwarded by the
+// receiving account's policy writes one pair of ledger rows per recipient: the account's -share and
+// the recipient's +share, so both balances reconcile and a wallet can show "split from X".
+constexpr int32_t EVENT_TYPE_SPLIT_OUT = 41;   // the account forwarded a share of an incoming credit
+constexpr int32_t EVENT_TYPE_SPLIT_IN  = 42;   // a share of someone's incoming credit landed here
+constexpr size_t  SPLIT_POLICY_MAX_RECIPIENTS = 10;
+constexpr uint32_t SPLIT_POLICY_BP_SCALE = 10000;   // shares are basis points; the sum may be below 10000
+
 }  // namespace constants
 
 // ---- Fee exemption for BRIDGE DEPOSIT attestations ----

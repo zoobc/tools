@@ -177,6 +177,61 @@ public:
     // exact-match blocklist alone can't catch.
     static bool HasValidTokenSymbolCharset(const std::string& symbol);
 
+    // Token NAME shape (consensus rule; admission and execution both refuse). The name is a label a
+    // human reads in a list, so it is held to what a label needs and nothing a renderer could take
+    // for markup or a spoofer could hide in. A token named "<img src=x onerror=alert(1)>" was
+    // issued on testnet on 2026-09-19 and ran in a wallet that rendered its list unescaped.
+    // Escaping stays every consumer's job (Rule A of DESIGN-untrusted-chain-data); this removes
+    // the shapes that have no legitimate use in a name:
+    //   - 1..64 bytes of well-formed UTF-8 (no overlongs, no surrogates, nothing past U+10FFFF)
+    //   - none of  < > " ' `  (the HTML/attribute metacharacters)
+    //   - no control or format character: U+0000-001F, U+007F-009F, U+00AD, U+061C, U+180E,
+    //     U+200B-200F (zero-widths, joiners), U+2028-202E (line/paragraph separators, bidi
+    //     embeddings and overrides), U+2060-2064, U+2066-2069 (bidi isolates), U+FEFF,
+    //     U+FFF9-FFFB, U+E0000-E007F (tags)
+    //   - no space other than U+0020 (NBSP and the U+2000 block make look-alike names)
+    //   - no leading or trailing space
+    // Byte-level rules on a tiny decoder, on purpose: no normalisation, no Unicode tables, nothing
+    // two implementations could disagree about. `why` receives the first rule violated.
+    static bool HasValidTokenNameShape(const std::string& name, std::string* why = nullptr);
+    static constexpr size_t kMaxTokenNameBytes = 64;
+
+    /**
+     * Registry domain charset: [A-Za-z0-9.-], length 1..256.
+     * A registry domain is rendered as text and often as the label of a link, so it must not be
+     * able to carry markup, quotes or whitespace.
+     */
+    static bool HasValidRegistryDomain(const std::string& domain);
+
+    /**
+     * Reserved dataset namespace `tokenicon:` — the value must already BE a picture: PNG or WebP
+     * by magic bytes, declared dimensions inside 512x512, within the 4096-byte dataset cap.
+     * On success sets out_media to "image/png" or "image/webp".
+     *
+     * A picture format has no instructions in it, so there is nothing to execute however a
+     * consumer displays it. That is why the rule is "no SVG" and not "sanitised SVG". Magic bytes
+     * and header fields only: no image decoder and no XML parser, because both are a classic source
+     * of remote code execution and neither belongs inside consensus software. It is also why this
+     * can BE a consensus rule — a handful of byte comparisons that every implementation agrees on,
+     * where a parser plus a policy would eventually disagree, and disagreement is a fork.
+     *
+     * Used by the SetupAccountDataset validator (admission) and by the icon endpoint (serving), so
+     * that what is storable and what is servable can never drift apart.
+     */
+    static bool TokenIconMediaType(const std::string& value, std::string& out_media);
+
+    /**
+     * Registry URL shape: must begin "https://" (or "http://" when allow_http, which a devnet
+     * genesis may switch on), and must contain no control character, no whitespace and none of
+     * " ' < > `.
+     *
+     * The point is that a consumer rendering this as a link is then safe BY CONSTRUCTION, rather
+     * than having to invent a guard of its own. A javascript: URL is storable today and a client
+     * that renders it as an href executes it. Pure byte comparisons, no parser, so every
+     * implementation agrees — which is what makes it safe to run as a consensus rule.
+     */
+    static bool HasValidRegistryUrl(const std::string& url, bool allow_http);
+
     // Well-known fiat / stablecoin / major-coin ticker that a normal IssueToken must NOT mint,
     // so a community token can't impersonate the real thing (a token literally named USDC/BTC).
     // Compiled default (v1); an on-chain registry editable by a foundation-authorized

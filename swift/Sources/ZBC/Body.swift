@@ -59,6 +59,27 @@ public enum Body {
     private static func addr(_ v: String, _ name: String) throws -> ParsedAddress { do { return try Address.parse(v) } catch let e as Address.Invalid { throw ToolError.usage("invalid \(name): \(e.message)") } }
 
     /// Serialise one body field.
+    // Split policy (type 54): shares are basis points, 1 = 0.01%. Integer arithmetic only — never a
+    // float — so 29.5 is exactly 2950 here, in every other port, and in the C++ reference.
+    public static let splitPolicyMaxRecipients = 10
+    public static let splitPolicyScale = 10000
+
+    public static func percentToBasisPoints(_ pct: String, _ src: String = "share") throws -> Int {
+        let parts = pct.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+        let intPart = parts.count > 0 ? String(parts[0]) : ""
+        var frac = parts.count > 1 ? String(parts[1]) : ""
+        if frac.count > 2 { throw ToolError.usage("\(src): share \"\(pct)\" takes at most two decimals") }
+        while frac.count < 2 { frac += "0" }
+        let digits = (intPart.isEmpty ? "0" : intPart) + frac
+        guard digits.allSatisfy({ $0.isASCII && $0.isNumber }), let n = Int(digits) else {
+            throw ToolError.usage("\(src): share \"\(pct)\" is not a number")
+        }
+        if n < 1 || n > splitPolicyScale {
+            throw ToolError.usage("\(src): share \"\(pct)\" must be between 0.01 and 100")
+        }
+        return n
+    }
+
     public static func encodeField(_ f: FieldDef, _ params: [String: String], _ ctx: Context) throws -> [UInt8] {
         if let v = ctx.computed[f.name] { return v }
         var value = params[f.from] ?? ""
@@ -82,6 +103,28 @@ public enum Body {
             let items = splitList(value)
             if items.count > 255 { throw ToolError.usage("\(f.from): at most 255 entries") }
             return [UInt8(items.count)] + (try items.flatMap { try addr($0, f.from).bytes })
+        case "split_list8":
+            var items = splitList(value)
+            if items.count == 1 && (items[0] == "clear" || items[0] == "none") { items = [] }
+            if items.count > splitPolicyMaxRecipients {
+                throw ToolError.usage("\(f.from): at most \(splitPolicyMaxRecipients) recipients")
+            }
+            var out: [UInt8] = [UInt8(items.count)]
+            var total = 0
+            for it in items {
+                guard let eq = it.firstIndex(of: "=") else {
+                    throw ToolError.usage("\(f.from): \"\(it)\" is not ADDRESS=PERCENT")
+                }
+                let pct = String(it[it.index(after: eq)...]).trimmingCharacters(in: .whitespaces)
+                let bp = try percentToBasisPoints(pct, f.from)
+                total += bp
+                let a = try addr(String(it[..<eq]).trimmingCharacters(in: .whitespaces), f.from).bytes
+                out += [UInt8(a.count)] + a + LE.u16(bp)
+            }
+            if total > splitPolicyScale {
+                throw ToolError.usage("\(f.from): shares add up to more than 100%")
+            }
+            return out
         case "sender_address": guard let s = ctx.sender else { throw ToolError.internalError("no sender") }; return s.accountBytes
         case "pubkey_of_key": guard let kp = try? KeyPair(hex: value) else { throw ToolError.usage("\(f.from) must be 64 hex characters (a 32-byte private key)") }; return kp.publicKey
         case "key32": do { return try Address.parseKey32(value) } catch let e as Address.Invalid { throw ToolError.usage("invalid \(f.from): \(e.message)") }
