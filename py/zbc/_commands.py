@@ -891,6 +891,50 @@ COMMANDS = [
   ]
  },
  {
+  "name": "CloseLongevity",
+  "type": 309,
+  "command": "close-longevity",
+  "binary": "zbc-close-longevity",
+  "description": "Close the longevity record of a transaction you sent; the remaining deposit goes to the longevity node pool.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+   "message",
+   "encrypt"
+  ],
+  "needs_node": False,
+  "custom": None,
+  "params": [
+   {
+    "name": "sender_privkey",
+    "kind": "privkey",
+    "required": True,
+    "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+   },
+   {
+    "name": "target_tx_id",
+    "kind": "int64",
+    "required": True,
+    "help": "the transaction whose record to close, as its int64 id (not 0)"
+   }
+  ],
+  "body": [
+   {
+    "name": "target_tx_id",
+    "encoding": "u64le",
+    "from": "target_tx_id"
+   }
+  ],
+  "example": {
+   "target_tx_id": "-1234567890123456789"
+  },
+  "notes": [
+   "Also zbc-cli close-longevity.",
+   "Only the target's owner may close it (the account that sent it; for a group member, any member of that group).",
+   "Nothing is refunded: the owner's own survival and every top-up alike go to the longevity node pool (rule survival_field)."
+  ]
+ },
+ {
   "name": "CreateTrigger",
   "type": 15,
   "command": "create-trigger",
@@ -1360,6 +1404,18 @@ COMMANDS = [
     "kind": "int64",
     "required": True,
     "help": "deposit (atomic), minimum 0.1 ZBC"
+   },
+   {
+    "name": "target_height",
+    "kind": "uint32",
+    "required": False,
+    "help": "block height of the target (GET /api/v1/longevity/quote: state_target_height); omit both target fields to take them from the node"
+   },
+   {
+    "name": "target_bytes",
+    "kind": "int64",
+    "required": False,
+    "help": "billable size of the target: body + message bytes (quote: state_target_bytes)"
    }
   ],
   "body": [
@@ -1372,14 +1428,27 @@ COMMANDS = [
     "name": "amount",
     "encoding": "u64le",
     "from": "amount"
+   },
+   {
+    "name": "target_height",
+    "encoding": "u32le",
+    "from": "target_height"
+   },
+   {
+    "name": "target_bytes",
+    "encoding": "u64le",
+    "from": "target_bytes"
    }
   ],
   "example": {
    "target_tx_id": "-1234567890123456789",
-   "amount": "10000000"
+   "amount": "10000000",
+   "target_height": "1200",
+   "target_bytes": "256"
   },
   "notes": [
-   "No zbc-cli subcommand."
+   "No zbc-cli subcommand.",
+   "The body states the target's height and billable size (rule longevity_stated_target, in force from block 0 on the relaunched chains); a node that predates the rule takes the 16-byte body without them."
   ]
  },
  {
@@ -3188,7 +3257,7 @@ COMMANDS = [
    }
   ],
   "example": {
-   "file_root": "1111111111111111111111111111111111111111111111111111111111111111",
+   "file_root": "6c5beca714ada4bf85aabae8eb3bd2ecb43d29e6554e88adcccd2c6f2c269cbd",
    "total_size": "4096",
    "piece_size": "2048",
    "deposit": "100000000",

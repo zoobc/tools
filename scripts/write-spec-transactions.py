@@ -164,7 +164,9 @@ T("store-file", 40, "StoreFile", "Anchor a decentralised-storage manifest (root 
    P("deposit", "int64", "rent deposit (atomic)"), P("piece_ids", "hexbytes", "piece id hashes concatenated, n x 32 bytes")],
   [F("file_root", "hex", size=32), F("total_size", "u64le"), F("piece_size", "u32le"), F("deposit", "u64le"),
    F("piece_count", "u32le", "piece_ids", computed="len(piece_ids) / 32"), F("piece_ids", "hex")],
-  example={"file_root": H32, "total_size": "4096", "piece_size": "2048", "deposit": "100000000", "piece_ids": H32 + H32B}),
+  # file_root must be the manifest root SHA3-256(u32le piece_size | u64le total_size | piece ids) of
+  # these pieces (the reference refuses anything else; 'auto' computes it).
+  example={"file_root": "6c5beca714ada4bf85aabae8eb3bd2ecb43d29e6554e88adcccd2c6f2c269cbd", "total_size": "4096", "piece_size": "2048", "deposit": "100000000", "piece_ids": H32 + H32B}),
 
 T("setup-dataset", 3, "SetupAccountDataset", "Set a key-value property on an account (the recipient is the subject).",
   [P("recipient", "address", "dataset subject address"), P("property", "string", "key"), P("value", "string", "value")],
@@ -224,13 +226,15 @@ T("governance-vote", 51, "SetConsensusParam", "A registry node votes a value for
   example={"parameter": "min_fee", "value": "2500000"}, notes=["No zbc-cli subcommand; the node's own key signs."]),
 
 T("fund-longevity", 52, "FundLongevity", "Attach a rent deposit to a transaction so pruning keeps it.",
-  [P("target_tx_id", "int64", "the transaction to keep, as its int64 id"), P("amount", "int64", "deposit (atomic), minimum 0.1 ZBC")],
-  [F("target_tx_id", "u64le"), F("amount", "u64le")], binary="zbc-fund-longevity", example={"target_tx_id": "-1234567890123456789", "amount": "10000000"},
-  notes=["No zbc-cli subcommand."]),
+  [P("target_tx_id", "int64", "the transaction to keep, as its int64 id"), P("amount", "int64", "deposit (atomic), minimum 0.1 ZBC"),
+   P("target_height", "uint32", "block height of the target (GET /api/v1/longevity/quote: state_target_height); omit both target fields to take them from the node", required=False),
+   P("target_bytes", "int64", "billable size of the target: body + message bytes (quote: state_target_bytes)", required=False)],
+  [F("target_tx_id", "u64le"), F("amount", "u64le"), F("target_height", "u32le"), F("target_bytes", "u64le")], binary="zbc-fund-longevity",
+  example={"target_tx_id": "-1234567890123456789", "amount": "10000000", "target_height": "1200", "target_bytes": "256"},
+  notes=["No zbc-cli subcommand.", "The body states the target's height and billable size (rule longevity_stated_target, in force from block 0 on the relaunched chains); a node that predates the rule takes the 16-byte body without them."]),
 T("cancel-longevity", 53, "CancelLongevity", "Cancel a longevity sponsorship you created; the remainder is refunded.",
   [P("target_tx_id", "int64", "the sponsored transaction's int64 id")], [F("target_tx_id", "u64le")], binary="zbc-cancel-longevity",
   example={"target_tx_id": "-1234567890123456789"}, notes=["No zbc-cli subcommand."]),
-
 T("multisig", 5, "MultiSignature", "N-of-M multisig SendZBC: the inner transaction plus the participant signatures gathered so far.",
   [P("participants", "address_list", "comma-separated participant addresses"), P("min_signatures", "uint32", "signatures required (N of M)"),
    P("nonce", "int64", "multisig account nonce", required=False, default="0"), P("signer_privkeys", "string", "comma-separated participant keys that sign now"),
@@ -303,6 +307,12 @@ T("revoke-release", 35, "RevokeRelease", "Revoke a published release.", [P("vers
 T("release-authority-propose", 33, "ReleaseAuthorityPropose", "Propose handing the release authority to another account.",
   [P("new_authority", "address", "proposed new authority")], [F("new_authority", "address")], example={"new_authority": A_OTHER}),
 T("release-authority-accept", 34, "ReleaseAuthorityAccept", "Accept a pending release-authority handover. Empty body.", [], [], example={}),
+T("close-longevity", 309, "CloseLongevity", "Close the longevity record of a transaction you sent; the remaining deposit goes to the longevity node pool.",
+  [P("target_tx_id", "int64", "the transaction whose record to close, as its int64 id (not 0)")], [F("target_tx_id", "u64le")], binary="zbc-close-longevity",
+  example={"target_tx_id": "-1234567890123456789"},
+  notes=["Also zbc-cli close-longevity.", "Only the target's owner may close it (the account that sent it; for a group member, any member of that group).",
+         "Nothing is refunded: the owner's own survival and every top-up alike go to the longevity node pool (rule survival_field)."]),
+
 ]
 
 ENCODINGS = {

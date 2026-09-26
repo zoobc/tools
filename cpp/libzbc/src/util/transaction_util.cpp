@@ -272,7 +272,7 @@ Result<std::vector<uint8_t>> TransactionUtil::GetTransactionBytes(
     // Reserve estimated space
     size_t estimated_size = TRANSACTION_TYPE_SIZE + TRANSACTION_VERSION_SIZE +
                             TIMESTAMP_SIZE + (ACCOUNT_TYPE_SIZE + PUBLIC_KEY_SIZE) * 2 +
-                            FEE_SIZE + BODY_LENGTH_SIZE + tx.transaction_body_bytes.size() +
+                            FEE_SIZE + SURVIVAL_SIZE + BODY_LENGTH_SIZE + tx.transaction_body_bytes.size() +
                             ACCOUNT_TYPE_SIZE + MESSAGE_LENGTH_SIZE;
     if (include_signature) {
         estimated_size += SIGNATURE_SIZE;
@@ -338,6 +338,13 @@ Result<std::vector<uint8_t>> TransactionUtil::GetTransactionBytes(
     // 6. Fee (8 bytes, little-endian)
     // Go: buffer.Write(util.ConvertUint64ToBytes(uint64(transaction.Fee)))
     WriteUint64LE(buffer, static_cast<uint64_t>(tx.fee));
+
+    // 6b. Survival (8 bytes, little-endian) — version 2 only (rule `survival_field`). Written from
+    // the version byte, never from the value: a version-1 transaction has no such field, so its bytes
+    // (and every signature and hash made over them) are exactly what they always were.
+    if ((tx.version & 0xFF) >= TX_VERSION_SURVIVAL) {
+        WriteUint64LE(buffer, static_cast<uint64_t>(tx.survival));
+    }
 
     // 7. Transaction Body Length (4 bytes, little-endian)
     // Go: buffer.Write(util.ConvertUint32ToBytes(transaction.TransactionBodyLength))
@@ -474,6 +481,16 @@ Result<model::Transaction> TransactionUtil::ParseTransactionBytes(
     }
     tx.fee = ReadInt64LE(tx_bytes.data() + offset);
     offset += FEE_SIZE;
+
+    // 6b. Survival (version 2 only). A version-1 transaction carries none: 0.
+    tx.survival = 0;
+    if (tx.version >= TX_VERSION_SURVIVAL) {
+        if (offset + SURVIVAL_SIZE > tx_bytes.size()) {
+            return Error{ErrorCode::ValidationError, "Unexpected end of bytes (survival)"};
+        }
+        tx.survival = ReadInt64LE(tx_bytes.data() + offset);
+        offset += SURVIVAL_SIZE;
+    }
 
     // 7. Body Length (4 bytes)
     if (offset + BODY_LENGTH_SIZE > tx_bytes.size()) {

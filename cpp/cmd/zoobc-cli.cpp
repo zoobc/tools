@@ -69,7 +69,7 @@ static std::string category_of(const std::string& c){
         {"transfer-token","tokens"},{"issue-token","tokens"},{"mint-token","tokens"},{"burn-token","tokens"},{"finance-token","tokens"},
         {"swap-create","exchange"},{"swap-accept","exchange"},{"swap-cancel","exchange"},{"market-create","exchange"},{"order-place","exchange"},{"order-cancel","exchange"},
         {"app-create","apps"},{"app-join","apps"},{"app-move","apps"},{"app-resign","apps"},{"app-claim","apps"},{"app-settle","apps"},
-        {"store-file","storage"},{"add-prepaid-storage","storage"},
+        {"store-file","storage"},{"fund-stored-file","storage"},{"add-prepaid-storage","storage"},{"close-longevity","storage"},
         {"setup-dataset","account"},{"remove-dataset","account"},{"transfer-dataset","account"},{"accept-dataset","account"},{"delete-dataset","account"},{"set-dataset-policy","account"},{"approve-escrow","account"},{"escrow-request","account"},{"create-trigger","account"},{"cancel-trigger","account"},{"attest-event","account"},{"multisig","account"},{"scheduled-transfer","account"},{"cancel-schedule","account"},{"reassign-schedule","account"},{"fee-vote-commit","account"},{"fee-vote-reveal","account"},
         {"register-node","node"},{"update-node","node"},{"remove-node","node"},{"claim-node","node"},
         {"register-gateway","gateway"},{"unregister-gateway","gateway"},
@@ -91,26 +91,32 @@ static std::map<std::string, Cmd> registry() {
     m["issue-token"] = {"Issue a colored-coin token", (uint32_t)TT::IssueToken, false,
         {PK(), P("Symbol","symbol","symbol e.g. GOLD"), P("Name","name","token name"), P("Decimals","decimals","0-8"),
          P("Supply","supply","total supply (atomic)"), P("Backing","backing","ZBC backing atomic (0=unbacked)"),
-         P("Flags","flags","bit0 redeemable,bit1 mintable,bit3 unbacked","1",false)},
+         P("Flags","flags","bit0 redeemable,bit1 mintable,bit3 unbacked","1",false),
+         P("Survival","survival","ZBC atomic paid for the token's persistence, separate from the fee (rule uniform_fee_refund; 0 = none)","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
             int dec=std::stoi(v[3]); int fl=(v.size()>6&&!v[6].empty())?std::stoi(v[6]):1; int64_t sup=std::stoll(v[4]),bk=std::stoll(v[5]);
             if(dec<0||dec>8) throw std::runtime_error("decimals must be 0-8");
             body.push_back((uint8_t)dec); body.push_back((uint8_t)fl); u64(body,sup); u64(body,bk);
             u16(body,(int)v[1].size()); body.insert(body.end(),v[1].begin(),v[1].end());
             u16(body,(int)v[2].size()); body.insert(body.end(),v[2].begin(),v[2].end());
-            ex={{"symbol",v[1]},{"supply",sup},{"backing",bk},{"decimals",dec},{"flags",fl}}; }};
+            ex={{"symbol",v[1]},{"supply",sup},{"backing",bk},{"decimals",dec},{"flags",fl}};
+            if(v.size()>7&&!v[7].empty()){ int64_t sv=std::stoll(v[7]); if(sv<0) throw std::runtime_error("survival must be >= 0"); u64(body,sv); ex["survival"]=sv; } }};
     m["mint-token"] = {"Mint a mintable token (add backing)", (uint32_t)TT::MintToken, false,
-        {PK(), P("Token id","token_id","token id"), P("Amount","amount","amount (atomic)")},
+        {PK(), P("Token id","token_id","token id"), P("Amount","amount","amount (atomic)"), P("Survival","survival","ZBC atomic paid for the token's persistence, separate from the fee (rule uniform_fee_refund; 0 = none)","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int64_t t=parse_id_i64(v[1],"token_id"),a=std::stoll(v[2]); u64(body,t); u64(body,a); ex={{"token_id",t},{"amount",a}}; }};
+            int64_t t=parse_id_i64(v[1],"token_id"),a=std::stoll(v[2]); u64(body,t); u64(body,a); ex={{"token_id",t},{"amount",a}};
+            if(v.size()>3&&!v[3].empty()){ int64_t sv=std::stoll(v[3]); if(sv<0) throw std::runtime_error("survival must be >= 0"); body.push_back(0); u64(body,sv); ex["survival"]=sv; } }};
     m["burn-token"] = {"Burn a token (redeem backing if redeemable)", (uint32_t)TT::BurnToken, false,
-        {PK(), P("Token id","token_id","token id"), P("Amount","amount","amount (atomic)")},
+        {PK(), P("Token id","token_id","token id"), P("Amount","amount","amount (atomic)"), P("Survival","survival","ZBC atomic paid for the token's persistence, separate from the fee (rule uniform_fee_refund; 0 = none)","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int64_t t=parse_id_i64(v[1],"token_id"),a=std::stoll(v[2]); u64(body,t); u64(body,a); ex={{"token_id",t},{"amount",a}}; }};
+            int64_t t=parse_id_i64(v[1],"token_id"),a=std::stoll(v[2]); u64(body,t); u64(body,a); ex={{"token_id",t},{"amount",a}};
+            if(v.size()>3&&!v[3].empty()){ int64_t sv=std::stoll(v[3]); if(sv<0) throw std::runtime_error("survival must be >= 0"); body.push_back(0); u64(body,sv); ex["survival"]=sv; } }};
     m["finance-token"] = {"Top up a token's survival financing", (uint32_t)TT::FinanceToken, false,
-        {PK(), P("Token id","token_id","token id")},
+        {PK(), P("Token id","token_id","token id"),
+         P("Amount","amount","ZBC atomic that buys persistence; required from rule uniform_fee_refund (before it the fee buys it: leave empty)","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int64_t t=parse_id_i64(v[1],"token_id"); u64(body,t); ex={{"token_id",t}}; }};
+            int64_t t=parse_id_i64(v[1],"token_id"); u64(body,t); ex={{"token_id",t}};
+            if(v.size()>2&&!v[2].empty()){ int64_t a=std::stoll(v[2]); if(a<=0) throw std::runtime_error("amount must be > 0"); u64(body,a); ex["amount"]=a; } }};
     // ---- exchange: swap offers ----
     m["swap-create"] = {"Create an atomic swap offer", (uint32_t)TT::CreateSwapOffer, false,
         {PK(), P("Give token","give_token","token to give (0=ZBC)"), P("Give amount","give_amount","atomic"),
@@ -124,6 +130,14 @@ static std::map<std::string, Cmd> registry() {
     m["swap-cancel"] = {"Cancel an open swap offer", (uint32_t)TT::CancelSwapOffer, false,
         {PK(), P("Offer id","offer_id","the swap offer id")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t o=parse_id_i64(v[1],"offer_id"); u64(body,o); ex={{"offer_id",o}}; }};
+    // ---- survival (rule survival_field): the owner ends a transaction's longevity record ----
+    m["close-longevity"] = {"Close the longevity record of a transaction you sent (its remaining deposit goes to the node pool, not back to you)",
+        (uint32_t)TT::CloseLongevity, false,
+        {PK(), P("Target transaction id","target_tx_id","the transaction whose record to close (signed int64 id)")},
+        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
+            int64_t t=parse_id_i64(v[1],"target_tx_id");
+            if(t==0) throw std::runtime_error("target_tx_id must not be 0");
+            u64(body,t); ex={{"target_tx_id",std::to_string(t)},{"leftover_goes_to","longevity node pool"}}; }};
     // ---- exchange: order-book CLOB ----
     m["market-create"] = {"Open a (base,quote) CLOB market", (uint32_t)TT::CreateMarket, false,
         {PK(), P("Base token","base_token","base (0=ZBC)"), P("Quote token","quote_token","quote (0=ZBC)"), P("Deposit","deposit","rent atomic (0 ok)","0",false)},
@@ -266,12 +280,13 @@ static std::map<std::string, Cmd> registry() {
     // ---- value / tokens ----
     m["transfer-token"] = {"Transfer a held token to a recipient", (uint32_t)TT::TransferToken, true,
         {PK(), P("Recipient","recipient","recipient address (ZBC_/hex/eth)"),
-         P("Token id","token_id","token id (decimal int64)"), P("Amount","amount","amount (atomic)")},
+         P("Token id","token_id","token id (decimal int64)"), P("Amount","amount","amount (atomic)"), P("Survival","survival","ZBC atomic paid for the token's persistence, separate from the fee (rule uniform_fee_refund; 0 = none)","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
             auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid recipient address"); rec=r.Value().address;
             int64_t tid=parse_id_i64(v[2],"token_id"), amt=std::stoll(v[3]);
             if(amt<=0) throw std::runtime_error("amount must be > 0");
-            u64(body,tid); u64(body,amt); ex={{"token_id",tid},{"amount",amt}}; }};
+            u64(body,tid); u64(body,amt); ex={{"token_id",tid},{"amount",amt}};
+            if(v.size()>4&&!v[4].empty()){ int64_t sv=std::stoll(v[4]); if(sv<0) throw std::runtime_error("survival must be >= 0"); body.push_back(0); u64(body,sv); ex["survival"]=sv; } }};
     // ---- account / escrow ----
     m["escrow-request"] = {"Create a recipient-initiated escrow request", (uint32_t)TT::EscrowRequest, false,
         {PK(), P("Proposed sender","proposed_sender","proposed sender address"),
@@ -346,20 +361,41 @@ static std::map<std::string, Cmd> registry() {
             ex={{"schedule_id",s},{"new_recipient",r.Value().display}}; }};
     // ---- storage / node / gateway ----
     m["store-file"] = {"Store a file manifest on-chain (pay storage rent)", (uint32_t)TT::StoreFile, false,
-        {PK(), P("File root","file_root","manifest root hash (64 hex) — MUST equal ManifestRoot(pieces)"),
+        {PK(), P("File root","file_root","'auto' (computed here), or the manifest root (64 hex) = SHA3-256(u32le piece_size | u64le total_size | piece ids)"),
          P("Total size","total_size","total file size in bytes"),
          P("Piece size","piece_size","piece size in bytes (>0)"),
          P("Deposit","deposit","rent deposit (atomic ZBC, >= network minimum)"),
          P("Piece ids","piece_ids","piece-id hashes concatenated as one hex string (count x 32 bytes)")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            auto root=hx(v[1]); if(root.size()!=32) throw std::runtime_error("file_root must be 32 bytes (64 hex)");
             int64_t total=std::stoll(v[2]); uint32_t psz=(uint32_t)std::stoul(v[3]); int64_t dep=std::stoll(v[4]);
+            if(psz==0) throw std::runtime_error("piece_size must be > 0");
             auto pieces=hx(v[5]); if(pieces.empty()||pieces.size()%32!=0) throw std::runtime_error("piece_ids must be a nonzero multiple of 32 bytes");
             uint32_t pcount=(uint32_t)(pieces.size()/32);
+            // The node refuses a root that is not the manifest hash ("StoreFile root != manifest
+            // hash"), and nothing here said how to compute it (tester report 2026-09-24). Compute it:
+            // 'auto' uses it; a given root is checked against it before anything is signed.
+            std::vector<uint8_t> mbuf; u32(mbuf,psz); u64(mbuf,total); mbuf.insert(mbuf.end(), pieces.begin(), pieces.end());
+            auto mr=zoobc::crypto::Hash::SHA3_256(mbuf); if(mr.IsErr()) throw std::runtime_error("could not hash the manifest");
+            const std::vector<uint8_t> expected(mr.Value().begin(), mr.Value().end());
+            std::vector<uint8_t> root;
+            if(v[1]=="auto"||v[1]=="AUTO") root=expected;
+            else {
+                root=hx(v[1]); if(root.size()!=32) throw std::runtime_error("file_root must be 32 bytes (64 hex), or 'auto'");
+                if(root!=expected) throw std::runtime_error("file_root is not the manifest root of these pieces: expected "+
+                    bytes_to_hex(expected)+" = SHA3-256(u32le piece_size | u64le total_size | piece ids); pass 'auto' to use it");
+            }
             body.insert(body.end(), root.begin(), root.end());
             u64(body,total); u32(body,psz); u64(body,dep); u32(body,pcount);
             body.insert(body.end(), pieces.begin(), pieces.end());
-            ex={{"total_size",total},{"piece_size",psz},{"deposit",dep},{"piece_count",pcount}}; }};
+            ex={{"file_root",bytes_to_hex(root)},{"total_size",total},{"piece_size",psz},{"deposit",dep},{"piece_count",pcount}}; }};
+    m["fund-stored-file"] = {"Add to an active stored file's rent deposit (anyone may; nothing added comes back)", (uint32_t)TT::FundStoredFile, false,
+        {PK(), P("File root","file_root","the stored file's root (64 hex)"),
+         P("Amount","amount","atomic ZBC to add (>= 1000000 = 0.01 ZBC)")},
+        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
+            auto root=hx(v[1]); if(root.size()!=32) throw std::runtime_error("file_root must be 32 bytes (64 hex)");
+            int64_t amt=std::stoll(v[2]); if(amt<1000000) throw std::runtime_error("amount below the minimum (1000000)");
+            body.insert(body.end(), root.begin(), root.end()); u64(body,amt);
+            ex={{"file_root",v[1]},{"amount",amt}}; }};
     m["remove-node"] = {"Remove a node registration (v[0] = OWNER key; signs the tx)", (uint32_t)TT::RemoveNodeRegistration, false,
         {PK(), P("Node private key","node_privkey","node's private key (64 hex) — its public key goes in the body")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){

@@ -155,6 +155,10 @@ constexpr int64_t EMPTY_BLOCK_SKIPPED_LIMIT = 10; // Go: EmptyBlockSkippedBlocks
 // Transaction constants (matching Go: common/constant/transaction.go)
 constexpr int MAX_MESSAGE_LENGTH = 64000;  // 64kb
 constexpr int MAX_MESSAGE_LENGTH_ESCROW_INSTRUCTION = 128000;  // 128kb
+// DeclineEscrowRequest (type 516): the decliner's reason (the payer's for a request, the recipient's for an
+// escrow), stored with the request or the escrow and returned by the API.
+// A short human note ("wrong amount", "already paid"), so a cap well under one block's share of bytes.
+constexpr size_t ESCROW_REQUEST_DECLINE_REASON_MAX = 512;
 constexpr int MAX_NUMBER_OF_TRANSACTIONS_IN_BLOCK = 500;
 constexpr int MIN_TRANSACTION_SIZE_IN_BLOCK = 176;
 constexpr int MAX_PAYLOAD_LENGTH_IN_BLOCK = MIN_TRANSACTION_SIZE_IN_BLOCK * MAX_NUMBER_OF_TRANSACTIONS_IN_BLOCK;
@@ -257,6 +261,13 @@ inline uint32_t GetSnapshotInterval() {
 
 // Legacy constants for backward compatibility (use functions above instead)
 constexpr uint32_t SNAPSHOT_CHUNK_SIZE_BYTES = 100 * 1024;  // Deprecated: use GetSnapshotChunkSize()
+// Snapshot payload format. 2 (2026-09-23): the payload names its format; account_balance carries
+// transact_policy, account_dataset its storage and object columns, app its channel flag; the generic
+// StateTables section carries every column of the tables format 1 left out (triggers, oracle, dataset
+// objects and ACLs, release governance, stored files, longevity, storage proofs, app settlements,
+// escrow requests, the topology cache, bridge coins). A node refuses any other format: format 1 is
+// missing state, and a node built from it forks.
+constexpr uint32_t SNAPSHOT_FORMAT_VERSION = 2;
 constexpr int64_t SNAPSHOT_GENERATION_TIMEOUT_SECONDS = 10 * 60;  // Deprecated
 
 // Lifetime of a snapshot manifest (how long peers advertise it as a valid fast-sync
@@ -421,9 +432,16 @@ constexpr int32_t EVENT_TYPE_TRIGGER_FIRED = 23;       // Event trigger fired: s
 // never pruned. period_cost is the consensus param `token_persist_period_cost`
 // (atomic ZBC to keep one token alive for one billing period); default 1 ZBC/mo.
 constexpr int64_t TOKEN_PERSIST_PERIOD_COST = ONE_ZBC;          // 1 ZBC ≈ 30 days of life
-constexpr uint32_t MIN_TOKEN_PERSIST_BLOCKS = 4 * 60 * 24;      // floor at issue: ~1 day
+constexpr uint32_t MIN_TOKEN_PERSIST_BLOCKS = 4 * 60 * 24;      // floor at issue: ~1 day (below uniform_fee_refund only)
+// From `uniform_fee_refund`: the free period every newly issued token gets before any survival
+// payment is due. Owner decision 2026-09-23: the free period is ONE rent period for everything, so
+// a token lives exactly as long free as a new account does before its first rent. Consensus
+// parameter `token_free_persist_blocks`, set in genesis; when a chain does not set it, the node uses
+// the chain's `account_rent_period_blocks`, and this constant (one 30-day period of 15-second blocks)
+// only when neither is set. An explicit survival payment at issue buys blocks on top of it.
+constexpr uint32_t TOKEN_FREE_PERSIST_BLOCKS = DATASET_BILLING_PERIOD_BLOCKS;   // 172,800 blocks = one rent period
 constexpr int32_t EVENT_TYPE_TOKEN_EXPIRED = 20;               // token pruned: persistence financing ran out
-constexpr int32_t EVENT_TYPE_TOKEN_BACKING_RETURNED = 21;      // expired token's unused backing returned to creator
+constexpr int32_t EVENT_TYPE_TOKEN_BACKING_RETURNED = 21;      // expired token's backing paid out: to each holder pro rata (rule token_expiry_to_holders), to the creator below it
 
 // ---- Account survival financing (longevity) — same period/rate as tokens --------
 // An ETH-style / regular account costs storage rent over time (it carries a balance
@@ -608,6 +626,91 @@ constexpr int32_t EVENT_TYPE_LONGEVITY_REFUND = 40;          // cancelled sponso
 constexpr int32_t EVENT_TYPE_SPLIT_OUT = 41;   // the account forwarded a share of an incoming credit
 constexpr int32_t EVENT_TYPE_SPLIT_IN  = 42;   // a share of someone's incoming credit landed here
 constexpr size_t  SPLIT_POLICY_MAX_RECIPIENTS = 10;
+
+// Uniform fee refund + fee/rent separation (rule `uniform_fee_refund`, docs/FEE_RULES.md).
+// The block's distributable pool is total_fee + coinbase - FEE_REFUND + SURVIVAL_PAID
+// (Blockchain::DistributablePool). An escrowed transaction's overpay is refunded at creation as an
+// ordinary FEE_REFUND (owner decision 2026-09-23). 43 and 44 were the "held with the escrow /
+// returned at settlement" pair of an earlier draft of this rule that never ran on any chain; the
+// numbers stay reserved so a reader never decodes them as something else. Never written.
+constexpr int32_t EVENT_TYPE_ESCROW_FEE_HELD_RESERVED   = 43;
+constexpr int32_t EVENT_TYPE_ESCROW_FEE_REFUND_RESERVED = 44;
+constexpr int32_t EVENT_TYPE_SURVIVAL_PAID     = 45;  // explicit rent/survival payment into the node pool (negative)
+// A fee paid in a token (TransferToken, fee-in-token) that overpaid: the FEE_REFUND row (+excess)
+// shows the refund and takes it out of the pool, and this row (-excess) records that the refund
+// stays in the TOKEN — those units were never burned — so the sender's ZBC rows still net to zero.
+constexpr int32_t EVENT_TYPE_FEE_REFUND_IN_TOKEN = 46;
+// A mined transaction that took no ZBC at all from its sender (a free SettleApp no-op, a no-op whose
+// sender could no longer cover the fee): the FEE_REFUND row (+fee) takes the declared fee out of the
+// reward pool — block.total_fee counts it, nobody paid it — and this row (-fee) records that nothing
+// arrived because nothing left, so the sender's rows net to zero. fee_charged reads 0, which is true.
+constexpr int32_t EVENT_TYPE_FEE_NOT_COLLECTED = 47;
+
+// Account groups (types 55-58, docs/ACCOUNT_GROUPS.md). A joining address's assets move into the
+// group: its ZBC leaves as GROUP_JOIN_OUT on the joining address and arrives as GROUP_JOIN_IN on the
+// group account, with the link transaction's id, so both histories reconcile.
+constexpr int32_t EVENT_TYPE_GROUP_JOIN_OUT = 48;
+constexpr int32_t EVENT_TYPE_GROUP_JOIN_IN  = 49;
+// Rule `survival_field` (docs/FEE_RULES.md "Where leftover rent goes"): rent money that reaches the
+// longevity node pool other than by the per-period draw. Positive on the pool (0000ZBCLONGV...), and
+// negative on a ZBS_ deposit address when its remainder is swept there. Written for: a CloseLongevity
+// (the record's remaining deposit), an explicit survival payment (escrow rent, token survival; the
+// payer's own row stays EVENT_TYPE_SURVIVAL_PAID), a deleted or pruned dataset's ZBS_ remainder, a
+// deleted DFS file's ZBS_ remainder, an exhausted stored file's remainder.
+constexpr int32_t EVENT_TYPE_SURVIVAL_TO_POOL = 50;
+// FundStoredFile (296): the amount a funder added to a stored file's rent deposit (negative, on the
+// funder). The fee is its own row (event 1), as for every type under uniform_fee_refund.
+constexpr int32_t EVENT_TYPE_STORED_FILE_FUNDED = 51;
+// Ledger completeness (0.5.0, docs/API_REFERENCE.md "Ledger events"). Every ZBC movement writes a row
+// naming the transaction (reference id), so a wallet's running balance is sum(balance_change). These
+// rows are node-local: account_ledger is not versioned, not in snapshots, and the only consensus
+// reader (Blockchain::DistributablePool) sums 22 and 45 alone — none of these is either.
+constexpr int32_t EVENT_TYPE_TOKEN_BACKING_LOCKED   = 52;  // IssueToken / MintToken: ZBC backing locked in the token (negative)
+constexpr int32_t EVENT_TYPE_TOKEN_REDEEMED         = 53;  // BurnToken: the burned units' backing paid out (positive)
+constexpr int32_t EVENT_TYPE_SWAP_OFFER_LOCKED      = 54;  // CreateSwapOffer: the ZBC give side held (negative)
+constexpr int32_t EVENT_TYPE_SWAP_OFFER_RELEASED    = 55;  // CancelSwapOffer: the held ZBC give side returned (positive)
+constexpr int32_t EVENT_TYPE_EXCHANGE_TRADE         = 56;  // AcceptSwapOffer / PlaceOrder fill: ZBC paid (-) or received (+)
+constexpr int32_t EVENT_TYPE_MARKET_CREATION_COST   = 57;  // CreateMarket: the non-refundable creation cost (negative)
+constexpr int32_t EVENT_TYPE_ORDER_LOCKED           = 58;  // PlaceOrder: the ZBC hold for the order (negative)
+constexpr int32_t EVENT_TYPE_ORDER_RELEASED         = 59;  // unspent ZBC hold returned: at placement, CancelOrder, expiry (positive)
+constexpr int32_t EVENT_TYPE_EXCHANGE_TAKER_FEE     = 60;  // PlaceOrder fill: the ZBC taker fee credited to the block producer
+constexpr int32_t EVENT_TYPE_TRIGGER_LOCKED         = 61;  // CreateTrigger: the amount locked until it fires (negative)
+constexpr int32_t EVENT_TYPE_TRIGGER_CANCELLED      = 62;  // CancelTrigger: the locked amount returned (positive)
+constexpr int32_t EVENT_TYPE_SCHEDULE_LOCKED        = 63;  // ScheduledTransfer (pre-locked): per_fire x fires locked (negative)
+constexpr int32_t EVENT_TYPE_GATEWAY_STAKE_LOCKED   = 64;  // RegisterGateway: the registration stake locked (negative)
+constexpr int32_t EVENT_TYPE_GATEWAY_STAKE_RETURNED = 65;  // UnregisterGateway: the stake returned (positive)
+constexpr int32_t EVENT_TYPE_APP_STAKE              = 66;  // CreateApp / JoinApp: a player's stake (negative; a solo bet's + on the apps pool)
+constexpr int32_t EVENT_TYPE_APP_RAKE               = 67;  // an app's rake credited to the apps pool (positive)
+constexpr int32_t EVENT_TYPE_PREPAID_STORAGE_FUNDED = 68;  // AddPrepaidStorage: moved into the prepaid storage balance (negative)
+constexpr int32_t EVENT_TYPE_STORED_FILE_RENT       = 69;  // per-period stored-file rent accrued in the storage pool (positive, on the pool)
+// Addresses per group, the controller included. A consensus parameter (`account_group_max_members`);
+// this is the default when genesis does not set it (owner decision 2026-09-23: 100). The group pays
+// storage rent on its record's weight, which grows with every member (ACCOUNT_GROUP_MEMBER_ENTRY_BYTES
+// + the address), so a large group pays for its size.
+constexpr int64_t ACCOUNT_GROUP_MAX_MEMBERS_DEFAULT = 100;
+// A consent (link or control transfer) names the last height it may be used at; it may not reach
+// further than this past the block that carries it (~1 day at 15 s blocks), so a consent cannot sit
+// signed and unused for months.
+constexpr uint32_t ACCOUNT_GROUP_CONSENT_MAX_BLOCKS = 5760;
+// Longest spending period a controller may set on a member: ~1 year at 15 s blocks.
+constexpr uint32_t ACCOUNT_GROUP_MAX_PERIOD_BLOCKS = 2102400;
+// Group rent is charged on the group record's weight: this fixed part plus, per member, the member
+// address length plus ACCOUNT_GROUP_MEMBER_ENTRY_BYTES (permissions, limit, period, spend window).
+constexpr uint64_t ACCOUNT_GROUP_RECORD_BASE_BYTES = 96;
+constexpr uint64_t ACCOUNT_GROUP_MEMBER_ENTRY_BYTES = 40;
+// A link moves every item the joining address owns in one transaction; past this many rows the link
+// is refused so one transaction's execution stays bounded.
+constexpr size_t ACCOUNT_GROUP_MAX_MOVED_ITEMS = 1000;
+// Member permission flags (SetMemberPermissions).
+constexpr uint8_t ACCOUNT_GROUP_PERM_SPEND = 0x01;
+// A member WITH a spending limit may move the group's tokens (and genesis coins) only when the
+// controller also sets this bit (owner decision 2026-09-23). The limit counts ZBC; a token has no
+// ZBC price the chain could count, so tokens are all-or-nothing per member. Meaningful only with
+// ACCOUNT_GROUP_PERM_SPEND; an unlimited member moves tokens anyway.
+constexpr uint8_t ACCOUNT_GROUP_PERM_TOKENS = 0x02;
+
+// StoreFile access control: how many extra addresses may be named on one object.
+constexpr size_t  STORE_FILE_MAX_ALLOWED = 16;
 constexpr uint32_t SPLIT_POLICY_BP_SCALE = 10000;   // shares are basis points; the sum may be below 10000
 
 }  // namespace constants

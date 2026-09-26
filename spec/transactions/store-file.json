@@ -86,7 +86,7 @@
     }
   ],
   "example": {
-    "file_root": "1111111111111111111111111111111111111111111111111111111111111111",
+    "file_root": "6c5beca714ada4bf85aabae8eb3bd2ecb43d29e6554e88adcccd2c6f2c269cbd",
     "total_size": "4096",
     "piece_size": "2048",
     "deposit": "100000000",

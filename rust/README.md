@@ -11,7 +11,7 @@ from `../spec/transactions`. Rust 1.75 or newer. Dependencies: `sha3`, `sha2`, `
 ```
 cd rust
 cargo test                                  # every vector in ../spec/vectors through the library and the CLI
-cargo build --release                       # target/release/zbc-cli and the 45 zbc-* programs
+cargo build --release                       # target/release/zbc-cli and the 47 zbc-* programs
 cargo install --path zbc-cli                # onto ~/.cargo/bin
 ```
 
@@ -29,7 +29,7 @@ zbc-cli send-zbc --help                                  # options, environment,
 ```
 
 The contract every command follows is [`../spec/cli-contract.md`](../spec/cli-contract.md). All
-58 transaction types of `../spec/transactions` are subcommands, and the 45 that the C++ tools
+60 transaction types of `../spec/transactions` are subcommands, and the 47 that the C++ tools
 also ship as single programs exist as binaries with the same names; `cargo run -p gen`
 regenerates `zbc/src/commands_gen.rs` and `zbc-cli/src/bin/*.rs` from the spec. The seven types
 the spec marks custom are in `zbc/src/custom.rs`. `--encrypt` seals `--message` to a ZBC recipient exactly as the

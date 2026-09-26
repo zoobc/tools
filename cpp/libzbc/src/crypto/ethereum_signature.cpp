@@ -224,6 +224,12 @@ Result<bool> EthereumSignature::Verify(
     if (recovery_id >= 27) {
         recovery_id -= 27;  // Ethereum convention
     }
+    // libsecp256k1 ARG_CHECKs this to 0..3 and its default illegal callback calls abort(), so a
+    // recovery id straight off the wire could kill the process: byte 4..26 passes through, and
+    // 31+ becomes 4+ after the Ethereum subtraction (reported 2026-09-20, forum topic 291).
+    if (recovery_id < 0 || recovery_id > 3) {
+        return Error{ErrorCode::InvalidArgument, "Invalid signature recovery id"};
+    }
 
     secp256k1_ecdsa_recoverable_signature sig;
     if (secp256k1_ecdsa_recoverable_signature_parse_compact(
@@ -266,6 +272,12 @@ Result<std::vector<uint8_t>> EthereumSignature::RecoverPublicKey(
     int recovery_id = signature[64];
     if (recovery_id >= 27) {
         recovery_id -= 27;
+    }
+    // libsecp256k1 ARG_CHECKs this to 0..3 and its default illegal callback calls abort(), so a
+    // recovery id straight off the wire could kill the process: byte 4..26 passes through, and
+    // 31+ becomes 4+ after the Ethereum subtraction (reported 2026-09-20, forum topic 291).
+    if (recovery_id < 0 || recovery_id > 3) {
+        return Error{ErrorCode::InvalidArgument, "Invalid signature recovery id"};
     }
 
     // Parse signature
@@ -471,7 +483,18 @@ struct RlpItem {
 };
 
 // Decode RLP item at position, return bytes consumed
-Result<std::pair<RlpItem, size_t>> DecodeRlpItem(const std::vector<uint8_t>& data, size_t pos) {
+// An RLP item nests: a list's children are decoded by calling back into this function. A real
+// Ethereum transaction is two or three levels deep, so the depth is bounded here. Without the bound
+// a ~60 KB body of repeated long-list headers ("f801" x 30000) drove ~30k stack frames and
+// segfaulted the process — unauthenticated, over :8545 and through the public gateway, on every
+// node (reported 2026-09-20, forum topic 290). systemd restarts the node, so the effect was a
+// flapping denial of service rather than a permanent kill; one request every ~11 s kept it down.
+constexpr int kMaxRlpDepth = 32;
+
+Result<std::pair<RlpItem, size_t>> DecodeRlpItem(const std::vector<uint8_t>& data, size_t pos, int depth = 0) {
+    if (depth > kMaxRlpDepth) {
+        return Error{ErrorCode::InvalidArgument, "RLP: nesting deeper than " + std::to_string(kMaxRlpDepth)};
+    }
     if (pos >= data.size()) {
         return Error{ErrorCode::InvalidArgument, "RLP: unexpected end of data"};
     }
@@ -519,7 +542,7 @@ Result<std::pair<RlpItem, size_t>> DecodeRlpItem(const std::vector<uint8_t>& dat
         item.is_list = true;
         size_t offset = 0;
         while (offset < list_len) {
-            auto result = DecodeRlpItem(data, pos + 1 + offset);
+            auto result = DecodeRlpItem(data, pos + 1 + offset, depth + 1);
             if (result.IsErr()) {
                 return Error{result.GetError()};
             }
@@ -543,7 +566,7 @@ Result<std::pair<RlpItem, size_t>> DecodeRlpItem(const std::vector<uint8_t>& dat
         item.is_list = true;
         size_t offset = 0;
         while (offset < list_len) {
-            auto result = DecodeRlpItem(data, pos + 1 + len_bytes + offset);
+            auto result = DecodeRlpItem(data, pos + 1 + len_bytes + offset, depth + 1);
             if (result.IsErr()) {
                 return Error{result.GetError()};
             }

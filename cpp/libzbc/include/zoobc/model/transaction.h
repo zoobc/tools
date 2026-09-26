@@ -23,7 +23,8 @@ enum class EscrowStatus : int32_t {
     Pending  = 0,
     Approved = 1,
     Rejected = 2,
-    Expired  = 3
+    Expired  = 3,
+    Declined = 4   // the recipient refused it (DeclineEscrowRequest, type 516, escrow target); decline_reason holds why
 };
 
 // Escrow approval enum (matches Go model.EscrowApproval)
@@ -52,6 +53,7 @@ struct Escrow {
     std::vector<uint8_t> co_signer_signature;      // Recipient's signature (for multi-party)
     int64_t escrow_request_id;                     // Reference to EscrowRequest (if from request)
     int64_t token_id;                              // 0 = ZBC escrow; else the escrowed token (amount in token units; commission/fee stay ZBC)
+    std::string decline_reason;                    // the recipient's reason (status Declined), else empty
 
     Escrow()
         : id(0),
@@ -94,6 +96,12 @@ struct Transaction {
     std::vector<uint8_t> signature;                   // 64 bytes
     std::optional<Escrow> escrow;                     // NEW: Optional escrow data
     std::vector<uint8_t> message;                     // Optional transaction message
+    // Survival (rule `survival_field`, transaction version 2): an initial deposit that keeps THIS
+    // transaction alive past the prune horizon. It opens (or tops up) the transaction's own longevity
+    // record exactly as a FundLongevity would, is debited at execution, never refunded, and is not a
+    // fee. Serialised as u64 LE right after `fee`, and only in version 2; version 1 carries none and
+    // must hold 0 here. docs/FEE_RULES.md "Survival in the transaction".
+    int64_t survival;
 
     Transaction()
         : version(1),
@@ -105,7 +113,8 @@ struct Transaction {
           timestamp(0),
           transaction_body_length(0),
           transaction_index(0),
-          multisig_child(false) {}
+          multisig_child(false),
+          survival(0) {}
 };
 
 // Send ZBC transaction body
@@ -331,7 +340,8 @@ enum class EscrowRequestStatus : int32_t {
     Pending  = 0,   // Awaiting sender approval
     Approved = 1,   // Sender approved and created escrow transaction
     Rejected = 2,   // Sender rejected the request
-    Expired  = 3    // Request expired without sender action
+    Expired  = 3,   // Request expired without sender action
+    Declined = 4    // The payer declined it (DeclineEscrowRequest, type 516, request target), with a reason
 };
 
 // Escrow request record - stored in database
@@ -348,6 +358,7 @@ struct EscrowRequest {
     int64_t expiry;                              // Request expiry block height
     EscrowRequestStatus status;                  // Current status of the request
     int64_t escrow_transaction_id;               // ID of created escrow tx (if approved)
+    std::string decline_reason;                  // the payer's reason (status Declined), else empty
     uint32_t block_height;                       // Block height when record was created
     bool latest;                                 // Version flag for database
 

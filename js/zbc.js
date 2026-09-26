@@ -23,7 +23,7 @@ var ZBC = (() => {
   var __toCommonJS = (mod3) => __copyProps(__defProp({}, "__esModule", { value: true }), mod3);
   var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
-  // ts/src/index.ts
+  // src/index.ts
   var index_exports = {};
   __export(index_exports, {
     AccountType: () => AccountType,
@@ -130,7 +130,7 @@ var ZBC = (() => {
     zbcSignificant: () => zbcSignificant
   });
 
-  // ts/src/crypto/sha3.ts
+  // src/crypto/sha3.ts
   var RC = [
     0x0000000000000001n,
     0x0000000000008082n,
@@ -200,7 +200,7 @@ var ZBC = (() => {
     return out;
   }
 
-  // ts/src/util/base32.ts
+  // src/util/base32.ts
   var ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
   function base32Encode(data) {
     let out = "", buf = 0, bits = 0;
@@ -231,7 +231,7 @@ var ZBC = (() => {
     return new Uint8Array(out);
   }
 
-  // ts/src/crypto/sha2.ts
+  // src/crypto/sha2.ts
   var K256 = new Uint32Array([
     1116352408,
     1899447441,
@@ -582,7 +582,7 @@ var ZBC = (() => {
     return out;
   }
 
-  // ts/src/util/base58.ts
+  // src/util/base58.ts
   var BITCOIN_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
   var RIPPLE_ALPHABET = "rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz";
   function base58Decode(s, alphabet = BITCOIN_ALPHABET) {
@@ -628,7 +628,7 @@ var ZBC = (() => {
     return body;
   }
 
-  // ts/src/util/bech32.ts
+  // src/util/bech32.ts
   var CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
   var GEN = [996825010, 642813549, 513874426, 1027748829, 705979059];
   function polymod(values) {
@@ -702,7 +702,7 @@ var ZBC = (() => {
     return { hrp: d.hrp, bytes: new Uint8Array(bytes) };
   }
 
-  // ts/src/crypto/blake2b.ts
+  // src/crypto/blake2b.ts
   var IV = [
     0x6a09e667f3bcc908n,
     0xbb67ae8584caa73bn,
@@ -772,7 +772,7 @@ var ZBC = (() => {
     return out;
   }
 
-  // ts/src/util/bytes.ts
+  // src/util/bytes.ts
   function hexToBytes(hex) {
     const h = hex.startsWith("0x") || hex.startsWith("0X") ? hex.slice(2) : hex;
     if (h.length % 2 !== 0) throw new Error("hex must have an even length");
@@ -847,7 +847,7 @@ var ZBC = (() => {
     return new DataView(b.buffer, b.byteOffset, b.byteLength).getBigInt64(off, true);
   }
 
-  // ts/src/util/ss58.ts
+  // src/util/ss58.ts
   function ss58Decode(s) {
     const raw = base58Decode(s);
     if (!raw) return null;
@@ -866,7 +866,7 @@ var ZBC = (() => {
     return { prefix, accountId: raw.slice(prefixLen, bodyLen) };
   }
 
-  // ts/src/address.ts
+  // src/address.ts
   var AccountType = {
     ZooBC: 0,
     Bitcoin: 1,
@@ -1106,7 +1106,7 @@ var ZBC = (() => {
     return hexToBytes(h);
   }
 
-  // ts/src/crypto/ed25519.ts
+  // src/crypto/ed25519.ts
   var P = (1n << 255n) - 19n;
   var L = (1n << 252n) + 27742317777372353535851937790883648493n;
   var D = -121665n * inv(121666n) % P;
@@ -1237,7 +1237,7 @@ var ZBC = (() => {
     }
   }
 
-  // ts/src/util/bip39-words.ts
+  // src/util/bip39-words.ts
   var BIP39_WORDS = [
     "abandon",
     "ability",
@@ -3289,7 +3289,7 @@ var ZBC = (() => {
     "zoo"
   ];
 
-  // ts/src/keys.ts
+  // src/keys.ts
   function keyPairFromSeed(seed) {
     const s = typeof seed === "string" ? seedFromHex(seed) : seed;
     if (s.length !== 32) throw new Error("Private key must be 64 hex characters (32 bytes)");
@@ -3369,7 +3369,7 @@ var ZBC = (() => {
   var seedHex = (kp) => bytesToHex(kp.seed);
   var publicKeyHex = (kp) => bytesToHex(kp.publicKey);
 
-  // ts/src/message.ts
+  // src/message.ts
   var MESSAGE_SIGNING_SCHEME = "ZBC-MSG-v1";
   var TAG = utf8("ZBC-MSG");
   function messageDigest(message) {
@@ -3400,7 +3400,7 @@ var ZBC = (() => {
     return d && d.prefix === "ZBC" ? d.payload : null;
   }
 
-  // ts/src/transaction.ts
+  // src/transaction.ts
   var TX_SIGNING_TAG = utf8("ZBC-TX");
   var EMPTY_ACCOUNT = new ByteWriter().u32(AccountType.Empty).finish();
   function signingContext(genesis) {
@@ -3472,7 +3472,7 @@ var ZBC = (() => {
     return new ByteWriter().u32(approval).bytes(escrowedTransactionHash).finish();
   }
 
-  // ts/src/errors.ts
+  // src/errors.ts
   var ExitCode = {
     ok: 0,
     internal: 1,
@@ -3516,7 +3516,7 @@ var ZBC = (() => {
     return ExitCode.rejected;
   }
 
-  // ts/src/util/json.ts
+  // src/util/json.ts
   var MARK = "~bigint~";
   function stringifyJson(value, indent) {
     const text = JSON.stringify(value, (_k, v) => typeof v === "bigint" ? MARK + v.toString() + MARK : v, indent);
@@ -3527,7 +3527,7 @@ var ZBC = (() => {
     return JSON.parse(marked, (_k, v) => typeof v === "string" && v.startsWith(MARK) ? BigInt(v.slice(MARK.length, -MARK.length)) : v);
   }
 
-  // ts/src/api.ts
+  // src/api.ts
   var Client = class {
     constructor(opts = {}) {
       __publicField(this, "api");
@@ -3638,7 +3638,7 @@ var ZBC = (() => {
     return String(e);
   }
 
-  // ts/src/body.ts
+  // src/body.ts
   var INT_LIMITS = {
     int64: [-(1n << 63n), (1n << 63n) - 1n],
     uint64: [0n, (1n << 64n) - 1n],
@@ -3815,7 +3815,7 @@ var ZBC = (() => {
     return w.finish();
   }
 
-  // ts/src/custom.ts
+  // src/custom.ts
   function proofOfOwnership(owner, block) {
     const msg = new ByteWriter().bytes(owner.accountBytes).bytes(block.hash).u32(block.height).finish();
     return concat(msg, sign(msg, owner.seed));
@@ -3953,7 +3953,7 @@ var ZBC = (() => {
     return { body: w.finish(), extra: { app_id: Number(appId), opening_turn: turn, final_seq: cells.length } };
   }
 
-  // ts/src/crypto/salsa.ts
+  // src/crypto/salsa.ts
   var SIGMA2 = new Uint32Array([1634760805, 857760878, 2036477234, 1797285236]);
   var ROUNDS = [[0, 4, 8, 12], [5, 9, 13, 1], [10, 14, 2, 6], [15, 3, 7, 11], [0, 1, 2, 3], [5, 6, 7, 4], [10, 11, 8, 9], [15, 12, 13, 14]];
   function u32le(b, off) {
@@ -4060,7 +4060,7 @@ var ZBC = (() => {
     return out;
   }
 
-  // ts/src/crypto/x25519.ts
+  // src/crypto/x25519.ts
   var P2 = (1n << 255n) - 19n;
   var A24 = 121665n;
   function mod2(a) {
@@ -4136,7 +4136,7 @@ var ZBC = (() => {
     return h;
   }
 
-  // ts/src/encryption.ts
+  // src/encryption.ts
   var SEALED_MAGIC = new Uint8Array([90, 66, 69, 49]);
   var SEALED_OVERHEAD = 52;
   function isSealed(field) {
@@ -4161,7 +4161,7 @@ var ZBC = (() => {
     return secretboxOpen(boxKey(sk, epk), nonceOf(epk, pk), field.subarray(36));
   }
 
-  // ts/src/generated/commands.ts
+  // src/generated/commands.ts
   var COMMANDS = [
     {
       "name": "AcceptDataset",
@@ -5051,6 +5051,50 @@ var ZBC = (() => {
       ]
     },
     {
+      "name": "CloseLongevity",
+      "type": 309,
+      "command": "close-longevity",
+      "binary": "zbc-close-longevity",
+      "description": "Close the longevity record of a transaction you sent; the remaining deposit goes to the longevity node pool.",
+      "sender_key": "sender_privkey",
+      "recipient": "none",
+      "options": [
+        "message",
+        "encrypt"
+      ],
+      "needs_node": false,
+      "custom": null,
+      "params": [
+        {
+          "name": "sender_privkey",
+          "kind": "privkey",
+          "required": true,
+          "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+        },
+        {
+          "name": "target_tx_id",
+          "kind": "int64",
+          "required": true,
+          "help": "the transaction whose record to close, as its int64 id (not 0)"
+        }
+      ],
+      "body": [
+        {
+          "name": "target_tx_id",
+          "encoding": "u64le",
+          "from": "target_tx_id"
+        }
+      ],
+      "example": {
+        "target_tx_id": "-1234567890123456789"
+      },
+      "notes": [
+        "Also zbc-cli close-longevity.",
+        "Only the target's owner may close it (the account that sent it; for a group member, any member of that group).",
+        "Nothing is refunded: the owner's own survival and every top-up alike go to the longevity node pool (rule survival_field)."
+      ]
+    },
+    {
       "name": "CreateTrigger",
       "type": 15,
       "command": "create-trigger",
@@ -5520,6 +5564,18 @@ var ZBC = (() => {
           "kind": "int64",
           "required": true,
           "help": "deposit (atomic), minimum 0.1 ZBC"
+        },
+        {
+          "name": "target_height",
+          "kind": "uint32",
+          "required": false,
+          "help": "block height of the target (GET /api/v1/longevity/quote: state_target_height); omit both target fields to take them from the node"
+        },
+        {
+          "name": "target_bytes",
+          "kind": "int64",
+          "required": false,
+          "help": "billable size of the target: body + message bytes (quote: state_target_bytes)"
         }
       ],
       "body": [
@@ -5532,14 +5588,27 @@ var ZBC = (() => {
           "name": "amount",
           "encoding": "u64le",
           "from": "amount"
+        },
+        {
+          "name": "target_height",
+          "encoding": "u32le",
+          "from": "target_height"
+        },
+        {
+          "name": "target_bytes",
+          "encoding": "u64le",
+          "from": "target_bytes"
         }
       ],
       "example": {
         "target_tx_id": "-1234567890123456789",
-        "amount": "10000000"
+        "amount": "10000000",
+        "target_height": "1200",
+        "target_bytes": "256"
       },
       "notes": [
-        "No zbc-cli subcommand."
+        "No zbc-cli subcommand.",
+        "The body states the target's height and billable size (rule longevity_stated_target, in force from block 0 on the relaunched chains); a node that predates the rule takes the 16-byte body without them."
       ]
     },
     {
@@ -7348,7 +7417,7 @@ var ZBC = (() => {
         }
       ],
       "example": {
-        "file_root": "1111111111111111111111111111111111111111111111111111111111111111",
+        "file_root": "6c5beca714ada4bf85aabae8eb3bd2ecb43d29e6554e88adcccd2c6f2c269cbd",
         "total_size": "4096",
         "piece_size": "2048",
         "deposit": "100000000",

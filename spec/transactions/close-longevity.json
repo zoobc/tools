@@ -1,0 +1,45 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "CloseLongevity",
+  "type": 309,
+  "command": "close-longevity",
+  "binary": "zbc-close-longevity",
+  "description": "Close the longevity record of a transaction you sent; the remaining deposit goes to the longevity node pool.",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "target_tx_id",
+      "kind": "int64",
+      "required": true,
+      "help": "the transaction whose record to close, as its int64 id (not 0)"
+    }
+  ],
+  "body": [
+    {
+      "name": "target_tx_id",
+      "encoding": "u64le",
+      "from": "target_tx_id"
+    }
+  ],
+  "example": {
+    "target_tx_id": "-1234567890123456789"
+  },
+  "notes": [
+    "Also zbc-cli close-longevity.",
+    "Only the target's owner may close it (the account that sent it; for a group member, any member of that group).",
+    "Nothing is refunded: the owner's own survival and every top-up alike go to the longevity node pool (rule survival_field)."
+  ]
+}

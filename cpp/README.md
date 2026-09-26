@@ -129,9 +129,12 @@ node accepted the transaction into its pool, not that it is in a block.
 | `zbc-trigger-cancel` | `cmd/cancel-trigger.cpp` | Cancel a pending trigger you own; the locked amount is refunded. Body = 8-byte trigger_id |
 | `zbc-fund-longevity` | `cmd/fund-longevity.cpp` | Attach a rent deposit to a transaction so pruning skips it.  |
 | `zbc-cancel-longevity` | `cmd/cancel-longevity.cpp` | Cancel a sponsorship you created. Refunds the remainder less the current  |
+| `zbc-close-longevity` | `cmd/close-longevity.cpp` | Close the longevity record of a transaction you sent; the remaining deposit goes to the longevity node pool. Body = 8-byte target id |
+| `zbc-split-policy` | `cmd/split-policy-set.cpp` | Set or clear the account's split policy: every incoming credit (ZBC or token) is forwarded to up to 10 recipients by share |
 | `zbc-fee-vote-commit` | `cmd/fee-vote-commit.cpp` | Submit a hashed fee vote during the commit phase |
 | `zbc-fee-vote-reveal` | `cmd/fee-vote-reveal.cpp` | Reveal the actual fee vote during the reveal phase |
 | `zbc-multisig` | `cmd/multisig.cpp` | N-of-M multisig transfer: inner transaction plus participant signatures |
+| `zbc-multisig-offline` | `cmd/multisig-offline.cpp` | N-of-M multisig where each participant keeps their key: prepare / sign offline per participant / combine / submit ([`../docs/MULTISIG_OFFLINE.md`](../docs/MULTISIG_OFFLINE.md)) |
 | `zbc-governance-vote` | `cmd/governance-vote.cpp` | Declare the value this node wants for a governable parameter (2/3 of the registry must agree) |
 
 **Nodes, gateways, archivals, relays**

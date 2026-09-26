@@ -31,6 +31,18 @@
       "kind": "int64",
       "required": true,
       "help": "deposit (atomic), minimum 0.1 ZBC"
+    },
+    {
+      "name": "target_height",
+      "kind": "uint32",
+      "required": false,
+      "help": "block height of the target (GET /api/v1/longevity/quote: state_target_height); omit both target fields to take them from the node"
+    },
+    {
+      "name": "target_bytes",
+      "kind": "int64",
+      "required": false,
+      "help": "billable size of the target: body + message bytes (quote: state_target_bytes)"
     }
   ],
   "body": [
@@ -43,13 +55,26 @@
       "name": "amount",
       "encoding": "u64le",
       "from": "amount"
+    },
+    {
+      "name": "target_height",
+      "encoding": "u32le",
+      "from": "target_height"
+    },
+    {
+      "name": "target_bytes",
+      "encoding": "u64le",
+      "from": "target_bytes"
     }
   ],
   "example": {
     "target_tx_id": "-1234567890123456789",
-    "amount": "10000000"
+    "amount": "10000000",
+    "target_height": "1200",
+    "target_bytes": "256"
   },
   "notes": [
-    "No zbc-cli subcommand."
+    "No zbc-cli subcommand.",
+    "The body states the target's height and billable size (rule longevity_stated_target, in force from block 0 on the relaunched chains); a node that predates the rule takes the 16-byte body without them."
   ]
 }

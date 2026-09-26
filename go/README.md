@@ -10,7 +10,7 @@ one program per transaction, as the C++ tools have. Go 1.24 or newer.
 ```
 cd go
 go test ./...                       # every vector in ../spec/vectors through the library and the CLI
-go build -o bin/ ./cmd/...          # zbc-cli and the 45 single-purpose programs into bin/
+go build -o bin/ ./cmd/...          # zbc-cli and the 47 single-purpose programs into bin/
 go install ./cmd/zbc-cli            # or just the combined command onto $GOPATH/bin
 ```
 
@@ -28,7 +28,7 @@ zbc-cli send-zbc --help                                  # options, environment,
 ```
 
 The contract every command follows is [`../spec/cli-contract.md`](../spec/cli-contract.md). All
-58 transaction types of `../spec/transactions` are subcommands, and the 45 that the C++ tools
+60 transaction types of `../spec/transactions` are subcommands, and the 47 that the C++ tools
 also ship as single programs exist under `cmd/` with the same names; `internal/gen` writes
 `zbc/commands_gen.go` and those `cmd/` programs from the spec, so a new type is a regeneration
 (`go run ./internal/gen`), not new code. The seven types the spec marks custom are in

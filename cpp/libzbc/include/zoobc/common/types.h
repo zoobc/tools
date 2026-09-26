@@ -86,18 +86,40 @@ enum class TransactionType : uint32_t {
     // attaches a deposit to a target transaction id; rent is drawn from that deposit each period and
     // the transaction (and its block header) is excluded from pruning while the deposit lasts.
     // Anyone may sponsor anything; the sponsor may cancel, forfeiting the remainder (owner's rule).
-    FundLongevity             = 52,     // body: target_tx_id(8 LE) | amount(8 LE)
-    CancelLongevity           = 53,     // body: target_tx_id(8 LE) — sponsor only; refunds the remainder less the period being consumed (owner rule 2026-08-31)
+    FundLongevity             = 52,     // body: target_tx_id(8 LE) | amount(8 LE) | target_height(4 LE) | target_bytes(8 LE) (last two from longevity_stated_target)
+    CancelLongevity           = 53,     // body: target_tx_id(8 LE) — sponsor only; refunds the remainder less the period being consumed (owner rule 2026-08-31). RETIRED from `survival_field`: top-ups cannot be taken back (refused at admission, a fee-floor no-op if mined)
+    // The OWNER of a transaction (its sender's account, group-aware, recorded on the longevity record)
+    // ends that transaction's longevity record now: the remaining deposit goes to the longevity node
+    // pool, never to the owner or a funder, and the transaction rejoins ordinary pruning. Gated by the
+    // `survival_field` activation height. Body: target_tx_id(8 LE). [53,1,0,0]
+    CloseLongevity            = 309,
+    // Anyone adds to an ACTIVE stored file's rent deposit (wallet prompt 12, gap 3): the file lives
+    // longer; nothing added can be taken back, and what is left when it runs out goes to the longevity
+    // node pool (rule survival_field). Gated by `stored_file_topup`. Body: file_root(32) | amount(i64 LE).
+    // [40,1,0,0]
+    FundStoredFile            = 296,
     // Split policy (docs/SPLIT_POLICY.md, owner decisions 2026-09-20): the sender's own account forwards
     // every INCOMING credit to up to 10 recipients by basis-point shares; what the shares do not cover
     // (an unassigned remainder, or an amount too small to divide) stays in the account. Body:
     // count(u8) | count x [addr_len(u8) | address | share_bp(u16 LE)]; count 0 clears. Consensus.
     SetSplitPolicy            = 54,
+    // Account groups (docs/ACCOUNT_GROUPS.md, owner decisions 2026-09-23): ONE account reachable at
+    // up to `account_group_max_members` addresses of any signing type. The pooled balance and
+    // everything the group owns live on a keyless group address; one member, the controller,
+    // manages it. Gated by the `account_groups` activation height. Body layouts in the doc.
+    LinkAccount               = 55,     // controller + joining address both consent; the joiner's assets move into the group
+    UnlinkAccount             = 56,     // the controller removes a member, or a member leaves; it takes nothing
+    SetMemberPermissions      = 57,     // controller sets a member's spend flag and per-period ZBC limit
+    TransferGroupControl      = 58,     // controller hands the role to a member; both sign
     NodeRegistrationUpdate    = 258,    // UpdateNodeRegistrationTransaction [2,1,0,0]
     RemoveAccountDataset      = 259,    // RemoveAccountDatasetTransaction [3,1,0,0]
     LiquidPaymentStop         = 262,    // LiquidPaymentStopTransaction [6,1,0,0]
     FeeVoteReveal             = 263,    // FeeVoteRevealVoteTransaction [7,1,0,0]
     EscrowRequest             = 260,    // EscrowRequestTransaction [4,1,0,0] - Recipient-initiated escrow
+    // The payer an EscrowRequest names declines it, with a reason (owner decision 2026-09-23). Gated by
+    // the `escrow_request` activation height. Body: request_id(8 LE) | reason_len(u16 LE) | reason
+    // (UTF-8, at most ESCROW_REQUEST_DECLINE_REASON_MAX bytes, no NUL). docs/escrow-message-spec.md.
+    DeclineEscrowRequest      = 516,    // [4,2,0,0]
     RemoveNodeRegistration    = 514,    // RemoveNodeRegistrationTransaction [2,2,0,0]
     ClaimNodeRegistration     = 770,    // ClaimNodeRegistrationTransaction [2,3,0,0]
 
@@ -175,14 +197,14 @@ inline TxCategory TransactionCategoryOf(TransactionType t) {
         case TransactionType::PlaceOrder: case TransactionType::CancelOrder:
             return TxCategory::Exchange;
         case TransactionType::SetupAccountDataset: case TransactionType::RemoveAccountDataset:
-        case TransactionType::AddPrepaidStorage: case TransactionType::StoreFile:
+        case TransactionType::AddPrepaidStorage: case TransactionType::StoreFile: case TransactionType::FundStoredFile:
         case TransactionType::SubmitStorageProof: case TransactionType::TransferDataset:
         case TransactionType::SetDatasetPolicy: case TransactionType::AcceptDataset:
         case TransactionType::DeleteDataset: case TransactionType::DFSCreateFile:
         case TransactionType::DFSUpdateFile: case TransactionType::DFSDeleteFile:
             return TxCategory::DataStorage;
         case TransactionType::ApprovalEscrow: case TransactionType::EscrowRequest:
-        case TransactionType::MultiSignature:
+        case TransactionType::DeclineEscrowRequest: case TransactionType::MultiSignature:
             return TxCategory::EscrowMultisig;
         case TransactionType::NodeRegistration: case TransactionType::NodeRegistrationUpdate:
         case TransactionType::RemoveNodeRegistration: case TransactionType::ClaimNodeRegistration:
@@ -262,61 +284,85 @@ using Address   = std::vector<uint8_t>;  // Variable length
 
 // Convert enum to string (ChainTypeID is in chain_type.h)
 
+// Every TransactionType has a name here. There is deliberately NO default case: a TU compiled with
+// -Werror=switch (tests/ledger_events_test.cpp) fails to build when a type is added to the enum
+// without a name, so /blockchain/rules and every other caller never serve "Unknown" for a real type.
+// The return after the switch is only for a value outside the enum (a wire number no type has).
 inline const char* TransactionTypeToString(TransactionType type) {
     switch (type) {
-        case TransactionType::Empty:
-            return "EmptyTransaction";
-        case TransactionType::SendZBC:
-            return "SendZBCTransaction";
-        case TransactionType::NodeRegistration:
-            return "NodeRegistrationTransaction";
-        case TransactionType::SetupAccountDataset:
-            return "SetupAccountDatasetTransaction";
-        case TransactionType::ApprovalEscrow:
-            return "ApprovalEscrowTransaction";
-        case TransactionType::MultiSignature:
-            return "MultiSignatureTransaction";
-        case TransactionType::LiquidPayment:
-            return "LiquidPaymentTransaction";
-        case TransactionType::FeeVoteCommitment:
-            return "FeeVoteCommitmentVoteTransaction";
-        case TransactionType::NodeRegistrationUpdate:
-            return "UpdateNodeRegistrationTransaction";
-        case TransactionType::RemoveAccountDataset:
-            return "RemoveAccountDatasetTransaction";
-        case TransactionType::LiquidPaymentStop:
-            return "LiquidPaymentStopTransaction";
-        case TransactionType::FeeVoteReveal:
-            return "FeeVoteRevealVoteTransaction";
-        case TransactionType::EscrowRequest:
-            return "EscrowRequestTransaction";
-        case TransactionType::RemoveNodeRegistration:
-            return "RemoveNodeRegistrationTransaction";
-        case TransactionType::ClaimNodeRegistration:
-            return "ClaimNodeRegistrationTransaction";
-        case TransactionType::DFSCreateFile:
-            return "DFSCreateFileTransaction";
-        case TransactionType::DFSUpdateFile:
-            return "DFSUpdateFileTransaction";
-        case TransactionType::DFSDeleteFile:
-            return "DFSDeleteFileTransaction";
-        case TransactionType::RegisterRelease:
-            return "RegisterReleaseTransaction";
-        case TransactionType::ReleaseAuthorityPropose:
-            return "ReleaseAuthorityProposeTransaction";
-        case TransactionType::ReleaseAuthorityAccept:
-            return "ReleaseAuthorityAcceptTransaction";
-        case TransactionType::RevokeRelease:
-            return "RevokeReleaseTransaction";
-        case TransactionType::RegisterGateway:
-            return "RegisterGatewayTransaction";
-        case TransactionType::GatewayHeartbeat:
-            return "GatewayHeartbeatTransaction";
-        case TransactionType::UnregisterGateway:
-            return "UnregisterGatewayTransaction";
-        default:
-            return "Unknown";
+        case TransactionType::Empty: return "EmptyTransaction";
+        case TransactionType::SendZBC: return "SendZBCTransaction";
+        case TransactionType::NodeRegistration: return "NodeRegistrationTransaction";
+        case TransactionType::SetupAccountDataset: return "SetupAccountDatasetTransaction";
+        case TransactionType::ApprovalEscrow: return "ApprovalEscrowTransaction";
+        case TransactionType::MultiSignature: return "MultiSignatureTransaction";
+        case TransactionType::LiquidPayment: return "LiquidPaymentTransaction";
+        case TransactionType::FeeVoteCommitment: return "FeeVoteCommitmentVoteTransaction";
+        case TransactionType::AddPrepaidStorage: return "AddPrepaidStorageTransaction";
+        case TransactionType::IssueToken: return "IssueTokenTransaction";
+        case TransactionType::TransferToken: return "TransferTokenTransaction";
+        case TransactionType::MintToken: return "MintTokenTransaction";
+        case TransactionType::BurnToken: return "BurnTokenTransaction";
+        case TransactionType::FinanceToken: return "FinanceTokenTransaction";
+        case TransactionType::CreateTrigger: return "CreateTriggerTransaction";
+        case TransactionType::CancelTrigger: return "CancelTriggerTransaction";
+        case TransactionType::AttestEvent: return "AttestEventTransaction";
+        case TransactionType::CreateSwapOffer: return "CreateSwapOfferTransaction";
+        case TransactionType::AcceptSwapOffer: return "AcceptSwapOfferTransaction";
+        case TransactionType::CancelSwapOffer: return "CancelSwapOfferTransaction";
+        case TransactionType::CreateMarket: return "CreateMarketTransaction";
+        case TransactionType::PlaceOrder: return "PlaceOrderTransaction";
+        case TransactionType::CancelOrder: return "CancelOrderTransaction";
+        case TransactionType::CreateApp: return "CreateAppTransaction";
+        case TransactionType::JoinApp: return "JoinAppTransaction";
+        case TransactionType::AppMove: return "AppMoveTransaction";
+        case TransactionType::ResignApp: return "ResignAppTransaction";
+        case TransactionType::ClaimAppTimeout: return "ClaimAppTimeoutTransaction";
+        case TransactionType::ScheduledTransfer: return "ScheduledTransferTransaction";
+        case TransactionType::CancelSchedule: return "CancelScheduleTransaction";
+        case TransactionType::ReassignSchedule: return "ReassignScheduleTransaction";
+        case TransactionType::RegisterRelease: return "RegisterReleaseTransaction";
+        case TransactionType::ReleaseAuthorityPropose: return "ReleaseAuthorityProposeTransaction";
+        case TransactionType::ReleaseAuthorityAccept: return "ReleaseAuthorityAcceptTransaction";
+        case TransactionType::RevokeRelease: return "RevokeReleaseTransaction";
+        case TransactionType::RegisterGateway: return "RegisterGatewayTransaction";
+        case TransactionType::GatewayHeartbeat: return "GatewayHeartbeatTransaction";
+        case TransactionType::UnregisterGateway: return "UnregisterGatewayTransaction";
+        case TransactionType::SettleApp: return "SettleAppTransaction";
+        case TransactionType::StoreFile: return "StoreFileTransaction";
+        case TransactionType::SubmitStorageProof: return "SubmitStorageProofTransaction";
+        case TransactionType::TransferDataset: return "TransferDatasetTransaction";
+        case TransactionType::SetDatasetPolicy: return "SetDatasetPolicyTransaction";
+        case TransactionType::AcceptDataset: return "AcceptDatasetTransaction";
+        case TransactionType::DeleteDataset: return "DeleteDatasetTransaction";
+        case TransactionType::RegisterArchival: return "RegisterArchivalTransaction";
+        case TransactionType::UnregisterArchival: return "UnregisterArchivalTransaction";
+        case TransactionType::RegisterRelay: return "RegisterRelayTransaction";
+        case TransactionType::UnregisterRelay: return "UnregisterRelayTransaction";
+        case TransactionType::SetTransactPolicy: return "SetTransactPolicyTransaction";
+        case TransactionType::SetConsensusParam: return "SetConsensusParamTransaction";
+        case TransactionType::FundLongevity: return "FundLongevityTransaction";
+        case TransactionType::CancelLongevity: return "CancelLongevityTransaction";
+        case TransactionType::CloseLongevity: return "CloseLongevityTransaction";
+        case TransactionType::FundStoredFile: return "FundStoredFileTransaction";
+        case TransactionType::SetSplitPolicy: return "SetSplitPolicyTransaction";
+        case TransactionType::LinkAccount: return "LinkAccountTransaction";
+        case TransactionType::UnlinkAccount: return "UnlinkAccountTransaction";
+        case TransactionType::SetMemberPermissions: return "SetMemberPermissionsTransaction";
+        case TransactionType::TransferGroupControl: return "TransferGroupControlTransaction";
+        case TransactionType::NodeRegistrationUpdate: return "UpdateNodeRegistrationTransaction";
+        case TransactionType::RemoveAccountDataset: return "RemoveAccountDatasetTransaction";
+        case TransactionType::LiquidPaymentStop: return "LiquidPaymentStopTransaction";
+        case TransactionType::FeeVoteReveal: return "FeeVoteRevealVoteTransaction";
+        case TransactionType::EscrowRequest: return "EscrowRequestTransaction";
+        case TransactionType::DeclineEscrowRequest: return "DeclineEscrowRequestTransaction";
+        case TransactionType::RemoveNodeRegistration: return "RemoveNodeRegistrationTransaction";
+        case TransactionType::ClaimNodeRegistration: return "ClaimNodeRegistrationTransaction";
+        case TransactionType::DFSCreateFile: return "DFSCreateFileTransaction";
+        case TransactionType::DFSUpdateFile: return "DFSUpdateFileTransaction";
+        case TransactionType::DFSDeleteFile: return "DFSDeleteFileTransaction";
     }
+    return "Unknown";
 }
 
 }  // namespace zoobc

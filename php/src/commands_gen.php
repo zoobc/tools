@@ -1087,6 +1087,59 @@ return array (
   ),
   17 => 
   array (
+    'name' => 'CloseLongevity',
+    'type' => 309,
+    'command' => 'close-longevity',
+    'binary' => 'zbc-close-longevity',
+    'description' => 'Close the longevity record of a transaction you sent; the remaining deposit goes to the longevity node pool.',
+    'sender_key' => 'sender_privkey',
+    'recipient' => 'none',
+    'options' => 
+    array (
+      0 => 'message',
+      1 => 'encrypt',
+    ),
+    'needs_node' => false,
+    'custom' => NULL,
+    'params' => 
+    array (
+      0 => 
+      array (
+        'name' => 'sender_privkey',
+        'kind' => 'privkey',
+        'required' => true,
+        'help' => 'the signing key: 32-byte Ed25519 seed as 64 hex; \'-\' or omitted = ZBC_KEY',
+      ),
+      1 => 
+      array (
+        'name' => 'target_tx_id',
+        'kind' => 'int64',
+        'required' => true,
+        'help' => 'the transaction whose record to close, as its int64 id (not 0)',
+      ),
+    ),
+    'body' => 
+    array (
+      0 => 
+      array (
+        'name' => 'target_tx_id',
+        'encoding' => 'u64le',
+        'from' => 'target_tx_id',
+      ),
+    ),
+    'example' => 
+    array (
+      'target_tx_id' => '-1234567890123456789',
+    ),
+    'notes' => 
+    array (
+      0 => 'Also zbc-cli close-longevity.',
+      1 => 'Only the target\'s owner may close it (the account that sent it; for a group member, any member of that group).',
+      2 => 'Nothing is refunded: the owner\'s own survival and every top-up alike go to the longevity node pool (rule survival_field).',
+    ),
+  ),
+  18 => 
+  array (
     'name' => 'CreateTrigger',
     'type' => 15,
     'command' => 'create-trigger',
@@ -1173,7 +1226,7 @@ return array (
     array (
     ),
   ),
-  18 => 
+  19 => 
   array (
     'name' => 'DeleteDataset',
     'type' => 45,
@@ -1224,7 +1277,7 @@ return array (
     array (
     ),
   ),
-  19 => 
+  20 => 
   array (
     'name' => 'DFSCreateFile',
     'type' => 8,
@@ -1289,7 +1342,7 @@ return array (
     array (
     ),
   ),
-  20 => 
+  21 => 
   array (
     'name' => 'EscrowRequest',
     'type' => 260,
@@ -1429,7 +1482,7 @@ return array (
       0 => 'zbc-escrow-request names its first field requester_privkey; zbc-cli uses sender_privkey (ZBC_KEY applies there).',
     ),
   ),
-  21 => 
+  22 => 
   array (
     'name' => 'FeeVoteCommitment',
     'type' => 7,
@@ -1480,7 +1533,7 @@ return array (
     array (
     ),
   ),
-  22 => 
+  23 => 
   array (
     'name' => 'FeeVoteReveal',
     'type' => 263,
@@ -1566,7 +1619,7 @@ return array (
     array (
     ),
   ),
-  23 => 
+  24 => 
   array (
     'name' => 'FinanceToken',
     'type' => 14,
@@ -1616,7 +1669,7 @@ return array (
     array (
     ),
   ),
-  24 => 
+  25 => 
   array (
     'name' => 'FundLongevity',
     'type' => 52,
@@ -1655,6 +1708,20 @@ return array (
         'required' => true,
         'help' => 'deposit (atomic), minimum 0.1 ZBC',
       ),
+      3 => 
+      array (
+        'name' => 'target_height',
+        'kind' => 'uint32',
+        'required' => false,
+        'help' => 'block height of the target (GET /api/v1/longevity/quote: state_target_height); omit both target fields to take them from the node',
+      ),
+      4 => 
+      array (
+        'name' => 'target_bytes',
+        'kind' => 'int64',
+        'required' => false,
+        'help' => 'billable size of the target: body + message bytes (quote: state_target_bytes)',
+      ),
     ),
     'body' => 
     array (
@@ -1670,18 +1737,33 @@ return array (
         'encoding' => 'u64le',
         'from' => 'amount',
       ),
+      2 => 
+      array (
+        'name' => 'target_height',
+        'encoding' => 'u32le',
+        'from' => 'target_height',
+      ),
+      3 => 
+      array (
+        'name' => 'target_bytes',
+        'encoding' => 'u64le',
+        'from' => 'target_bytes',
+      ),
     ),
     'example' => 
     array (
       'target_tx_id' => '-1234567890123456789',
       'amount' => '10000000',
+      'target_height' => '1200',
+      'target_bytes' => '256',
     ),
     'notes' => 
     array (
       0 => 'No zbc-cli subcommand.',
+      1 => 'The body states the target\'s height and billable size (rule longevity_stated_target, in force from block 0 on the relaunched chains); a node that predates the rule takes the 16-byte body without them.',
     ),
   ),
-  25 => 
+  26 => 
   array (
     'name' => 'GatewayHeartbeat',
     'type' => 37,
@@ -1768,7 +1850,7 @@ return array (
     array (
     ),
   ),
-  26 => 
+  27 => 
   array (
     'name' => 'SetConsensusParam',
     'type' => 51,
@@ -1833,7 +1915,7 @@ return array (
       0 => 'No zbc-cli subcommand; the node\'s own key signs.',
     ),
   ),
-  27 => 
+  28 => 
   array (
     'name' => 'IssueToken',
     'type' => 10,
@@ -1956,7 +2038,7 @@ return array (
     array (
     ),
   ),
-  28 => 
+  29 => 
   array (
     'name' => 'LiquidPaymentStop',
     'type' => 262,
@@ -2006,7 +2088,7 @@ return array (
     array (
     ),
   ),
-  29 => 
+  30 => 
   array (
     'name' => 'LiquidPayment',
     'type' => 6,
@@ -2094,7 +2176,7 @@ return array (
       0 => 'zbc-cli liquid-payment always streams ZBC; the token_id field comes from zbc-liquid-pay --token <id>.',
     ),
   ),
-  30 => 
+  31 => 
   array (
     'name' => 'CreateMarket',
     'type' => 21,
@@ -2173,7 +2255,7 @@ return array (
     array (
     ),
   ),
-  31 => 
+  32 => 
   array (
     'name' => 'MintToken',
     'type' => 12,
@@ -2237,7 +2319,7 @@ return array (
     array (
     ),
   ),
-  32 => 
+  33 => 
   array (
     'name' => 'MultiSignature',
     'type' => 5,
@@ -2402,7 +2484,7 @@ return array (
       1 => 'The multisig account must be funded (send ZBC to its ZBC_ form) before the inner transaction can execute.',
     ),
   ),
-  33 => 
+  34 => 
   array (
     'name' => 'CancelOrder',
     'type' => 23,
@@ -2452,7 +2534,7 @@ return array (
     array (
     ),
   ),
-  34 => 
+  35 => 
   array (
     'name' => 'PlaceOrder',
     'type' => 22,
@@ -2574,7 +2656,7 @@ return array (
     array (
     ),
   ),
-  35 => 
+  36 => 
   array (
     'name' => 'ReassignSchedule',
     'type' => 31,
@@ -2638,7 +2720,7 @@ return array (
     array (
     ),
   ),
-  36 => 
+  37 => 
   array (
     'name' => 'RegisterGateway',
     'type' => 36,
@@ -2717,7 +2799,7 @@ return array (
       0 => 'zbc-gateway-register names its first field owner_privkey.',
     ),
   ),
-  37 => 
+  38 => 
   array (
     'name' => 'NodeRegistration',
     'type' => 2,
@@ -2796,7 +2878,7 @@ return array (
       0 => 'zbc-node-register takes (node_privkey, owner_privkey, locked_balance): node key first, then the owner key that signs.',
     ),
   ),
-  38 => 
+  39 => 
   array (
     'name' => 'RegisterRelease',
     'type' => 32,
@@ -2875,7 +2957,7 @@ return array (
     array (
     ),
   ),
-  39 => 
+  40 => 
   array (
     'name' => 'RegisterRelay',
     'type' => 48,
@@ -2968,7 +3050,7 @@ return array (
       0 => 'No zbc-cli subcommand.',
     ),
   ),
-  40 => 
+  41 => 
   array (
     'name' => 'UnregisterRelay',
     'type' => 49,
@@ -3019,7 +3101,7 @@ return array (
       0 => 'No zbc-cli subcommand.',
     ),
   ),
-  41 => 
+  42 => 
   array (
     'name' => 'ReleaseAuthorityAccept',
     'type' => 34,
@@ -3055,7 +3137,7 @@ return array (
     array (
     ),
   ),
-  42 => 
+  43 => 
   array (
     'name' => 'ReleaseAuthorityPropose',
     'type' => 33,
@@ -3105,7 +3187,7 @@ return array (
     array (
     ),
   ),
-  43 => 
+  44 => 
   array (
     'name' => 'RemoveAccountDataset',
     'type' => 259,
@@ -3190,7 +3272,7 @@ return array (
     array (
     ),
   ),
-  44 => 
+  45 => 
   array (
     'name' => 'RemoveNodeRegistration',
     'type' => 514,
@@ -3241,7 +3323,7 @@ return array (
       0 => 'zbc-node-remove takes (node_privkey, owner_privkey).',
     ),
   ),
-  45 => 
+  46 => 
   array (
     'name' => 'RevokeRelease',
     'type' => 35,
@@ -3291,7 +3373,7 @@ return array (
     array (
     ),
   ),
-  46 => 
+  47 => 
   array (
     'name' => 'ScheduledTransfer',
     'type' => 29,
@@ -3460,7 +3542,7 @@ return array (
     array (
     ),
   ),
-  47 => 
+  48 => 
   array (
     'name' => 'SendZBC',
     'type' => 1,
@@ -3521,7 +3603,7 @@ return array (
       0 => 'zbc-send also accepts --liquid <minutes>, which makes it a LiquidPayment (type 6) instead.',
     ),
   ),
-  48 => 
+  49 => 
   array (
     'name' => 'SetDatasetPolicy',
     'type' => 43,
@@ -3618,7 +3700,7 @@ return array (
     array (
     ),
   ),
-  49 => 
+  50 => 
   array (
     'name' => 'SetSplitPolicy',
     'type' => 54,
@@ -3671,7 +3753,7 @@ return array (
       2 => 'The account cannot be its own recipient; leave the share unassigned instead.',
     ),
   ),
-  50 => 
+  51 => 
   array (
     'name' => 'SetupAccountDataset',
     'type' => 3,
@@ -3756,7 +3838,7 @@ return array (
     array (
     ),
   ),
-  51 => 
+  52 => 
   array (
     'name' => 'StoreFile',
     'type' => 40,
@@ -3860,7 +3942,7 @@ return array (
     ),
     'example' => 
     array (
-      'file_root' => '1111111111111111111111111111111111111111111111111111111111111111',
+      'file_root' => '6c5beca714ada4bf85aabae8eb3bd2ecb43d29e6554e88adcccd2c6f2c269cbd',
       'total_size' => '4096',
       'piece_size' => '2048',
       'deposit' => '100000000',
@@ -3870,7 +3952,7 @@ return array (
     array (
     ),
   ),
-  52 => 
+  53 => 
   array (
     'name' => 'AcceptSwapOffer',
     'type' => 19,
@@ -3920,7 +4002,7 @@ return array (
     array (
     ),
   ),
-  53 => 
+  54 => 
   array (
     'name' => 'CancelSwapOffer',
     'type' => 20,
@@ -3970,7 +4052,7 @@ return array (
     array (
     ),
   ),
-  54 => 
+  55 => 
   array (
     'name' => 'CreateSwapOffer',
     'type' => 18,
@@ -4077,7 +4159,7 @@ return array (
     array (
     ),
   ),
-  55 => 
+  56 => 
   array (
     'name' => 'TransferDataset',
     'type' => 42,
@@ -4142,7 +4224,7 @@ return array (
     array (
     ),
   ),
-  56 => 
+  57 => 
   array (
     'name' => 'TransferToken',
     'type' => 11,
@@ -4214,7 +4296,7 @@ return array (
     array (
     ),
   ),
-  57 => 
+  58 => 
   array (
     'name' => 'UnregisterGateway',
     'type' => 38,
@@ -4265,7 +4347,7 @@ return array (
       0 => 'zbc-gateway-unregister names its first field owner_privkey.',
     ),
   ),
-  58 => 
+  59 => 
   array (
     'name' => 'NodeRegistrationUpdate',
     'type' => 258,

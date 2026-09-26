@@ -43,9 +43,10 @@ Every language of [ROADMAP.md](ROADMAP.md) is published.
 
 | Tool | C++ | TypeScript / JS | Python | Go | Rust | Kotlin | Swift | PHP | Perl |
 |------|-----|-----------------|--------|----|------|--------|-------|-----|------|
-| zbc-cli (all transactions) | done | done (58 types, generated from the spec) | done (58 types) | done (58 types) | done (58 types) | done (58 types) | done (58 types) | done (58 types) | done (58 types) |
-| one program per transaction | done (45) | n/a, one command | n/a, one command | done (45, generated) | done (45, generated) | n/a, one command (done) | n/a (done, one command) | n/a, one command (done) | n/a, one command (done) |
+| zbc-cli (all transactions) | done | done (60 types, generated from the spec) | done (60 types) | done (60 types) | done (60 types) | done (60 types) | done (60 types) | done (60 types) | done (60 types) |
+| one program per transaction | done (47) | n/a, one command | n/a, one command | done (47, generated) | done (47, generated) | n/a, one command (done) | n/a (done, one command) | n/a, one command (done) | n/a, one command (done) |
 | key and address generators | done | done (library and `zbc-cli`; no separate generator programs) | done (library) | done (library) | done (library) | done (library) | done (library) | done (library) | done (library) |
+| zbc-multisig-offline: N-of-M multisig, prepare / sign offline per participant / combine / submit ([docs](docs/MULTISIG_OFFLINE.md)) | done | not yet | not yet | not yet | not yet | not yet | not yet | not yet | not yet |
 | passes every vector in `spec/vectors` in CI | done | done | done | done | done | done | done | done | done |
 
 ## Install

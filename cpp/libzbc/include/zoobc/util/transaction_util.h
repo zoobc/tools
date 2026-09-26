@@ -29,6 +29,12 @@ public:
     static constexpr uint32_t ACCOUNT_TYPE_SIZE = 4;         // AccountAddressTypeLength
     static constexpr uint32_t PUBLIC_KEY_SIZE = 32;          // NodePublicKey / ZBC pubkey
     static constexpr uint32_t FEE_SIZE = 8;
+    // Transaction versions. Version 1 is the original layout. Version 2 (rule `survival_field`) adds
+    // one field: survival, u64 LE, written immediately after the fee and covered by the signature
+    // like every other field. Nothing else differs. Version 1 stays valid at every height.
+    static constexpr uint32_t TX_VERSION_LEGACY = 1;
+    static constexpr uint32_t TX_VERSION_SURVIVAL = 2;
+    static constexpr uint32_t SURVIVAL_SIZE = 8;
     static constexpr uint32_t BODY_LENGTH_SIZE = 4;
     static constexpr uint32_t SIGNATURE_SIZE = 64;           // NodeSignature / ZBCSignatureLength
     static constexpr uint32_t MESSAGE_LENGTH_SIZE = 4;

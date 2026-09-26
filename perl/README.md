@@ -34,7 +34,7 @@ perl bin/zbc-cli send-zbc --help                                  # options, env
 ```
 
 The contract every command follows is [`../spec/cli-contract.md`](../spec/cli-contract.md). All
-58 transaction types of `../spec/transactions` are subcommands; `perl script/gen-commands.pl`
+60 transaction types of `../spec/transactions` are subcommands; `perl script/gen-commands.pl`
 embeds the spec into `lib/ZBC/Commands.pm`, so a new type in the spec is a regeneration, not new
 code. The seven types the spec marks custom are in `lib/ZBC/Custom.pm`. `--encrypt` seals `--message` to a ZBC
 recipient exactly as the C++ tools do (`../spec/signing.md` 8; X25519, HSalsa20, XSalsa20 and Poly1305 in

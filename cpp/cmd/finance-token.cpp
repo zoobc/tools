@@ -8,12 +8,13 @@ static void putU64(std::vector<uint8_t>& b, int64_t v){ for(int i=0;i<8;i++){ b.
 int main(int argc, char* argv[]) {
     ToolConfig config;
     config.name = "ZooBC Finance Token Tool";
-    config.description = "Top up a token's survival financing (the fee buys persistence). Body = 8-byte token_id.";
+    config.description = "Top up a token's survival financing. Body = token_id(8) + amount(8). From rule uniform_fee_refund the AMOUNT buys persistence and the fee only pays for processing; before it the fee bought it (leave amount empty there).";
     config.tx_type = static_cast<uint32_t>(zoobc::TransactionType::FinanceToken);
     config.has_recipient = false;
     config.params = {
         {"Sender private key","sender_privkey","Sender's private key (64 hex)","",true,nullptr},
         {"Token id","token_id","Token id (decimal int64)","",true,nullptr},
+        {"Amount","amount","ZBC atomic that buys persistence (required from uniform_fee_refund)","",false,nullptr},
     };
 
     ParsedParams params; auto emit_error=make_emitter(params.json_output);
@@ -25,7 +26,11 @@ int main(int argc, char* argv[]) {
         std::vector<uint8_t> body; putU64(body,token_id);
         std::string sender_addr=zoobc::crypto::ZoobcAddress::Encode(kp.Value().public_key,"ZBC");
         json extra={{"sender_address",sender_addr},{"token_id",token_id}};
-        // Note: the FEE funds persistence — set --fee to how much survival financing to add.
+        if (params.values.size()>2 && !params.values[2].empty()) {
+            int64_t amount=std::stoll(params.values[2]);
+            if (amount<=0) { emit_error("amount must be > 0"); return 1; }
+            putU64(body,amount); extra["amount"]=amount;
+        }
         return run_transaction(params,config.tx_type,kp.Value().public_key,std::vector<uint8_t>{},body,
                                kp.Value(),KeyType::ZBC,extra,emit_error,"SUCCESS: Token financing topped up!");
     } catch(const std::exception& e){ const int c=last_exit_code(); emit_error(e.what()); return c; }

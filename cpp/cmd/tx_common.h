@@ -467,7 +467,8 @@ inline std::vector<uint8_t> build_transaction_bytes(
     int64_t fee,
     const std::vector<uint8_t>& body_bytes,
     const std::vector<uint8_t>& escrow_bytes,
-    const std::vector<uint8_t>& message_bytes) {
+    const std::vector<uint8_t>& message_bytes,
+    int64_t survival = 0) {
 
     std::vector<uint8_t> tx_bytes;
 
@@ -495,6 +496,9 @@ inline std::vector<uint8_t> build_transaction_bytes(
 
     // 6. Fee (8 bytes LE)
     TransactionUtil::WriteUint64LE(tx_bytes, static_cast<uint64_t>(fee));
+
+    // 6b. Survival (8 bytes LE) — version 2 only (rule survival_field); absent in version 1.
+    if ((version & 0xFF) >= 2) TransactionUtil::WriteUint64LE(tx_bytes, static_cast<uint64_t>(survival));
 
     // 7. Body length (4 bytes LE)
     TransactionUtil::WriteUint32LE(tx_bytes, static_cast<uint32_t>(body_bytes.size()));
@@ -528,7 +532,8 @@ inline std::vector<uint8_t> build_transaction_bytes_multikey(
     int64_t fee,
     const std::vector<uint8_t>& body_bytes,
     const std::vector<uint8_t>& escrow_bytes,
-    const std::vector<uint8_t>& message_bytes) {
+    const std::vector<uint8_t>& message_bytes,
+    int64_t survival = 0) {
 
     std::vector<uint8_t> tx_bytes;
     TransactionUtil::WriteUint32LE(tx_bytes, tx_type);
@@ -547,6 +552,7 @@ inline std::vector<uint8_t> build_transaction_bytes_multikey(
     }
 
     TransactionUtil::WriteUint64LE(tx_bytes, static_cast<uint64_t>(fee));
+    if ((version & 0xFF) >= 2) TransactionUtil::WriteUint64LE(tx_bytes, static_cast<uint64_t>(survival));
     TransactionUtil::WriteUint32LE(tx_bytes, static_cast<uint32_t>(body_bytes.size()));
     tx_bytes.insert(tx_bytes.end(), body_bytes.begin(), body_bytes.end());
 
@@ -1088,6 +1094,10 @@ struct ParsedParams {
     // --timestamp <unix seconds>: the transaction timestamp, instead of the clock. 0 = now.
     // Fixing it makes a signed transaction reproducible, which is what test vectors need.
     int64_t timestamp = 0;
+    // --survival <units>: the transaction's own survival deposit (rule survival_field). Non-zero
+    // makes it a version-2 transaction; it opens the transaction's longevity record, is never
+    // refunded, and must be 0 or at least the minimum deposit (10000000 = 0.1 ZBC).
+    int64_t survival = 0;
 };
 
 // The timestamp a transaction is built with: --timestamp when given, else now.
@@ -1143,6 +1153,9 @@ inline void print_tool_usage(const ToolConfig& config, const char* program) {
     std::cout << "  --escrow-timeout <n>       Escrow timeout as a FUTURE Unix timestamp (seconds), e.g. now+3600" << std::endl;
     std::cout << "  --escrow-instruction <s>   Escrow instruction" << std::endl;
     std::cout << "  --fee <n>             Transaction fee (default: 5000000 = 0.05 ZBC)" << std::endl;
+    std::cout << "  --survival <n>        Keep THIS transaction alive: a survival deposit in atomic units, sent" << std::endl;
+    std::cout << "                        as transaction version 2 (rule survival_field). 0 or >= 10000000." << std::endl;
+    std::cout << "                        Never refunded; only its owner can close it (the rest goes to the nodes)." << std::endl;
     std::cout << "  --api <url>           API endpoint (default: $ZBC_API, else http://localhost:8080)" << std::endl;
     std::cout << "  --timeout <s>         Bound for each HTTP call, seconds (default: $ZBC_TIMEOUT, else 20;" << std::endl;
     std::cout << "                        also --timeout-seconds). A command makes up to two calls." << std::endl;
@@ -1221,6 +1234,11 @@ inline int parse_params(const ToolConfig& config, int argc, char* argv[], Parsed
             if (i + 1 >= argc) return fail(emit_error, exit_code::USAGE, "--fee requires a value");
             try { out.fee = std::stoll(argv[++i]); }
             catch (const std::exception&) { return fail(emit_error, exit_code::USAGE, "--fee must be a whole number of atomic units"); }
+        } else if (arg == "--survival") {
+            if (i + 1 >= argc) return fail(emit_error, exit_code::USAGE, "--survival requires a value");
+            try { out.survival = std::stoll(argv[++i]); }
+            catch (const std::exception&) { return fail(emit_error, exit_code::USAGE, "--survival must be a whole number of atomic units"); }
+            if (out.survival < 0) return fail(emit_error, exit_code::USAGE, "--survival must not be negative");
         } else if (arg == "--api") {
             if (i + 1 >= argc) return fail(emit_error, exit_code::USAGE, "--api requires a value");
             out.api_url = argv[++i];
@@ -1330,6 +1348,11 @@ inline int parse_params(const ToolConfig& config, int argc, char* argv[], Parsed
                 if (j["fee"].is_number()) out.fee = j["fee"].get<int64_t>();
                 else out.fee = std::stoll(j["fee"].get<std::string>());
             }
+            if (j.contains("survival")) {
+                out.survival = j["survival"].is_number() ? j["survival"].get<int64_t>()
+                                                         : std::stoll(j["survival"].get<std::string>());
+                if (out.survival < 0) return fail(emit_error, exit_code::USAGE, "survival must not be negative");
+            }
             if (j.contains("timeout_seconds")) {
                 int t = j["timeout_seconds"].is_number() ? j["timeout_seconds"].get<int>()
                                                           : std::stoi(j["timeout_seconds"].get<std::string>());
@@ -1342,7 +1365,7 @@ inline int parse_params(const ToolConfig& config, int argc, char* argv[], Parsed
                 if (out.timestamp <= 0) return fail(emit_error, exit_code::USAGE, "timestamp must be > 0");
             }
         } catch (const std::exception&) {
-            return fail(emit_error, exit_code::USAGE, "fee / timeout_seconds / timestamp must be whole numbers");
+            return fail(emit_error, exit_code::USAGE, "fee / survival / timeout_seconds / timestamp must be whole numbers");
         }
         if (j.contains("offline") && j["offline"].is_boolean()) out.offline = j["offline"].get<bool>();
         if (j.contains("api_url")) out.api_url = j["api_url"].get<std::string>();
@@ -1517,7 +1540,8 @@ inline std::string build_json_payload(
     const std::vector<uint8_t>& body_bytes,
     const std::vector<uint8_t>& signature,
     const std::vector<uint8_t>& message_bytes,
-    const json& escrow_json) {
+    const json& escrow_json,
+    int64_t survival = 0) {
 
     json tx_json = {
         {"version", version},
@@ -1538,6 +1562,7 @@ inline std::string build_json_payload(
     if (!escrow_json.empty() && !escrow_json.is_null()) {
         tx_json["escrow"] = escrow_json;
     }
+    if (version >= 2) tx_json["survival"] = survival;   // signed in the version-2 bytes
     return tx_json.dump();
 }
 
@@ -1588,7 +1613,11 @@ inline int run_transaction(
             escrow_bytes = eb_result.Value();
         }
 
-        int32_t version = 1;
+        // A survival deposit makes it a version-2 transaction (rule survival_field); none keeps the
+        // version-1 bytes every signer already produces.
+        if (params.survival > 0 && params.survival < 10000000)
+            return fail(emit_error, exit_code::USAGE, "--survival must be 0 or at least 10000000 (0.1 ZBC, the minimum deposit)");
+        int32_t version = params.survival > 0 ? 2 : 1;
         int64_t timestamp = transaction_timestamp(params);
 
         // Build transaction bytes
@@ -1596,7 +1625,7 @@ inline int run_transaction(
         if (signing_type == KeyType::ZBC) {
             tx_bytes = build_transaction_bytes(
                 version, timestamp, sender_pubkey, recipient_address,
-                tx_type, params.fee, body_bytes, escrow_bytes, message_bytes);
+                tx_type, params.fee, body_bytes, escrow_bytes, message_bytes, params.survival);
         } else {
             // For ETH/BTC, sender_address needs type prefix (handled by build_transaction_bytes_multikey)
             DerivedKeys dk;
@@ -1607,7 +1636,7 @@ inline int run_transaction(
             // the transfer tool handles this specially
             tx_bytes = build_transaction_bytes(
                 version, timestamp, sender_pubkey, recipient_address,
-                tx_type, params.fee, body_bytes, escrow_bytes, message_bytes);
+                tx_type, params.fee, body_bytes, escrow_bytes, message_bytes, params.survival);
         }
 
         // Sign — for the chain the node at --api serves (or the one named by --genesis).
@@ -1648,7 +1677,7 @@ inline int run_transaction(
         auto json_payload = build_json_payload(
             version, timestamp, sender_pubkey, recipient_for_json,
             tx_type, params.fee, body_bytes, signature,
-            message_bytes, escrow_json);
+            message_bytes, escrow_json, params.survival);
 
         // The fields every success reply carries (spec/cli-contract.md), online or offline.
         const json contract_fields = {
@@ -1657,7 +1686,9 @@ inline int run_transaction(
             {"sender_account_address", bytes_to_hex(sender_pubkey)},
             {"recipient_account_address", bytes_to_hex(recipient_for_json)},
             {"fee", params.fee},
-            {"timestamp", timestamp}
+            {"timestamp", timestamp},
+            {"version", version},
+            {"survival", params.survival}
         };
 
         // --offline: everything a submitter, a verifier or a port in another language needs to

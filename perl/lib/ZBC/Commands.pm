@@ -896,6 +896,50 @@ our $JSON = <<'END_OF_SPEC';
   "type" : 770
  },
  {
+  "binary" : "zbc-close-longevity",
+  "body" : [
+   {
+    "encoding" : "u64le",
+    "from" : "target_tx_id",
+    "name" : "target_tx_id"
+   }
+  ],
+  "command" : "close-longevity",
+  "custom" : null,
+  "description" : "Close the longevity record of a transaction you sent; the remaining deposit goes to the longevity node pool.",
+  "example" : {
+   "target_tx_id" : "-1234567890123456789"
+  },
+  "name" : "CloseLongevity",
+  "needs_node" : false,
+  "notes" : [
+   "Also zbc-cli close-longevity.",
+   "Only the target's owner may close it (the account that sent it; for a group member, any member of that group).",
+   "Nothing is refunded: the owner's own survival and every top-up alike go to the longevity node pool (rule survival_field)."
+  ],
+  "options" : [
+   "message",
+   "encrypt"
+  ],
+  "params" : [
+   {
+    "help" : "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY",
+    "kind" : "privkey",
+    "name" : "sender_privkey",
+    "required" : true
+   },
+   {
+    "help" : "the transaction whose record to close, as its int64 id (not 0)",
+    "kind" : "int64",
+    "name" : "target_tx_id",
+    "required" : true
+   }
+  ],
+  "recipient" : "none",
+  "sender_key" : "sender_privkey",
+  "type" : 309
+ },
+ {
   "binary" : "zbc-trigger-create",
   "body" : [
    {
@@ -1345,6 +1389,16 @@ our $JSON = <<'END_OF_SPEC';
     "encoding" : "u64le",
     "from" : "amount",
     "name" : "amount"
+   },
+   {
+    "encoding" : "u32le",
+    "from" : "target_height",
+    "name" : "target_height"
+   },
+   {
+    "encoding" : "u64le",
+    "from" : "target_bytes",
+    "name" : "target_bytes"
    }
   ],
   "command" : "fund-longevity",
@@ -1352,12 +1406,15 @@ our $JSON = <<'END_OF_SPEC';
   "description" : "Attach a rent deposit to a transaction so pruning keeps it.",
   "example" : {
    "amount" : "10000000",
+   "target_bytes" : "256",
+   "target_height" : "1200",
    "target_tx_id" : "-1234567890123456789"
   },
   "name" : "FundLongevity",
   "needs_node" : false,
   "notes" : [
-   "No zbc-cli subcommand."
+   "No zbc-cli subcommand.",
+   "The body states the target's height and billable size (rule longevity_stated_target, in force from block 0 on the relaunched chains); a node that predates the rule takes the 16-byte body without them."
   ],
   "options" : [
    "message",
@@ -1381,6 +1438,18 @@ our $JSON = <<'END_OF_SPEC';
     "kind" : "int64",
     "name" : "amount",
     "required" : true
+   },
+   {
+    "help" : "block height of the target (GET /api/v1/longevity/quote: state_target_height); omit both target fields to take them from the node",
+    "kind" : "uint32",
+    "name" : "target_height",
+    "required" : false
+   },
+   {
+    "help" : "billable size of the target: body + message bytes (quote: state_target_bytes)",
+    "kind" : "int64",
+    "name" : "target_bytes",
+    "required" : false
    }
   ],
   "recipient" : "none",
@@ -3147,7 +3216,7 @@ our $JSON = <<'END_OF_SPEC';
   "description" : "Anchor a decentralised-storage manifest (root and piece ids) with a rent deposit.",
   "example" : {
    "deposit" : "100000000",
-   "file_root" : "1111111111111111111111111111111111111111111111111111111111111111",
+   "file_root" : "6c5beca714ada4bf85aabae8eb3bd2ecb43d29e6554e88adcccd2c6f2c269cbd",
    "piece_ids" : "11111111111111111111111111111111111111111111111111111111111111112222222222222222222222222222222222222222222222222222222222222222",
    "piece_size" : "2048",
    "total_size" : "4096"

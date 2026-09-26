@@ -567,6 +567,15 @@
       "recipient": "none",
       "needs_node": false,
       "custom": null
+    },
+    {
+      "command": "close-longevity",
+      "type": 309,
+      "name": "CloseLongevity",
+      "binary": "zbc-close-longevity",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
     }
   ]
 }
