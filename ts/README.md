@@ -30,7 +30,7 @@ node dist/cli.js send-zbc --help                                  # options, env
 
 `npm link` (or a global install of the package) puts `zbc-cli` on the path. The contract every
 command follows, exit codes, options and JSON shape, is [`../spec/cli-contract.md`](../spec/cli-contract.md).
-All 60 transaction types of `../spec/transactions` are subcommands; their parameters and body
+All 62 transaction types of `../spec/transactions` are subcommands; their parameters and body
 layouts are generated into `src/generated/commands.ts` by `scripts/gen-commands.mjs`, so a new
 type in the spec is a regeneration, not new code. The seven types the spec marks custom (proof of
 ownership, multisig, settle-app vouchers, fee-vote and heartbeat signatures, store-file piece

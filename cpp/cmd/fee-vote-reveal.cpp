@@ -37,7 +37,7 @@ int main(int argc, char* argv[]) {
         zoobc::model::FeeVoteInfo vote_info;
         vote_info.recent_block_hash = hex_to_bytes(params.values[1]);
         vote_info.recent_block_height = static_cast<uint32_t>(std::stoul(params.values[2]));
-        vote_info.fee_vote = std::stoll(params.values[3]);
+        vote_info.fee_vote = whole_param(params.values, 3);
 
         // voter_signature = Ed25519 by the voter over the 44 FeeVoteInfo bytes; the node verifies
         // exactly these bytes (TransactionUtil::GetFeeVoteInfoBytes), so use the same serializer.

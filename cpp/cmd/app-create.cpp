@@ -24,7 +24,7 @@ int main(int argc, char* argv[]) {
     emit_error=make_emitter(params.json_output); if(!init_sodium(emit_error)) return 1;
     try {
         auto kp=derive_zbc_keypair(params.values[0]); if(!kp.IsOk()){emit_error(kp.GetError().ToString());return 1;}
-        int gt=std::stoi(params.values[1]); int64_t stok=parse_id_i64(params.values[2],"stake_token"), samt=std::stoll(params.values[3]);
+        int gt=std::stoi(params.values[1]); int64_t stok=parse_id_i64(params.values[2],"stake_token"), samt=whole_param(params.values, 3);
         int seats=params.values[4].empty()?2:std::stoi(params.values[4]);
         int channel=params.values[5].empty()?0:std::stoi(params.values[5]);
         std::vector<uint8_t> body; body.push_back((uint8_t)gt); putU64(body,stok); putU64(body,samt); body.push_back((uint8_t)seats); putU16(body,0);

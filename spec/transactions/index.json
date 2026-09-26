@@ -14,6 +14,7 @@
     "address": "the typed account address bytes (addresses.md section 1; 36 bytes for a ZooBC account)",
     "address_list": "the typed address bytes of each entry, concatenated",
     "address_list8": "u8 count, then the typed address bytes of each entry",
+    "address8": "u8 byte length, then the typed address bytes (37 bytes in all for a ZooBC account)",
     "split_list8": "u8 count, then per entry: u8 address byte-length, the typed address bytes, u16le share in basis points. Written as ADDRESS=PERCENT, comma separated; PERCENT takes at most two decimals and is multiplied by 100 with integer arithmetic (70 -> 7000, 29.5 -> 2950)",
     "sender_address": "the signing account's 36-byte typed address (00000000 ‖ public key)",
     "pubkey_of_key": "the 32-byte Ed25519 public key derived from the named private-key parameter",
@@ -573,6 +574,24 @@
       "type": 309,
       "name": "CloseLongevity",
       "binary": "zbc-close-longevity",
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "unlink-account",
+      "type": 56,
+      "name": "UnlinkAccount",
+      "binary": null,
+      "recipient": "none",
+      "needs_node": false,
+      "custom": null
+    },
+    {
+      "command": "set-member-permissions",
+      "type": 57,
+      "name": "SetMemberPermissions",
+      "binary": null,
       "recipient": "none",
       "needs_node": false,
       "custom": null

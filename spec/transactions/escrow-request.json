@@ -60,10 +60,9 @@
     },
     {
       "name": "expiry",
-      "kind": "int64",
-      "required": false,
-      "help": "request expiry; 0 = same as timeout",
-      "default": "0"
+      "kind": "uint64",
+      "required": true,
+      "help": "blocks the request stays open (a block count, not a time); the C++ tools compute ceil((timeout - now)/15 s) when it is 0 or omitted"
     }
   ],
   "body": [
@@ -100,9 +99,7 @@
     {
       "name": "expiry",
       "encoding": "u64le",
-      "from": "expiry",
-      "default_from": "timeout",
-      "when_zero": "timeout"
+      "from": "expiry"
     }
   ],
   "example": {
@@ -112,7 +109,7 @@
     "commission": "1000",
     "timeout": "1800000000",
     "instruction": "pay on delivery",
-    "expiry": "0"
+    "expiry": "240"
   },
   "notes": [
     "zbc-escrow-request names its first field requester_privkey; zbc-cli uses sender_privkey (ZBC_KEY applies there)."

@@ -21,7 +21,7 @@ int main(int argc, char* argv[]) {
     try {
         auto kp=derive_zbc_keypair(params.values[0]); if(!kp.IsOk()){emit_error(kp.GetError().ToString());return 1;}
         
-        int64_t token_id=parse_id_i64(params.values[1],"token_id"); int64_t amount=std::stoll(params.values[2]);
+        int64_t token_id=parse_id_i64(params.values[1],"token_id"); int64_t amount=whole_param(params.values, 2);
         if(amount<=0){emit_error("amount must be > 0");return 1;}
         std::vector<uint8_t> body; putU64(body,token_id); putU64(body,amount);
         json extra={{"token_id",token_id},{"amount",amount},};

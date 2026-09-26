@@ -2,6 +2,8 @@
 // Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
 
 #include "tx_common.h"
+#include <ctime>
+#include <algorithm>
 
 using namespace txc;
 
@@ -41,19 +43,24 @@ int main(int argc, char* argv[]) {
 
         zoobc::model::EscrowRequestTransactionBody body;
         body.proposed_sender = sender_result.Value().address;
-        body.proposed_amount = std::stoll(params.values[2]);
+        body.proposed_amount = whole_param(params.values, 2);
         body.approver_address = approver_result.Value().address;
-        body.commission = std::stoll(params.values[4]);
-        body.timeout = std::stoll(params.values[5]);
+        body.commission = whole_param(params.values, 4);
+        body.timeout = whole_param(params.values, 5);
         body.instruction = params.values[6];
-        body.expiry = std::stoll(params.values[7]);
+        body.expiry = whole_param(params.values, 7);
         // The validator requires expiry > 0 (ValidateEscrowRequest). When the
         // caller leaves it unset (default "0"), the request would otherwise be
         // rejected at mempool admission — and silently, because the two-tier
         // staging pool returns success on staging before validation runs.
-        // Default it to the timeout window so a request is valid out of the box.
+        // Default it to the timeout window so a request is valid out of the box. The node reads
+        // expiry as a BLOCK COUNT (the request closes at creation height + expiry); copying the
+        // timeout, a Unix time, kept every request open for ~1.79e9 blocks (overnight devnet test
+        // 2026-09-25). The window is counted in 15-second blocks, at least one.
         if (body.expiry <= 0) {
-            body.expiry = body.timeout;
+            const int64_t now = static_cast<int64_t>(std::time(nullptr));
+            const int64_t secs = body.timeout > now ? body.timeout - now : 0;
+            body.expiry = std::max<int64_t>(1, (secs + zoobc::constants::SMITHING_PERIOD - 1) / zoobc::constants::SMITHING_PERIOD);
         }
 
         auto body_bytes = TransactionUtil::GetEscrowRequestBodyBytes(body);

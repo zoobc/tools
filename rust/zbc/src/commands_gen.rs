@@ -1166,10 +1166,9 @@ pub const COMMANDS_JSON: &str = r####"[
       },
       {
         "name": "expiry",
-        "kind": "int64",
-        "required": false,
-        "help": "request expiry; 0 = same as timeout",
-        "default": "0"
+        "kind": "uint64",
+        "required": true,
+        "help": "blocks the request stays open (a block count, not a time); the C++ tools compute ceil((timeout - now)/15 s) when it is 0 or omitted"
       }
     ],
     "body": [
@@ -1206,9 +1205,7 @@ pub const COMMANDS_JSON: &str = r####"[
       {
         "name": "expiry",
         "encoding": "u64le",
-        "from": "expiry",
-        "default_from": "timeout",
-        "when_zero": "timeout"
+        "from": "expiry"
       }
     ],
     "example": {
@@ -1218,7 +1215,7 @@ pub const COMMANDS_JSON: &str = r####"[
       "commission": "1000",
       "timeout": "1800000000",
       "instruction": "pay on delivery",
-      "expiry": "0"
+      "expiry": "240"
     }
   },
   {
@@ -3059,8 +3056,98 @@ pub const COMMANDS_JSON: &str = r####"[
   },
   {
     "notes": [
+      "zbc-cli set-member-permissions; no single program.",
+      "Rule account_groups: accepted from its activation height.",
+      "The C++ tools refuse a spend_limit above 0 with period_blocks 0."
+    ],
+    "name": "SetMemberPermissions",
+    "type": 57,
+    "command": "set-member-permissions",
+    "binary": null,
+    "description": "Set what a member of the sender's account group may spend (controller only).",
+    "sender_key": "sender_privkey",
+    "recipient": "none",
+    "options": [
+      "message",
+      "encrypt"
+    ],
+    "needs_node": false,
+    "custom": null,
+    "params": [
+      {
+        "name": "sender_privkey",
+        "kind": "privkey",
+        "required": true,
+        "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+      },
+      {
+        "name": "member",
+        "kind": "address",
+        "required": true,
+        "help": "the member address"
+      },
+      {
+        "name": "flags",
+        "kind": "uint8",
+        "required": true,
+        "help": "1 = may spend, 3 = may spend and move tokens, 0 = receive only",
+        "min": 0,
+        "max": 3
+      },
+      {
+        "name": "spend_limit",
+        "kind": "int64",
+        "required": false,
+        "help": "atomic ZBC per period (0 = no limit)",
+        "default": "0"
+      },
+      {
+        "name": "period_blocks",
+        "kind": "uint32",
+        "required": false,
+        "help": "blocks per limit window (required when spend_limit > 0)",
+        "default": "0"
+      }
+    ],
+    "body": [
+      {
+        "name": "version",
+        "encoding": "literal",
+        "from": "version",
+        "value": "01"
+      },
+      {
+        "name": "member",
+        "encoding": "address8",
+        "from": "member"
+      },
+      {
+        "name": "flags",
+        "encoding": "u8",
+        "from": "flags"
+      },
+      {
+        "name": "spend_limit",
+        "encoding": "u64le",
+        "from": "spend_limit"
+      },
+      {
+        "name": "period_blocks",
+        "encoding": "u32le",
+        "from": "period_blocks"
+      }
+    ],
+    "example": {
+      "member": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+      "flags": "1",
+      "spend_limit": "100000000",
+      "period_blocks": "5760"
+    }
+  },
+  {
+    "notes": [
       "Consensus: accepted only by a chain launched with node v0.4.5 or later.",
-      "No zbc-cli subcommand.",
+      "Also zbc-cli set-split-policy.",
       "The account cannot be its own recipient; leave the share unassigned instead."
     ],
     "name": "SetSplitPolicy",
@@ -3545,6 +3632,55 @@ pub const COMMANDS_JSON: &str = r####"[
       "recipient": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
       "token_id": "-4611686018427387904",
       "amount": "500"
+    }
+  },
+  {
+    "notes": [
+      "zbc-cli unlink-account; no single program.",
+      "Rule account_groups: accepted from its activation height."
+    ],
+    "name": "UnlinkAccount",
+    "type": 56,
+    "command": "unlink-account",
+    "binary": null,
+    "description": "Remove a member address from the sender's account group, or leave it. It takes nothing with it.",
+    "sender_key": "sender_privkey",
+    "recipient": "none",
+    "options": [
+      "message",
+      "encrypt"
+    ],
+    "needs_node": false,
+    "custom": null,
+    "params": [
+      {
+        "name": "sender_privkey",
+        "kind": "privkey",
+        "required": true,
+        "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+      },
+      {
+        "name": "member",
+        "kind": "address",
+        "required": true,
+        "help": "the address leaving the group (your own to leave; any member if you are the controller)"
+      }
+    ],
+    "body": [
+      {
+        "name": "version",
+        "encoding": "literal",
+        "from": "version",
+        "value": "01"
+      },
+      {
+        "name": "member",
+        "encoding": "address8",
+        "from": "member"
+      }
+    ],
+    "example": {
+      "member": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
     }
   },
   {

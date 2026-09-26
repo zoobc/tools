@@ -105,6 +105,7 @@ sub encode_field {
     return pack('S<', length $value) . $value if $enc eq 'str16';
     return u32(length $value) . $value if $enc eq 'str32';
     return parse_address($value)->bytes if $enc eq 'address';
+    if ($enc eq 'address8') { my $a = parse_address($value)->bytes; return chr(length $a) . $a; }
     return join('', map { parse_address($_)->bytes } split_list($value)) if $enc eq 'address_list';
     if ($enc eq 'address_list8') {
         my @items = split_list($value);

@@ -63,6 +63,7 @@ object Body {
             "str16" -> { val b = value.toByteArray(); Bytes.le16(b.size) + b }
             "str32" -> { val b = value.toByteArray(); Bytes.le32(b.size) + b }
             "address" -> addr(value, f.from).bytes
+            "address8" -> { val a = addr(value, f.from).bytes; byteArrayOf(a.size.toByte()) + a }
             "address_list" -> splitList(value).fold(ByteArray(0)) { acc, a -> acc + addr(a, f.from).bytes }
             "address_list8" -> { val items = splitList(value); if (items.size > 255) throw ToolError.usage("${f.from}: at most 255 entries"); items.fold(byteArrayOf(items.size.toByte())) { acc, a -> acc + addr(a, f.from).bytes } }
             "split_list8" -> {

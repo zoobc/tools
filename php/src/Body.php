@@ -113,6 +113,7 @@ final class Body
             case 'str16': return Encoding::le16(strlen($value)) . $value;
             case 'str32': return Encoding::le32(strlen($value)) . $value;
             case 'address': return self::addr($value, $f['from'])->bytes();
+            case 'address8': $a = self::addr($value, $f['from'])->bytes(); return chr(strlen($a)) . $a;
             case 'address_list': return implode('', array_map(fn($a) => self::addr($a, $f['from'])->bytes(), self::splitList($value)));
             case 'address_list8':
                 $items = self::splitList($value);

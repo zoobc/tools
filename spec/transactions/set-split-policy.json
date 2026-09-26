@@ -39,7 +39,7 @@
   },
   "notes": [
     "Consensus: accepted only by a chain launched with node v0.4.5 or later.",
-    "No zbc-cli subcommand.",
+    "Also zbc-cli set-split-policy.",
     "The account cannot be its own recipient; leave the share unassigned instead."
   ]
 }

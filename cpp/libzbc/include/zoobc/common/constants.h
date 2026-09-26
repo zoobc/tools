@@ -163,6 +163,9 @@ constexpr int MAX_NUMBER_OF_TRANSACTIONS_IN_BLOCK = 500;
 constexpr int MIN_TRANSACTION_SIZE_IN_BLOCK = 176;
 constexpr int MAX_PAYLOAD_LENGTH_IN_BLOCK = MIN_TRANSACTION_SIZE_IN_BLOCK * MAX_NUMBER_OF_TRANSACTIONS_IN_BLOCK;
 constexpr int64_t TRANSACTION_EXPIRATION_OFFSET = 3600;  // 3600 seconds
+// How far ahead of its block (consensus, rule tx_timestamp_bound) or of the node's clock (admission) a
+// transaction's timestamp may be. Without a bound a transaction dated years ahead never expires.
+constexpr int64_t TRANSACTION_FUTURE_TOLERANCE = 3600;
 constexpr int64_t ONE_FEE_PER_BYTE_TRANSACTION = 10000;  // Used for fee per byte accuracy
 constexpr int COMPLETE_MINUTES_UNIT = 60;  // 60 seconds
 
@@ -683,6 +686,12 @@ constexpr int32_t EVENT_TYPE_APP_STAKE              = 66;  // CreateApp / JoinAp
 constexpr int32_t EVENT_TYPE_APP_RAKE               = 67;  // an app's rake credited to the apps pool (positive)
 constexpr int32_t EVENT_TYPE_PREPAID_STORAGE_FUNDED = 68;  // AddPrepaidStorage: moved into the prepaid storage balance (negative)
 constexpr int32_t EVENT_TYPE_STORED_FILE_RENT       = 69;  // per-period stored-file rent accrued in the storage pool (positive, on the pool)
+// Rule `multisig_inner_fee_path` (docs/FEE_RULES.md "Multisig inner transactions"): the fee of a
+// multisig INNER transaction, debited from the account that pays it (the multisig account, or its group)
+// as its own row (negative), with the outer transaction's id. block.total_fee sums only the outer fees,
+// so Blockchain::DistributablePool adds these rows to the reward pool from the rule's height; the
+// inner overpay comes back as an ordinary FEE_REFUND (22), which the pool subtracts as usual.
+constexpr int32_t EVENT_TYPE_MULTISIG_INNER_FEE     = 70;
 // Addresses per group, the controller included. A consensus parameter (`account_group_max_members`);
 // this is the default when genesis does not set it (owner decision 2026-09-23: 100). The group pays
 // storage rent on its record's weight, which grows with every member (ACCOUNT_GROUP_MEMBER_ENTRY_BYTES

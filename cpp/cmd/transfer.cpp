@@ -51,7 +51,7 @@ int main(int argc, char* argv[]) {
         auto recipient = recip_result.Value();
 
         // Parse amount
-        int64_t amount = std::stoll(params.values[2]);
+        int64_t amount = whole_param(params.values, 2);
         if (amount < 0) return fail(emit_error, exit_code::USAGE, "Amount cannot be negative");
 
         // Build body (liquid payment carries amount + vesting minutes)

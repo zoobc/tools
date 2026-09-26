@@ -98,6 +98,7 @@ public enum Body {
         case "str16": let b = Array(value.utf8); return LE.u16(b.count) + b
         case "str32": let b = Array(value.utf8); return LE.u32(UInt32(b.count)) + b
         case "address": return try addr(value, f.from).bytes
+        case "address8": let a = try addr(value, f.from).bytes; return [UInt8(a.count)] + a
         case "address_list": return try splitList(value).flatMap { try addr($0, f.from).bytes }
         case "address_list8":
             let items = splitList(value)

@@ -47,7 +47,7 @@ int main(int argc, char* argv[]) {
         auto owner_kp = derive_zbc_keypair(params.values[1]);
         if (!owner_kp.IsOk()) { emit_error(owner_kp.GetError().ToString()); return 1; }
 
-        int64_t locked_balance = std::stoll(params.values[2]);
+        int64_t locked_balance = whole_param(params.values, 2);
         if (locked_balance <= 0) { emit_error("Locked balance must be positive"); return 1; }
 
         // Build ProofOfOwnership

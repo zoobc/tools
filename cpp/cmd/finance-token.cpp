@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
         std::string sender_addr=zoobc::crypto::ZoobcAddress::Encode(kp.Value().public_key,"ZBC");
         json extra={{"sender_address",sender_addr},{"token_id",token_id}};
         if (params.values.size()>2 && !params.values[2].empty()) {
-            int64_t amount=std::stoll(params.values[2]);
+            int64_t amount=whole_param(params.values, 2);
             if (amount<=0) { emit_error("amount must be > 0"); return 1; }
             putU64(body,amount); extra["amount"]=amount;
         }

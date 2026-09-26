@@ -28,7 +28,7 @@ zbc-cli send-zbc --help                                  # options, environment,
 ```
 
 Without installing: `python3 -m zbc.cli ...` from `py/`. The contract every command follows is
-[`../spec/cli-contract.md`](../spec/cli-contract.md). All 60 transaction types of
+[`../spec/cli-contract.md`](../spec/cli-contract.md). All 62 transaction types of
 `../spec/transactions` are subcommands; their parameters and body layouts are generated into
 `zbc/_commands.py` by `scripts/gen_commands.py`. The seven types the spec marks custom are in
 `zbc/custom.py`. `--encrypt` seals `--message` to a ZBC recipient exactly as the C++ tools do

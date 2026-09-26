@@ -22,7 +22,7 @@ int main(int argc, char* argv[]) {
     try {
         auto kp=derive_zbc_keypair(params.values[0]); if(!kp.IsOk()){emit_error(kp.GetError().ToString());return 1;}
         int64_t base=parse_id_i64(params.values[1],"base_token"), quote=parse_id_i64(params.values[2],"quote_token");
-        int64_t dep=params.values[3].empty()?0:std::stoll(params.values[3]);
+        int64_t dep=params.values[3].empty()?0:whole_param(params.values, 3);
         std::vector<uint8_t> body; putU64(body,base); putU64(body,quote); putU64(body,dep);
         json extra={{"base_token",base},{"quote_token",quote},{"deposit",dep}};
         return run_transaction(params,config.tx_type,kp.Value().public_key,std::vector<uint8_t>{},body,kp.Value(),KeyType::ZBC,extra,emit_error,"SUCCESS: Market created!");

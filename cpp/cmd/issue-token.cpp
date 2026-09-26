@@ -34,8 +34,8 @@ int main(int argc, char* argv[]) {
         if (!kp.IsOk()) { emit_error(kp.GetError().ToString()); return 1; }
         std::string sym = params.values[1], name = params.values[2];
         int decimals = std::stoi(params.values[3]);
-        int64_t supply = std::stoll(params.values[4]);
-        int64_t backing = std::stoll(params.values[5]);
+        int64_t supply = whole_param(params.values, 4);
+        int64_t backing = whole_param(params.values, 5);
         int flags = (params.values.size() > 6 && !params.values[6].empty()) ? std::stoi(params.values[6]) : 1;
         if (decimals < 0 || decimals > 8) { emit_error("decimals must be 0-8"); return 1; }
         if (supply <= 0) { emit_error("supply must be > 0"); return 1; }

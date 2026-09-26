@@ -30,7 +30,7 @@ build/install/zbc-cli/bin/zbc-cli send-zbc --help                               
 ```
 
 The contract every command follows is [`../spec/cli-contract.md`](../spec/cli-contract.md). All
-60 transaction types of `../spec/transactions` are subcommands: the build copies the spec files
+62 transaction types of `../spec/transactions` are subcommands: the build copies the spec files
 into the jar (`zbc/transactions/*.json`) and the command table is read from them at run time, so
 a new type in the spec is a rebuild, not new code. The seven types the spec marks custom are in
 `Custom.kt`. `--encrypt` seals `--message` to a ZBC recipient exactly as the C++ tools do (`../spec/signing.md` 8;

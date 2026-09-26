@@ -85,15 +85,15 @@ int main(int argc, char* argv[]) {
         }
 
         uint32_t min_sigs = static_cast<uint32_t>(std::stoul(params.values[2]));
-        int64_t nonce = std::stoll(params.values[3]);
+        int64_t nonce = whole_param(params.values, 3);
 
         auto signer_key_strs = split_csv(params.values[4]);
         if (signer_key_strs.empty()) { emit_error("Need at least one signer key"); return 1; }
 
         auto recipient_result = parse_address(params.values[5]);
         if (!recipient_result.IsOk()) { emit_error("Invalid recipient: " + recipient_result.GetError().ToString()); return 1; }
-        int64_t amount = std::stoll(params.values[6]);
-        int64_t inner_fee = std::stoll(params.values[7]);
+        int64_t amount = whole_param(params.values, 6);
+        int64_t inner_fee = whole_param(params.values, 7);
 
         // 1. Compute the multisig address from the participants.
         auto multisig_addr = zoobc::transaction::MultisignatureService::GenerateMultisigAddress(

@@ -216,6 +216,7 @@ def body_of(spec, v, files):
         elif enc == "bytes32":
             raw = bytes.fromhex(files[f["from"]]); out += struct.pack("<I", len(raw)) + raw
         elif enc == "address": out += typed_addr(val)
+        elif enc == "address8": a = typed_addr(val); out += bytes([len(a)]) + a
         elif enc == "address_list8":
             items = [x for x in val.split(",") if x]; out += bytes([len(items)]) + b"".join(typed_addr(x) for x in items)
         elif enc == "split_list8":

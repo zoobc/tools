@@ -1414,10 +1414,9 @@ return array (
       7 => 
       array (
         'name' => 'expiry',
-        'kind' => 'int64',
-        'required' => false,
-        'help' => 'request expiry; 0 = same as timeout',
-        'default' => '0',
+        'kind' => 'uint64',
+        'required' => true,
+        'help' => 'blocks the request stays open (a block count, not a time); the C++ tools compute ceil((timeout - now)/15 s) when it is 0 or omitted',
       ),
     ),
     'body' => 
@@ -1463,8 +1462,6 @@ return array (
         'name' => 'expiry',
         'encoding' => 'u64le',
         'from' => 'expiry',
-        'default_from' => 'timeout',
-        'when_zero' => 'timeout',
       ),
     ),
     'example' => 
@@ -1475,7 +1472,7 @@ return array (
       'commission' => '1000',
       'timeout' => '1800000000',
       'instruction' => 'pay on delivery',
-      'expiry' => '0',
+      'expiry' => '240',
     ),
     'notes' => 
     array (
@@ -3702,6 +3699,112 @@ return array (
   ),
   50 => 
   array (
+    'name' => 'SetMemberPermissions',
+    'type' => 57,
+    'command' => 'set-member-permissions',
+    'binary' => NULL,
+    'description' => 'Set what a member of the sender\'s account group may spend (controller only).',
+    'sender_key' => 'sender_privkey',
+    'recipient' => 'none',
+    'options' => 
+    array (
+      0 => 'message',
+      1 => 'encrypt',
+    ),
+    'needs_node' => false,
+    'custom' => NULL,
+    'params' => 
+    array (
+      0 => 
+      array (
+        'name' => 'sender_privkey',
+        'kind' => 'privkey',
+        'required' => true,
+        'help' => 'the signing key: 32-byte Ed25519 seed as 64 hex; \'-\' or omitted = ZBC_KEY',
+      ),
+      1 => 
+      array (
+        'name' => 'member',
+        'kind' => 'address',
+        'required' => true,
+        'help' => 'the member address',
+      ),
+      2 => 
+      array (
+        'name' => 'flags',
+        'kind' => 'uint8',
+        'required' => true,
+        'help' => '1 = may spend, 3 = may spend and move tokens, 0 = receive only',
+        'min' => 0,
+        'max' => 3,
+      ),
+      3 => 
+      array (
+        'name' => 'spend_limit',
+        'kind' => 'int64',
+        'required' => false,
+        'help' => 'atomic ZBC per period (0 = no limit)',
+        'default' => '0',
+      ),
+      4 => 
+      array (
+        'name' => 'period_blocks',
+        'kind' => 'uint32',
+        'required' => false,
+        'help' => 'blocks per limit window (required when spend_limit > 0)',
+        'default' => '0',
+      ),
+    ),
+    'body' => 
+    array (
+      0 => 
+      array (
+        'name' => 'version',
+        'encoding' => 'literal',
+        'from' => 'version',
+        'value' => '01',
+      ),
+      1 => 
+      array (
+        'name' => 'member',
+        'encoding' => 'address8',
+        'from' => 'member',
+      ),
+      2 => 
+      array (
+        'name' => 'flags',
+        'encoding' => 'u8',
+        'from' => 'flags',
+      ),
+      3 => 
+      array (
+        'name' => 'spend_limit',
+        'encoding' => 'u64le',
+        'from' => 'spend_limit',
+      ),
+      4 => 
+      array (
+        'name' => 'period_blocks',
+        'encoding' => 'u32le',
+        'from' => 'period_blocks',
+      ),
+    ),
+    'example' => 
+    array (
+      'member' => 'ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I',
+      'flags' => '1',
+      'spend_limit' => '100000000',
+      'period_blocks' => '5760',
+    ),
+    'notes' => 
+    array (
+      0 => 'zbc-cli set-member-permissions; no single program.',
+      1 => 'Rule account_groups: accepted from its activation height.',
+      2 => 'The C++ tools refuse a spend_limit above 0 with period_blocks 0.',
+    ),
+  ),
+  51 => 
+  array (
     'name' => 'SetSplitPolicy',
     'type' => 54,
     'command' => 'set-split-policy',
@@ -3749,11 +3852,11 @@ return array (
     'notes' => 
     array (
       0 => 'Consensus: accepted only by a chain launched with node v0.4.5 or later.',
-      1 => 'No zbc-cli subcommand.',
+      1 => 'Also zbc-cli set-split-policy.',
       2 => 'The account cannot be its own recipient; leave the share unassigned instead.',
     ),
   ),
-  51 => 
+  52 => 
   array (
     'name' => 'SetupAccountDataset',
     'type' => 3,
@@ -3838,7 +3941,7 @@ return array (
     array (
     ),
   ),
-  52 => 
+  53 => 
   array (
     'name' => 'StoreFile',
     'type' => 40,
@@ -3952,7 +4055,7 @@ return array (
     array (
     ),
   ),
-  53 => 
+  54 => 
   array (
     'name' => 'AcceptSwapOffer',
     'type' => 19,
@@ -4002,7 +4105,7 @@ return array (
     array (
     ),
   ),
-  54 => 
+  55 => 
   array (
     'name' => 'CancelSwapOffer',
     'type' => 20,
@@ -4052,7 +4155,7 @@ return array (
     array (
     ),
   ),
-  55 => 
+  56 => 
   array (
     'name' => 'CreateSwapOffer',
     'type' => 18,
@@ -4159,7 +4262,7 @@ return array (
     array (
     ),
   ),
-  56 => 
+  57 => 
   array (
     'name' => 'TransferDataset',
     'type' => 42,
@@ -4224,7 +4327,7 @@ return array (
     array (
     ),
   ),
-  57 => 
+  58 => 
   array (
     'name' => 'TransferToken',
     'type' => 11,
@@ -4296,7 +4399,66 @@ return array (
     array (
     ),
   ),
-  58 => 
+  59 => 
+  array (
+    'name' => 'UnlinkAccount',
+    'type' => 56,
+    'command' => 'unlink-account',
+    'binary' => NULL,
+    'description' => 'Remove a member address from the sender\'s account group, or leave it. It takes nothing with it.',
+    'sender_key' => 'sender_privkey',
+    'recipient' => 'none',
+    'options' => 
+    array (
+      0 => 'message',
+      1 => 'encrypt',
+    ),
+    'needs_node' => false,
+    'custom' => NULL,
+    'params' => 
+    array (
+      0 => 
+      array (
+        'name' => 'sender_privkey',
+        'kind' => 'privkey',
+        'required' => true,
+        'help' => 'the signing key: 32-byte Ed25519 seed as 64 hex; \'-\' or omitted = ZBC_KEY',
+      ),
+      1 => 
+      array (
+        'name' => 'member',
+        'kind' => 'address',
+        'required' => true,
+        'help' => 'the address leaving the group (your own to leave; any member if you are the controller)',
+      ),
+    ),
+    'body' => 
+    array (
+      0 => 
+      array (
+        'name' => 'version',
+        'encoding' => 'literal',
+        'from' => 'version',
+        'value' => '01',
+      ),
+      1 => 
+      array (
+        'name' => 'member',
+        'encoding' => 'address8',
+        'from' => 'member',
+      ),
+    ),
+    'example' => 
+    array (
+      'member' => 'ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I',
+    ),
+    'notes' => 
+    array (
+      0 => 'zbc-cli unlink-account; no single program.',
+      1 => 'Rule account_groups: accepted from its activation height.',
+    ),
+  ),
+  60 => 
   array (
     'name' => 'UnregisterGateway',
     'type' => 38,
@@ -4347,7 +4509,7 @@ return array (
       0 => 'zbc-gateway-unregister names its first field owner_privkey.',
     ),
   ),
-  59 => 
+  61 => 
   array (
     'name' => 'NodeRegistrationUpdate',
     'type' => 258,

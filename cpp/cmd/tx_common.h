@@ -1200,13 +1200,55 @@ inline std::string read_prompted(const std::string& prompt, const std::string& d
 }
 
 // Parse params from CLI args, JSON stdin, or interactive prompts
+// --- whole-number fields (forum #188, overnight devnet test 2026-09-25) ---------------------------
+// Amounts, counts, heights and times are integers of atomic units. std::stoll read "1.5" as 1,
+// "1e3" as 1 and "12abc" as 12 without a word, and an overflow said only "stoll". These refuse
+// anything but a plain non-negative decimal integer and name the field (usage error, exit 2).
+// Ids keep parse_id_i64 (they may be negative).
+inline uint64_t parse_whole_u64(const std::string& in, const std::string& field, uint64_t max = UINT64_MAX) {
+    auto refuse = [&](const std::string& why) -> std::runtime_error {
+        pending_exit_code() = exit_code::USAGE; last_exit_code() = exit_code::USAGE;
+        return std::runtime_error(field + " " + why);
+    };
+    std::string s = in;
+    while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.erase(s.begin());
+    while (!s.empty() && (s.back() == ' ' || s.back() == '\t')) s.pop_back();
+    if (s.empty()) throw refuse("is empty");
+    if (s[0] == '-') throw refuse("must not be negative, got: " + in);
+    if (s[0] == '+') s.erase(s.begin());
+    if (s.empty()) throw refuse("is not a number: " + in);
+    for (char c : s)
+        if (c < '0' || c > '9')
+            throw refuse("must be a whole number of atomic units (no decimal point, exponent or suffix), got: " + in);
+    uint64_t v = 0;
+    for (char c : s) {
+        const uint64_t d = static_cast<uint64_t>(c - '0');
+        if (v > (max - d) / 10) throw refuse("is out of range (at most " + std::to_string(max) + "), got: " + in);
+        v = v * 10 + d;
+    }
+    return v;
+}
+inline int64_t parse_whole_i64(const std::string& in, const std::string& field) {
+    return static_cast<int64_t>(parse_whole_u64(in, field, static_cast<uint64_t>(INT64_MAX)));
+}
+// The json_key of each positional value of the tool being run (parse_params records it), so a
+// builder can name the field it refuses without carrying the ParamDef list around.
+inline std::vector<std::string>& param_keys() { static std::vector<std::string> k; return k; }
+inline int64_t whole_param(const std::vector<std::string>& values, size_t i) {
+    const std::string field = i < param_keys().size() ? param_keys()[i] : ("parameter " + std::to_string(i));
+    return parse_whole_i64(values.at(i), field);
+}
+
 inline int parse_params(const ToolConfig& config, int argc, char* argv[], ParsedParams& out,
                         const std::function<void(const std::string&)>& emit_error) {
+    param_keys().clear();
+    for (const auto& pd : config.params) param_keys().push_back(pd.json_key);
     bool json_input = false;
     std::vector<std::string> positional;
     bool escrow_commission_set = false;
     bool escrow_timeout_set = false;
     bool api_set = false;
+    bool fee_set = false;
 
     // Parse CLI flags
     for (int i = 1; i < argc; ++i) {
@@ -1232,8 +1274,8 @@ inline int parse_params(const ToolConfig& config, int argc, char* argv[], Parsed
             out.message_text = argv[++i];
         } else if (arg == "--fee") {
             if (i + 1 >= argc) return fail(emit_error, exit_code::USAGE, "--fee requires a value");
-            try { out.fee = std::stoll(argv[++i]); }
-            catch (const std::exception&) { return fail(emit_error, exit_code::USAGE, "--fee must be a whole number of atomic units"); }
+            try { out.fee = parse_whole_i64(argv[++i], "--fee"); fee_set = true; }
+            catch (const std::exception& e) { return fail(emit_error, exit_code::USAGE, e.what()); }
         } else if (arg == "--survival") {
             if (i + 1 >= argc) return fail(emit_error, exit_code::USAGE, "--survival requires a value");
             try { out.survival = std::stoll(argv[++i]); }
@@ -1269,7 +1311,7 @@ inline int parse_params(const ToolConfig& config, int argc, char* argv[], Parsed
             out.escrow.instruction = argv[++i];
         } else if (arg == "--token") {
             if (i + 1 >= argc) return fail(emit_error, exit_code::USAGE, "--token requires a value");
-            try { out.token_id = std::stoll(argv[++i]); }
+            try { out.token_id = parse_id_i64(argv[++i], "--token"); }
             catch (const std::exception&) { return fail(emit_error, exit_code::USAGE, "--token must be a decimal token id"); }
         } else if (arg == "--offline") {
             out.offline = true;
@@ -1460,8 +1502,22 @@ inline int parse_params(const ToolConfig& config, int argc, char* argv[], Parsed
             }
         }
 
-        // Extra positional args: fee, api_url (after tool-specific params)
+        // Extra positional args: fee, api_url (after tool-specific params). A trailing positional
+        // used to override an explicit --fee / --api without a word (`send-zbc ... 1 777777777 --fee
+        // 5000000` signed fee 777777777; a sixth positional became the node URL), and a liquid
+        // payment's token id given positionally became the fee (overnight test 2026-09-25).
         size_t extra_start = config.params.size();
+        if (extra_start + 2 < positional.size())
+            return fail(emit_error, exit_code::USAGE,
+                        "Unexpected extra argument \"" + positional[extra_start + 2] + "\": this command takes " +
+                        std::to_string(config.params.size()) + " arguments, then optionally [fee] [api_url]");
+        if (extra_start < positional.size() && fee_set)
+            return fail(emit_error, exit_code::USAGE,
+                        "The fee is given twice (--fee and the positional \"" + positional[extra_start] +
+                        "\"); give it once. If that value was meant as another field, this command does not take it.");
+        if (extra_start + 1 < positional.size() && api_set)
+            return fail(emit_error, exit_code::USAGE,
+                        "The node URL is given twice (--api and the positional \"" + positional[extra_start + 1] + "\"); give it once.");
         if (extra_start < positional.size()) {
             // An unguarded stoll here aborted the process with a bare
             // "terminate called after throwing an instance of 'std::invalid_argument'"

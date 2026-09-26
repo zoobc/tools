@@ -165,6 +165,10 @@ pub fn encode_field(f: &FieldDef, params: &Params, ctx: &BodyContext) -> Result<
         "str16" => w.u16(value.len() as u16).bytes(value.as_bytes()).finish(),
         "str32" => w.u32(value.len() as u32).bytes(value.as_bytes()).finish(),
         "address" => parse_address(&value, "").map_err(|e| usage(format!("invalid {}: {e}", f.from)))?.bytes(),
+        "address8" => {
+            let a = parse_address(&value, "").map_err(|e| usage(format!("invalid {}: {e}", f.from)))?.bytes();
+            w.u8(a.len() as u8).bytes(&a).finish()
+        }
         "address_list" | "address_list8" => {
             let items = split_list(&value);
             let mut w = w;

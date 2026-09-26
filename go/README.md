@@ -28,7 +28,7 @@ zbc-cli send-zbc --help                                  # options, environment,
 ```
 
 The contract every command follows is [`../spec/cli-contract.md`](../spec/cli-contract.md). All
-60 transaction types of `../spec/transactions` are subcommands, and the 47 that the C++ tools
+62 transaction types of `../spec/transactions` are subcommands, and the 47 that the C++ tools
 also ship as single programs exist under `cmd/` with the same names; `internal/gen` writes
 `zbc/commands_gen.go` and those `cmd/` programs from the spec, so a new type is a regeneration
 (`go run ./internal/gen`), not new code. The seven types the spec marks custom are in

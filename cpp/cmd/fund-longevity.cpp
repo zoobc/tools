@@ -42,7 +42,7 @@ int main(int argc, char* argv[]) {
         // Signed, and deliberately so: transaction ids are the first 8 bytes of the hash read as a
         // little-endian int64, so half of them are negative. Parsing unsigned would reject them.
         int64_t target=parse_id_i64(params.values[1],"target_tx_id");
-        int64_t amount=std::stoll(params.values[2]);
+        int64_t amount=whole_param(params.values, 2);
         if(target==0){emit_error("target transaction id must not be 0");return 1;}
         if(amount<10000000){emit_error("amount is below the minimum deposit (10000000 = 0.1 ZBC)");return 1;}
         std::vector<uint8_t> body; putU64(body,target); putU64(body,amount);
@@ -55,8 +55,13 @@ int main(int argc, char* argv[]) {
             try {
                 const ApiTarget t=parse_api_url(params.api_url);
                 auto res=with_api_client(t,[&](auto& cl){ return cl.Get((t.path_prefix+"/api/v1/longevity/quote?target="+std::to_string(target)).c_str()); });
-                if(!res){emit_error("cannot read /api/v1/longevity/quote from "+params.api_url+"; pass target_height and target_bytes");return 1;}
-                if(res->status!=200){emit_error("longevity quote: HTTP "+std::to_string(res->status)+": "+res->body);return 1;}
+                // A node that cannot be reached is exit 3 (4 on a timeout), like every other command, not
+                // 1 "internal" (overnight devnet test 2026-09-25).
+                if(!res) return fail(emit_error, classify_transport_error(res.error()),
+                    "cannot read /api/v1/longevity/quote from "+params.api_url+" ("+httplib::to_string(res.error())+
+                    "); pass target_height and target_bytes");
+                if(res->status!=200) return fail(emit_error, classify_node_error(res->status, res->body),
+                    "longevity quote: HTTP "+std::to_string(res->status)+": "+res->body);
                 auto j=json::parse(res->body);
                 if(j.contains("state_target_bytes")){
                     qh=std::to_string(j.value("state_target_height",0ull));

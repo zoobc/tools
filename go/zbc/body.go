@@ -244,6 +244,13 @@ func EncodeField(f FieldDef, params map[string]string, ctx *BodyContext) ([]byte
 			return nil, Usage("invalid %s: %v", f.From, err)
 		}
 		return a.Bytes(), nil
+	case "address8":
+		a, err := ParseAddress(value, "")
+		if err != nil {
+			return nil, Usage("invalid %s: %v", f.From, err)
+		}
+		b := a.Bytes()
+		return append([]byte{byte(len(b))}, b...), nil
 	case "address_list", "address_list8":
 		items := SplitList(value)
 		if f.Encoding == "address_list8" {

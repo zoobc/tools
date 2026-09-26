@@ -23,9 +23,9 @@ int main(int argc, char* argv[]) {
     emit_error=make_emitter(params.json_output); if(!init_sodium(emit_error)) return 1;
     try {
         auto kp=derive_zbc_keypair(params.values[0]); if(!kp.IsOk()){emit_error(kp.GetError().ToString());return 1;}
-        int64_t gt=parse_id_i64(params.values[1],"give_token"), ga=std::stoll(params.values[2]);
-        int64_t wt=parse_id_i64(params.values[3],"want_token"), wa=std::stoll(params.values[4]);
-        int64_t exp=params.values[5].empty()?0:std::stoll(params.values[5]);
+        int64_t gt=parse_id_i64(params.values[1],"give_token"), ga=whole_param(params.values, 2);
+        int64_t wt=parse_id_i64(params.values[3],"want_token"), wa=whole_param(params.values, 4);
+        int64_t exp=params.values[5].empty()?0:whole_param(params.values, 5);
         if(ga<=0||wa<=0){emit_error("amounts must be > 0");return 1;}
         std::vector<uint8_t> body; putU64(body,gt); putU64(body,ga); putU64(body,wt); putU64(body,wa); putU64(body,exp);
         json extra={{"give_token",gt},{"give_amount",ga},{"want_token",wt},{"want_amount",wa},{"expiry",exp}};

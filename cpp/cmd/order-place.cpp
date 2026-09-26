@@ -25,9 +25,9 @@ int main(int argc, char* argv[]) {
     try {
         auto kp=derive_zbc_keypair(params.values[0]); if(!kp.IsOk()){emit_error(kp.GetError().ToString());return 1;}
         int64_t mkt=parse_id_i64(params.values[1],"market_id"); int side=std::stoi(params.values[2]);
-        int64_t price=std::stoll(params.values[3]), amount=std::stoll(params.values[4]);
+        int64_t price=whole_param(params.values, 3), amount=whole_param(params.values, 4);
         uint8_t flags=(uint8_t)(params.values[5].empty()?0:std::stoi(params.values[5]));
-        int64_t exp=params.values[6].empty()?0:std::stoll(params.values[6]);
+        int64_t exp=params.values[6].empty()?0:whole_param(params.values, 6);
         std::vector<uint8_t> body; putU64(body,mkt); body.push_back((uint8_t)side); putU64(body,price); putU64(body,amount); body.push_back(flags); putU64(body,exp);
         json extra={{"market_id",mkt},{"side",side},{"price",price},{"amount",amount}};
         return run_transaction(params,config.tx_type,kp.Value().public_key,std::vector<uint8_t>{},body,kp.Value(),KeyType::ZBC,extra,emit_error,"SUCCESS: Order placed!");

@@ -11,6 +11,9 @@
 #include "zoobc/transaction/multisignature_service.h"
 #include "zoobc/crypto/hash.h"
 #include "zoobc/crypto/signature.h"
+#include "zoobc/common/chain_identity.h"
+#include "zoobc/transaction/account_group.h"
+#include "zoobc/transaction/escrow_request_rules.h"
 #include <sstream>
 #include <ctime>
 using namespace txc;
@@ -26,6 +29,8 @@ static std::vector<uint8_t> hx(const std::string& h){ std::vector<uint8_t> v; fo
 // --chain <name>: read the envelope recipient as this chain (cli-contract.md). The builders have no
 // access to ParsedParams, so main() parks the option here before calling them.
 static std::string& chain_hint(){ static std::string s; return s; }
+// --token N, parked by main() for the one builder that reads it (liquid-payment).
+static int64_t& liquid_token_flag(){ static int64_t t = 0; return t; }
 static ParamDef PK(){ return {"Sender private key","sender_privkey","Sender private key (64 hex)","",true,nullptr}; }
 static ParamDef P(const char* n,const char* k,const char* pr,const char* d="",bool req=true){ return {n,k,pr,d,req,nullptr}; }
 // Decode a hex string to bytes (for object ids). Throws on odd length / non-hex.
@@ -55,6 +60,23 @@ static std::vector<uint8_t> hexb(const std::string& s){
     return v;
 }
 
+// --- whole-number fields (forum #188, overnight devnet test 2026-09-25) ---------------------------
+// Amounts, counts, heights and times are integers of atomic units. std::stoll read "1.5" as 1,
+// "1e3" as 1 and "12abc" as 12 without a word (a schedule was mined paying 12 per fire from
+// "12abc"), and an overflow said only "stoll". Every such field now refuses anything but a plain
+// non-negative decimal integer, and names the field. Ids keep parse_id_i64 (they may be negative).
+static const std::vector<ParamDef>*& cur_params(){ static const std::vector<ParamDef>* p = nullptr; return p; }
+static std::string field_name(size_t i){
+    const auto* ps = cur_params();
+    return (ps && i < ps->size()) ? (*ps)[i].json_key : ("parameter " + std::to_string(i));
+}
+static uint64_t whole(const std::string& in, const std::string& field, uint64_t max){ return parse_whole_u64(in, field, max); }
+static int64_t N(const std::vector<std::string>& v, size_t i){
+    return static_cast<int64_t>(whole(v.at(i), field_name(i), static_cast<uint64_t>(INT64_MAX))); }
+static uint64_t NU(const std::vector<std::string>& v, size_t i){ return whole(v.at(i), field_name(i), UINT64_MAX); }
+static uint32_t NU32(const std::vector<std::string>& v, size_t i){ return static_cast<uint32_t>(whole(v.at(i), field_name(i), UINT32_MAX)); }
+static int NI(const std::vector<std::string>& v, size_t i){ return static_cast<int>(whole(v.at(i), field_name(i), INT32_MAX)); }
+
 // builder: (values) -> fills recipient (decoded, or empty), body, extra-json
 using Builder = std::function<void(std::vector<std::string>&, std::vector<uint8_t>&, std::vector<uint8_t>&, json&)>;
 // custom: full self-contained handler (build+sign+submit) for txs that don't fit the simple body-builder
@@ -75,8 +97,49 @@ static std::string category_of(const std::string& c){
         {"register-gateway","gateway"},{"unregister-gateway","gateway"},
         {"register-release","governance"},{"revoke-release","governance"},{"release-authority-propose","governance"},{"release-authority-accept","governance"},
         {"sign-message","keys"},{"verify-message","keys"},{"decrypt-message","keys"},
+        {"set-transact-policy","account"},{"set-split-policy","account"},{"decline-escrow-request","account"},
+        {"link-account","groups"},{"unlink-account","groups"},{"set-member-permissions","groups"},{"transfer-group-control","groups"},
     };
     auto it = cat.find(c); return it==cat.end() ? "other" : it->second;
+}
+
+// LinkAccount (55) / TransferGroupControl (58): the joining address (or the new controller) consents
+// by signing a chain-bound digest with its own key. Only a ZBC key (consent kind 0) is supported here;
+// a multisig or Ethereum consent needs its own signer.
+static int group_consent_command(bool link, std::vector<std::string>& v, ParsedParams& params) {
+    auto emit_error = make_emitter(params.json_output);
+    auto kp = derive_zbc_keypair(v[0]);
+    if (!kp.IsOk()) return fail(emit_error, exit_code::USAGE, kp.GetError().ToString());
+    auto other = derive_zbc_keypair(v[1]);
+    if (!other.IsOk()) return fail(emit_error, exit_code::USAGE, std::string(link ? "member" : "new controller") +
+                                   " key: " + other.GetError().ToString());
+    const uint32_t valid_until = NU32(v, 2);
+    const uint32_t seq = (v.size() > 3 && !v[3].empty()) ? NU32(v, 3) : 0;
+    if (!ensure_signing_context(params.api_url, params.genesis_hex, emit_error)) return last_exit_code();
+    if (signing_context().version != 2 || signing_context().genesis_hash.size() != 32)
+        return fail(emit_error, exit_code::USAGE, "a group consent is bound to one chain: it needs the chain's genesis (a node, or --genesis <hex>)");
+    zoobc::chain::Identity::SetGenesisHash(signing_context().genesis_hash);
+    std::vector<uint8_t> controller = {0, 0, 0, 0}; controller.insert(controller.end(), kp.Value().public_key.begin(), kp.Value().public_key.end());
+    std::vector<uint8_t> second = {0, 0, 0, 0}; second.insert(second.end(), other.Value().public_key.begin(), other.Value().public_key.end());
+    auto digest = link ? zoobc::transaction::group::LinkConsentDigest(controller, second, valid_until, seq)
+                       : zoobc::transaction::group::ControlConsentDigest(controller, second, valid_until, seq);
+    if (digest.IsErr()) return fail(emit_error, exit_code::INTERNAL, digest.GetError().ToString());
+    zoobc::transaction::group::ConsentProof proof; proof.kind = 0; proof.signature.resize(64);
+    crypto_sign_ed25519_detached(proof.signature.data(), nullptr, digest.Value().data(), digest.Value().size(),
+                                 other.Value().private_key.data());
+    std::vector<uint8_t> body;
+    if (link) {
+        zoobc::transaction::group::LinkBody b; b.member = second; b.valid_until_height = valid_until; b.link_seq = seq; b.proof = proof;
+        body = zoobc::transaction::group::EncodeLinkBody(b);
+    } else {
+        zoobc::transaction::group::ControlBody b; b.new_controller = second; b.valid_until_height = valid_until; b.link_seq = seq; b.proof = proof;
+        body = zoobc::transaction::group::EncodeControlBody(b);
+    }
+    json extra = {{link ? "member" : "new_controller", zoobc::crypto::ZoobcAddress::Encode(other.Value().public_key, "ZBC")},
+                  {"valid_until_height", valid_until}, {"link_seq", seq}};
+    return run_transaction(params, link ? (uint32_t)TT::LinkAccount : (uint32_t)TT::TransferGroupControl,
+                           kp.Value().public_key, std::vector<uint8_t>{}, body, kp.Value(), KeyType::ZBC, extra, emit_error,
+                           link ? "SUCCESS: link-account submitted!" : "SUCCESS: transfer-group-control submitted!");
 }
 
 static std::map<std::string, Cmd> registry() {
@@ -86,7 +149,7 @@ static std::map<std::string, Cmd> registry() {
         {PK(), P("Recipient","recipient","recipient address (ZBC_/hex/eth)"), P("Amount","amount","amount (atomic)")},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
             auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid recipient address"); rec=r.Value().address;
-            int64_t amt=std::stoll(v[2]); body=TransactionUtil::GetSendZBCBodyBytes(amt); ex={{"amount",amt}}; }};
+            int64_t amt=N(v,2); body=TransactionUtil::GetSendZBCBodyBytes(amt); ex={{"amount",amt}}; }};
     // ---- colored-coin tokens ----
     m["issue-token"] = {"Issue a colored-coin token", (uint32_t)TT::IssueToken, false,
         {PK(), P("Symbol","symbol","symbol e.g. GOLD"), P("Name","name","token name"), P("Decimals","decimals","0-8"),
@@ -94,35 +157,35 @@ static std::map<std::string, Cmd> registry() {
          P("Flags","flags","bit0 redeemable,bit1 mintable,bit3 unbacked","1",false),
          P("Survival","survival","ZBC atomic paid for the token's persistence, separate from the fee (rule uniform_fee_refund; 0 = none)","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int dec=std::stoi(v[3]); int fl=(v.size()>6&&!v[6].empty())?std::stoi(v[6]):1; int64_t sup=std::stoll(v[4]),bk=std::stoll(v[5]);
+            int dec=NI(v,3); int fl=(v.size()>6&&!v[6].empty())?NI(v,6):1; int64_t sup=N(v,4),bk=N(v,5);
             if(dec<0||dec>8) throw std::runtime_error("decimals must be 0-8");
             body.push_back((uint8_t)dec); body.push_back((uint8_t)fl); u64(body,sup); u64(body,bk);
             u16(body,(int)v[1].size()); body.insert(body.end(),v[1].begin(),v[1].end());
             u16(body,(int)v[2].size()); body.insert(body.end(),v[2].begin(),v[2].end());
             ex={{"symbol",v[1]},{"supply",sup},{"backing",bk},{"decimals",dec},{"flags",fl}};
-            if(v.size()>7&&!v[7].empty()){ int64_t sv=std::stoll(v[7]); if(sv<0) throw std::runtime_error("survival must be >= 0"); u64(body,sv); ex["survival"]=sv; } }};
+            if(v.size()>7&&!v[7].empty()){ int64_t sv=N(v,7); if(sv<0) throw std::runtime_error("survival must be >= 0"); u64(body,sv); ex["survival"]=sv; } }};
     m["mint-token"] = {"Mint a mintable token (add backing)", (uint32_t)TT::MintToken, false,
         {PK(), P("Token id","token_id","token id"), P("Amount","amount","amount (atomic)"), P("Survival","survival","ZBC atomic paid for the token's persistence, separate from the fee (rule uniform_fee_refund; 0 = none)","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int64_t t=parse_id_i64(v[1],"token_id"),a=std::stoll(v[2]); u64(body,t); u64(body,a); ex={{"token_id",t},{"amount",a}};
-            if(v.size()>3&&!v[3].empty()){ int64_t sv=std::stoll(v[3]); if(sv<0) throw std::runtime_error("survival must be >= 0"); body.push_back(0); u64(body,sv); ex["survival"]=sv; } }};
+            int64_t t=parse_id_i64(v[1],"token_id"),a=N(v,2); u64(body,t); u64(body,a); ex={{"token_id",t},{"amount",a}};
+            if(v.size()>3&&!v[3].empty()){ int64_t sv=N(v,3); if(sv<0) throw std::runtime_error("survival must be >= 0"); body.push_back(0); u64(body,sv); ex["survival"]=sv; } }};
     m["burn-token"] = {"Burn a token (redeem backing if redeemable)", (uint32_t)TT::BurnToken, false,
         {PK(), P("Token id","token_id","token id"), P("Amount","amount","amount (atomic)"), P("Survival","survival","ZBC atomic paid for the token's persistence, separate from the fee (rule uniform_fee_refund; 0 = none)","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int64_t t=parse_id_i64(v[1],"token_id"),a=std::stoll(v[2]); u64(body,t); u64(body,a); ex={{"token_id",t},{"amount",a}};
-            if(v.size()>3&&!v[3].empty()){ int64_t sv=std::stoll(v[3]); if(sv<0) throw std::runtime_error("survival must be >= 0"); body.push_back(0); u64(body,sv); ex["survival"]=sv; } }};
+            int64_t t=parse_id_i64(v[1],"token_id"),a=N(v,2); u64(body,t); u64(body,a); ex={{"token_id",t},{"amount",a}};
+            if(v.size()>3&&!v[3].empty()){ int64_t sv=N(v,3); if(sv<0) throw std::runtime_error("survival must be >= 0"); body.push_back(0); u64(body,sv); ex["survival"]=sv; } }};
     m["finance-token"] = {"Top up a token's survival financing", (uint32_t)TT::FinanceToken, false,
         {PK(), P("Token id","token_id","token id"),
          P("Amount","amount","ZBC atomic that buys persistence; required from rule uniform_fee_refund (before it the fee buys it: leave empty)","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
             int64_t t=parse_id_i64(v[1],"token_id"); u64(body,t); ex={{"token_id",t}};
-            if(v.size()>2&&!v[2].empty()){ int64_t a=std::stoll(v[2]); if(a<=0) throw std::runtime_error("amount must be > 0"); u64(body,a); ex["amount"]=a; } }};
+            if(v.size()>2&&!v[2].empty()){ int64_t a=N(v,2); if(a<=0) throw std::runtime_error("amount must be > 0"); u64(body,a); ex["amount"]=a; } }};
     // ---- exchange: swap offers ----
     m["swap-create"] = {"Create an atomic swap offer", (uint32_t)TT::CreateSwapOffer, false,
         {PK(), P("Give token","give_token","token to give (0=ZBC)"), P("Give amount","give_amount","atomic"),
          P("Want token","want_token","token to want (0=ZBC)"), P("Want amount","want_amount","atomic"), P("Expiry","expiry","unix secs (0=GTC)","0",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int64_t gt=parse_id_i64(v[1],"give_token"),ga=std::stoll(v[2]),wt=parse_id_i64(v[3],"want_token"),wa=std::stoll(v[4]),e=(v.size()>5&&!v[5].empty())?std::stoll(v[5]):0;
+            int64_t gt=parse_id_i64(v[1],"give_token"),ga=N(v,2),wt=parse_id_i64(v[3],"want_token"),wa=N(v,4),e=(v.size()>5&&!v[5].empty())?N(v,5):0;
             u64(body,gt);u64(body,ga);u64(body,wt);u64(body,wa);u64(body,e); ex={{"give_token",gt},{"want_token",wt}}; }};
     m["swap-accept"] = {"Accept (fill) a swap offer", (uint32_t)TT::AcceptSwapOffer, false,
         {PK(), P("Offer id","offer_id","the swap offer id")},
@@ -140,15 +203,15 @@ static std::map<std::string, Cmd> registry() {
             u64(body,t); ex={{"target_tx_id",std::to_string(t)},{"leftover_goes_to","longevity node pool"}}; }};
     // ---- exchange: order-book CLOB ----
     m["market-create"] = {"Open a (base,quote) CLOB market", (uint32_t)TT::CreateMarket, false,
-        {PK(), P("Base token","base_token","base (0=ZBC)"), P("Quote token","quote_token","quote (0=ZBC)"), P("Deposit","deposit","rent atomic (0 ok)","0",false)},
+        {PK(), P("Base token","base_token","base (0=ZBC)"), P("Quote token","quote_token","quote (0=ZBC)"), P("Deposit","deposit","ignored by the node: opening a market always costs the network's market_creation_cost (50 ZBC), charged on top of the fee","0",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int64_t b=parse_id_i64(v[1],"base_token"),q=parse_id_i64(v[2],"quote_token"),d=(v.size()>3&&!v[3].empty())?std::stoll(v[3]):0; u64(body,b);u64(body,q);u64(body,d); ex={{"base",b},{"quote",q}}; }};
+            int64_t b=parse_id_i64(v[1],"base_token"),q=parse_id_i64(v[2],"quote_token"),d=(v.size()>3&&!v[3].empty())?N(v,3):0; u64(body,b);u64(body,q);u64(body,d); ex={{"base",b},{"quote",q}}; }};
     m["order-place"] = {"Place a limit/market order", (uint32_t)TT::PlaceOrder, false,
         {PK(), P("Market id","market_id","market id"), P("Side","side","0=buy 1=sell"), P("Price","price","quote per base * 1e8"),
          P("Amount","amount","base amount atomic"), P("Flags","flags","bit0 market,bit1 post-only","0",false), P("Expiry","expiry","unix secs (0=GTC)","0",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int64_t mk=parse_id_i64(v[1],"market_id"); int side=std::stoi(v[2]); int64_t pr=std::stoll(v[3]),am=std::stoll(v[4]);
-            int fl=(v.size()>5&&!v[5].empty())?std::stoi(v[5]):0; int64_t e=(v.size()>6&&!v[6].empty())?std::stoll(v[6]):0;
+            int64_t mk=parse_id_i64(v[1],"market_id"); int side=NI(v,2); int64_t pr=N(v,3),am=N(v,4);
+            int fl=(v.size()>5&&!v[5].empty())?NI(v,5):0; int64_t e=(v.size()>6&&!v[6].empty())?N(v,6):0;
             u64(body,mk); body.push_back((uint8_t)side); u64(body,pr); u64(body,am); body.push_back((uint8_t)fl); u64(body,e);
             ex={{"market_id",mk},{"side",side},{"price",pr},{"amount",am}}; }};
     m["order-cancel"] = {"Cancel a resting order", (uint32_t)TT::CancelOrder, false,
@@ -160,7 +223,7 @@ static std::map<std::string, Cmd> registry() {
          P("Stake amount","stake_amount","atomic"), P("Seats","seats","2=PvP, 1=solo","2",false),
          P("Params (hex)","params_hex","solo bet e.g. coinflip choice '00'","",false), P("Opponent (hex)","opponent_hex","36-byte opponent (open if empty)","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int gt=std::stoi(v[1]); int64_t st=parse_id_i64(v[2],"stake_token"),sa=std::stoll(v[3]); int seats=(v.size()>4&&!v[4].empty())?std::stoi(v[4]):2;
+            int gt=NI(v,1); int64_t st=parse_id_i64(v[2],"stake_token"),sa=N(v,3); int seats=(v.size()>4&&!v[4].empty())?NI(v,4):2;
             std::vector<uint8_t> prm=(v.size()>5&&!v[5].empty())?hx(v[5]):std::vector<uint8_t>();
             body.push_back((uint8_t)gt); u64(body,st); u64(body,sa); body.push_back((uint8_t)seats); u16(body,(int)prm.size()); body.insert(body.end(),prm.begin(),prm.end());
             if(v.size()>6&&!v[6].empty()){ auto op=hx(v[6]); body.insert(body.end(),op.begin(),op.end()); }
@@ -179,19 +242,27 @@ static std::map<std::string, Cmd> registry() {
         {PK(), P("App id","app_id","app id")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t g=parse_id_i64(v[1],"app_id"); u64(body,g); ex={{"app_id",g}}; }};
     // ---- liquid payments / escrow / triggers / storage / oracle ----
-    m["liquid-payment"] = {"Stream ZBC over time (vesting)", (uint32_t)TT::LiquidPayment, true,
-        {PK(), P("Recipient","recipient","recipient address"), P("Amount","amount","atomic"), P("Complete minutes","complete_minutes","full-vesting period (min)")},
+    m["liquid-payment"] = {"Stream ZBC or a token over time (vesting)", (uint32_t)TT::LiquidPayment, true,
+        {PK(), P("Recipient","recipient","recipient address"), P("Amount","amount","atomic"), P("Complete minutes","complete_minutes","full-vesting period (min)"),
+         P("Token id","token_id","token to stream (0 or empty = ZBC; --token N does the same)","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
             auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid recipient"); rec=r.Value().address;
-            int64_t amt=std::stoll(v[2]); uint64_t mins=std::stoull(v[3]);
-            body=TransactionUtil::GetLiquidPaymentBodyBytes(amt, mins, 0); ex={{"amount",amt},{"complete_minutes",mins}}; }};
+            int64_t amt=N(v,2); uint64_t mins=NU(v,3);
+            // The token was ignored: --token was accepted and a ZBC stream built (16-byte body), so
+            // 5.00000000 of a token became 5 ZBC (overnight devnet test 2026-09-25). A token stream
+            // is the 24-byte body with the token id, as zbc-liquid-pay and spec/vectors build it.
+            int64_t tok=(v.size()>4&&!v[4].empty())?parse_id_i64(v[4],"token_id"):liquid_token_flag();
+            if(v.size()>4&&!v[4].empty()&&liquid_token_flag()!=0&&liquid_token_flag()!=tok)
+                throw std::runtime_error("token_id and --token disagree; give it once");
+            body=TransactionUtil::GetLiquidPaymentBodyBytes(amt, mins, tok); ex={{"amount",amt},{"complete_minutes",mins}};
+            if(tok!=0) ex["token_id"]=std::to_string(tok); }};
     m["liquid-payment-stop"] = {"Stop a liquid payment", (uint32_t)TT::LiquidPaymentStop, false,
         {PK(), P("Transaction id","transaction_id","the liquid payment tx id")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t t=parse_id_i64(v[1],"transaction_id"); body=TransactionUtil::GetLiquidPaymentStopBodyBytes(t); ex={{"transaction_id",t}}; }};
     m["approve-escrow"] = {"Approve/reject/expire an escrow", (uint32_t)TT::ApprovalEscrow, false,
         {PK(), P("Approval","approval","0=approve 1=reject 2=expire"), P("Transaction hash","transaction_hash","escrowed tx hash (64 hex)")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int a=std::stoi(v[1]); if(a<0||a>2) throw std::runtime_error("approval must be 0/1/2");
+            int a=NI(v,1); if(a<0||a>2) throw std::runtime_error("approval must be 0/1/2");
             // Full 32-byte hash of the escrowed tx (2026-09-08); the 8-byte id is derived from it on chain.
             auto h=hex_to_bytes(v[2]); if(h.size()!=32) throw std::runtime_error("transaction hash must be 64 hex characters");
             // The escrowed transaction is reported as escrowed_transaction_hash / transaction_id; the
@@ -203,7 +274,7 @@ static std::map<std::string, Cmd> registry() {
          P("Amount","amount","atomic ZBC locked now"), P("Event id","event_id","optional oracle event id","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
             auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid recipient"); rec=r.Value().address;
-            int64_t fh=std::stoll(v[2]), amt=std::stoll(v[3]); u64(body,fh); u64(body,amt);
+            int64_t fh=N(v,2), amt=N(v,3); u64(body,fh); u64(body,amt);
             if(v.size()>4 && !v[4].empty()){ u32(body,(uint32_t)v[4].size()); body.insert(body.end(),v[4].begin(),v[4].end()); }
             ex={{"fire_height",fh},{"amount",amt}}; }};
     m["cancel-trigger"] = {"Cancel a pending trigger (refund)", (uint32_t)TT::CancelTrigger, false,
@@ -211,7 +282,7 @@ static std::map<std::string, Cmd> registry() {
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t t=parse_id_i64(v[1],"trigger_id"); u64(body,t); ex={{"trigger_id",t}}; }};
     m["add-prepaid-storage"] = {"Fund dataset storage rent", (uint32_t)TT::AddPrepaidStorage, false,
         {PK(), P("Amount","amount","atomic ZBC")},
-        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t a=std::stoll(v[1]); u64(body,a); ex={{"amount",a}}; }};
+        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t a=N(v,1); u64(body,a); ex={{"amount",a}}; }};
     m["attest-event"] = {"Attest an external event (oracle node)", (uint32_t)TT::AttestEvent, false,
         {PK(), P("Event id","event_id","external event id"), P("Value","value","attested value")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
@@ -267,7 +338,7 @@ static std::map<std::string, Cmd> registry() {
          P("Remove accounts","remove","comma-separated ZBC_ addresses (optional)","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
             (void)rec; auto oid=hexb(v[1]); if(oid.size()!=32) throw std::runtime_error("object_id must be 64 hex");
-            int mode=std::stoi(v[2]); if(mode<0||mode>3) throw std::runtime_error("mode must be 0-3");
+            int mode=NI(v,2); if(mode<0||mode>3) throw std::runtime_error("mode must be 0-3");
             auto parse_list=[&](const std::string& s){ std::vector<std::vector<uint8_t>> out; std::string cur;
                 auto flush=[&]{ if(cur.empty())return; auto a=parse_address(cur); if(!a.IsOk()) throw std::runtime_error("invalid acl address: "+cur); out.push_back(a.Value().address); cur.clear(); };
                 for(char c:s){ if(c==','){flush();} else if(!isspace((unsigned char)c)) cur+=c; } flush(); return out; };
@@ -283,10 +354,10 @@ static std::map<std::string, Cmd> registry() {
          P("Token id","token_id","token id (decimal int64)"), P("Amount","amount","amount (atomic)"), P("Survival","survival","ZBC atomic paid for the token's persistence, separate from the fee (rule uniform_fee_refund; 0 = none)","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
             auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid recipient address"); rec=r.Value().address;
-            int64_t tid=parse_id_i64(v[2],"token_id"), amt=std::stoll(v[3]);
+            int64_t tid=parse_id_i64(v[2],"token_id"), amt=N(v,3);
             if(amt<=0) throw std::runtime_error("amount must be > 0");
             u64(body,tid); u64(body,amt); ex={{"token_id",tid},{"amount",amt}};
-            if(v.size()>4&&!v[4].empty()){ int64_t sv=std::stoll(v[4]); if(sv<0) throw std::runtime_error("survival must be >= 0"); body.push_back(0); u64(body,sv); ex["survival"]=sv; } }};
+            if(v.size()>4&&!v[4].empty()){ int64_t sv=N(v,4); if(sv<0) throw std::runtime_error("survival must be >= 0"); body.push_back(0); u64(body,sv); ex["survival"]=sv; } }};
     // ---- account / escrow ----
     m["escrow-request"] = {"Create a recipient-initiated escrow request", (uint32_t)TT::EscrowRequest, false,
         {PK(), P("Proposed sender","proposed_sender","proposed sender address"),
@@ -295,20 +366,28 @@ static std::map<std::string, Cmd> registry() {
          P("Commission","commission","approver commission (atomic)","0",false),
          P("Timeout","timeout","escrow timeout (future unix seconds)"),
          P("Instruction","instruction","instructions (optional)","",false),
-         P("Expiry","expiry","request expiry (0 = use timeout)","0",false)},
+         P("Expiry","expiry","blocks the request stays open (a block count, not a time; 0 = the blocks until timeout at 15 s a block)","0",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
             auto s=parse_address(v[1]); if(!s.IsOk()) throw std::runtime_error("invalid proposed sender");
             auto a=parse_address(v[3]); if(!a.IsOk()) throw std::runtime_error("invalid approver");
             zoobc::model::EscrowRequestTransactionBody b;
-            b.proposed_sender=s.Value().address; b.proposed_amount=std::stoll(v[2]);
+            b.proposed_sender=s.Value().address; b.proposed_amount=N(v,2);
             b.approver_address=a.Value().address;
-            b.commission=(v.size()>4&&!v[4].empty())?std::stoll(v[4]):0;
-            b.timeout=std::stoll(v[5]);
+            b.commission=(v.size()>4&&!v[4].empty())?N(v,4):0;
+            b.timeout=N(v,5);
             b.instruction=(v.size()>6)?v[6]:std::string();
-            b.expiry=(v.size()>7&&!v[7].empty())?std::stoll(v[7]):0;
-            if(b.expiry<=0) b.expiry=b.timeout;
+            b.expiry=(v.size()>7&&!v[7].empty())?N(v,7):0;
+            // The node reads expiry as a BLOCK COUNT (the request closes at creation height + expiry).
+            // Copying the timeout, a Unix time, here made every request open for ~1.79e9 blocks
+            // (overnight devnet test 2026-09-25). Omitted: the blocks until the timeout, at the
+            // 15-second smithing period, at least one.
+            if(b.expiry<=0){
+                const int64_t now=static_cast<int64_t>(std::time(nullptr));
+                const int64_t secs=b.timeout>now? b.timeout-now : 0;
+                b.expiry=std::max<int64_t>(1,(secs+zoobc::constants::SMITHING_PERIOD-1)/zoobc::constants::SMITHING_PERIOD);
+            }
             body=TransactionUtil::GetEscrowRequestBodyBytes(b);
-            ex={{"proposed_sender",s.Value().display},{"proposed_amount",b.proposed_amount},{"approver",a.Value().display}}; }};
+            ex={{"proposed_sender",s.Value().display},{"proposed_amount",b.proposed_amount},{"approver",a.Value().display},{"expiry_blocks",b.expiry}}; }};
     m["fee-vote-reveal"] = {"Reveal a fee vote (reveal phase)", (uint32_t)TT::FeeVoteReveal, false,
         {PK(), P("Recent block hash","recent_block_hash","reference block hash (64 hex)"),
          P("Recent block height","recent_block_height","reference block height"),
@@ -317,7 +396,7 @@ static std::map<std::string, Cmd> registry() {
             if(v[1].size()!=64) throw std::runtime_error("recent_block_hash must be 64 hex chars (32 bytes)");
             auto kp=derive_zbc_keypair(v[0]); if(!kp.IsOk()) throw std::runtime_error("bad key");
             zoobc::model::FeeVoteInfo vi;
-            vi.recent_block_hash=hx(v[1]); vi.recent_block_height=(uint32_t)std::stoul(v[2]); vi.fee_vote=std::stoll(v[3]);
+            vi.recent_block_hash=hx(v[1]); vi.recent_block_height=NU32(v,2); vi.fee_vote=N(v,3);
             std::vector<uint8_t> vib = TransactionUtil::GetFeeVoteInfoBytes(vi);  // the bytes the node verifies voter_signature over
             auto sig=zoobc::crypto::Signature::Sign(vib, kp.Value().private_key);
             if(!sig.IsOk()) throw std::runtime_error("failed to sign fee vote info");
@@ -336,17 +415,100 @@ static std::map<std::string, Cmd> registry() {
          P("End time","end_time","unix-seconds cutoff (0 = none)","0",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
             auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid recipient"); rec=r.Value().address;
-            int64_t tid=(v.size()>2&&!v[2].empty())?std::stoll(v[2]):0;
-            int64_t per=std::stoll(v[3]);
-            int64_t iv=(v.size()>4&&!v[4].empty())?std::stoll(v[4]):0;
-            int32_t fires=(int32_t)std::stol(v[5]);
-            int64_t cliff=(v.size()>6&&!v[6].empty())?std::stoll(v[6]):0;
-            int fm=(v.size()>7&&!v[7].empty())?std::stoi(v[7]):0;
-            int cp=(v.size()>8&&!v[8].empty())?std::stoi(v[8]):0;
-            int64_t endt=(v.size()>9&&!v[9].empty())?std::stoll(v[9]):0;
+            int64_t tid=(v.size()>2&&!v[2].empty())?parse_id_i64(v[2],"token_id"):0;
+            int64_t per=N(v,3);
+            int64_t iv=(v.size()>4&&!v[4].empty())?N(v,4):0;
+            int32_t fires=(int32_t)NI(v,5);
+            int64_t cliff=(v.size()>6&&!v[6].empty())?N(v,6):0;
+            int fm=(v.size()>7&&!v[7].empty())?NI(v,7):0;
+            int cp=(v.size()>8&&!v[8].empty())?NI(v,8):0;
+            int64_t endt=(v.size()>9&&!v[9].empty())?N(v,9):0;
             u64(body,tid); u64(body,per); u64(body,iv); u32(body,(uint32_t)fires); u64(body,cliff);
             body.push_back((uint8_t)fm); body.push_back((uint8_t)cp); u64(body,endt); body.push_back(0);
             ex={{"token_id",tid},{"per_fire_amount",per},{"remaining_fires",fires}}; }};
+    // ---- 0.5.0 types that had no command (overnight devnet test 2026-09-25) ----
+    m["set-transact-policy"] = {"Refuse whole categories of transactions, sent or received (SetTransactPolicy)", (uint32_t)TT::SetTransactPolicy, false,
+        {PK(), P("Categories","categories","comma list of categories to REFUSE: payments,apps,tokens,exchange,data,escrow,node,bridge,governance, or 'none' to allow all")},
+        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
+            static const std::vector<std::string> names = {"payments","apps","tokens","exchange","data","escrow","node","bridge","governance"};
+            uint32_t mask = 0; json refused = json::array();
+            for (const auto& c : split_csv(v[1])) {
+                if (c == "none" || c == "0") continue;
+                auto it = std::find(names.begin(), names.end(), c);
+                if (it == names.end()) throw std::runtime_error("unknown category '" + c + "' (payments,apps,tokens,exchange,data,escrow,node,bridge,governance)");
+                mask |= 1u << static_cast<uint32_t>(it - names.begin()); refused.push_back(c);
+            }
+            body.push_back(static_cast<uint8_t>(mask & 0xff)); body.push_back(static_cast<uint8_t>((mask >> 8) & 0xff));
+            ex={{"mask",mask},{"refused",refused}}; }};
+    m["set-split-policy"] = {"Forward incoming credits to up to 10 recipients by share (SetSplitPolicy)", (uint32_t)TT::SetSplitPolicy, false,
+        {PK(), P("Recipients","recipients","ADDRESS=PERCENT[,ADDRESS=PERCENT...] (up to two decimals), or 'clear'")},
+        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
+            const auto items = split_csv(v[1]);
+            if (items.empty() || (items.size() == 1 && (items[0] == "clear" || items[0] == "none"))) { body.push_back(0); ex={{"cleared",true}}; return; }
+            if (items.size() > 10) throw std::runtime_error("at most 10 recipients");
+            body.push_back(static_cast<uint8_t>(items.size())); uint32_t sum = 0; json rj = json::array();
+            for (const auto& it : items) {
+                const size_t eq = it.find('=');
+                if (eq == std::string::npos) throw std::runtime_error("recipient '" + it + "' is not ADDRESS=PERCENT");
+                auto a = parse_address(it.substr(0, eq), chain_hint()); if (!a.IsOk()) throw std::runtime_error("invalid recipient " + it.substr(0, eq));
+                std::string pct = it.substr(eq + 1); const size_t dot = pct.find('.');
+                std::string ip = dot == std::string::npos ? pct : pct.substr(0, dot), fp = dot == std::string::npos ? "" : pct.substr(dot + 1);
+                if (fp.size() > 2) throw std::runtime_error("share '" + pct + "': at most two decimals");
+                while (fp.size() < 2) fp += '0';
+                const uint32_t bp = static_cast<uint32_t>(parse_whole_u64(ip.empty() ? "0" : ip, "share", 100)) * 100 +
+                                    static_cast<uint32_t>(parse_whole_u64(fp, "share", 99));
+                if (bp == 0 || bp > 10000) throw std::runtime_error("share '" + pct + "' must be between 0.01 and 100");
+                sum += bp;
+                body.push_back(static_cast<uint8_t>(a.Value().address.size())); body.insert(body.end(), a.Value().address.begin(), a.Value().address.end());
+                u16(body, static_cast<int>(bp)); rj.push_back({{"address",a.Value().display},{"share_bp",bp}});
+            }
+            if (sum > 10000) throw std::runtime_error("shares add up to more than 100%");
+            ex={{"recipients",rj},{"stays_in_account_bp",10000-sum}}; }};
+    m["decline-escrow-request"] = {"Decline an escrow request (payer) or a pending escrow (recipient) (DeclineEscrowRequest)", (uint32_t)TT::DeclineEscrowRequest, false,
+        {PK(), P("Target id","target_id","the EscrowRequest id, or the escrowed transaction's id"),
+         P("Reason","reason","why (UTF-8, at most 512 bytes)","",false),
+         P("Target","target","'request' (you are the payer) or 'escrow' (you are the recipient)","request",false)},
+        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
+            zoobc::transaction::DeclineEscrowRequestBody b;
+            b.request_id = parse_id_i64(v[1], "target_id");
+            b.reason = v.size() > 2 ? v[2] : std::string();
+            const std::string t = v.size() > 3 && !v[3].empty() ? v[3] : "request";
+            if (t == "escrow") b.target = zoobc::transaction::DeclineTarget::Escrow;
+            else if (t != "request") throw std::runtime_error("target must be 'request' or 'escrow'");
+            if (b.reason.size() > zoobc::constants::ESCROW_REQUEST_DECLINE_REASON_MAX) throw std::runtime_error("reason is longer than 512 bytes");
+            body = zoobc::transaction::EncodeDeclineEscrowRequestBody(b);
+            ex={{"target_id",std::to_string(b.request_id)},{"target",t}}; }};
+    m["unlink-account"] = {"Remove a member address from your account group, or leave it (UnlinkAccount)", (uint32_t)TT::UnlinkAccount, false,
+        {PK(), P("Member","member","the address leaving the group (yours to leave; any member if you are the controller)")},
+        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
+            auto a = parse_address(v[1], chain_hint()); if (!a.IsOk()) throw std::runtime_error("invalid member address");
+            zoobc::transaction::group::UnlinkBody b; b.member = a.Value().address;
+            body = zoobc::transaction::group::EncodeUnlinkBody(b); ex={{"member",a.Value().display}}; }};
+    m["set-member-permissions"] = {"Set what a member of your group may spend (SetMemberPermissions, controller only)", (uint32_t)TT::SetMemberPermissions, false,
+        {PK(), P("Member","member","the member address"),
+         P("Flags","flags","1 = may spend, 3 = may spend and move tokens, 0 = receive only"),
+         P("Spend limit","spend_limit","atomic ZBC per period (0 = no limit)","0",false),
+         P("Period","period_blocks","blocks per limit window (required when spend_limit > 0)","0",false)},
+        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
+            auto a = parse_address(v[1], chain_hint()); if (!a.IsOk()) throw std::runtime_error("invalid member address");
+            zoobc::transaction::group::PermissionsBody b; b.member = a.Value().address;
+            const int fl = NI(v, 2); if (fl < 0 || fl > 3) throw std::runtime_error("flags must be 0-3");
+            b.flags = static_cast<uint8_t>(fl);
+            b.spend_limit = (v.size() > 3 && !v[3].empty()) ? N(v, 3) : 0;
+            b.period_blocks = (v.size() > 4 && !v[4].empty()) ? NU32(v, 4) : 0;
+            if (b.spend_limit > 0 && b.period_blocks == 0) throw std::runtime_error("period_blocks is required with a spend_limit");
+            body = zoobc::transaction::group::EncodePermissionsBody(b);
+            ex={{"member",a.Value().display},{"flags",fl},{"spend_limit",b.spend_limit},{"period_blocks",b.period_blocks}}; }};
+    m["link-account"] = {"Link another address into your account group; it consents with its key (LinkAccount)", (uint32_t)TT::LinkAccount, false,
+        {PK(), {"Member private key","member_privkey","private key (64 hex) of the ZBC address that joins; it signs its consent","",true,nullptr},
+         P("Valid until height","valid_until_height","the consent expires after this block height"),
+         P("Link counter","link_seq","the group's current link_seq (0 for a new group; GET /accounts/<you> group.link_seq)","0",false)},
+        nullptr, [](std::vector<std::string>& v, ParsedParams& p){ return group_consent_command(true, v, p); }};
+    m["transfer-group-control"] = {"Hand control of your group to another member; it consents with its key (TransferGroupControl)", (uint32_t)TT::TransferGroupControl, false,
+        {PK(), {"New controller private key","new_controller_privkey","private key (64 hex) of the member taking control; it signs its consent","",true,nullptr},
+         P("Valid until height","valid_until_height","the consent expires after this block height"),
+         P("Link counter","link_seq","the group's current link_seq (GET /accounts/<you> group.link_seq)","0",false)},
+        nullptr, [](std::vector<std::string>& v, ParsedParams& p){ return group_consent_command(false, v, p); }};
     m["cancel-schedule"] = {"Cancel a pending scheduled transfer", (uint32_t)TT::CancelSchedule, false,
         {PK(), P("Schedule id","schedule_id","the schedule id")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
@@ -367,7 +529,7 @@ static std::map<std::string, Cmd> registry() {
          P("Deposit","deposit","rent deposit (atomic ZBC, >= network minimum)"),
          P("Piece ids","piece_ids","piece-id hashes concatenated as one hex string (count x 32 bytes)")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int64_t total=std::stoll(v[2]); uint32_t psz=(uint32_t)std::stoul(v[3]); int64_t dep=std::stoll(v[4]);
+            int64_t total=N(v,2); uint32_t psz=NU32(v,3); int64_t dep=N(v,4);
             if(psz==0) throw std::runtime_error("piece_size must be > 0");
             auto pieces=hx(v[5]); if(pieces.empty()||pieces.size()%32!=0) throw std::runtime_error("piece_ids must be a nonzero multiple of 32 bytes");
             uint32_t pcount=(uint32_t)(pieces.size()/32);
@@ -393,7 +555,7 @@ static std::map<std::string, Cmd> registry() {
          P("Amount","amount","atomic ZBC to add (>= 1000000 = 0.01 ZBC)")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
             auto root=hx(v[1]); if(root.size()!=32) throw std::runtime_error("file_root must be 32 bytes (64 hex)");
-            int64_t amt=std::stoll(v[2]); if(amt<1000000) throw std::runtime_error("amount below the minimum (1000000)");
+            int64_t amt=N(v,2); if(amt<1000000) throw std::runtime_error("amount below the minimum (1000000)");
             body.insert(body.end(), root.begin(), root.end()); u64(body,amt);
             ex={{"file_root",v[1]},{"amount",amt}}; }};
     m["remove-node"] = {"Remove a node registration (v[0] = OWNER key; signs the tx)", (uint32_t)TT::RemoveNodeRegistration, false,
@@ -425,7 +587,7 @@ static std::map<std::string, Cmd> registry() {
             auto gkp=derive_zbc_keypair(v[1]);
             if(gkp.IsErr()) throw std::runtime_error("gateway_privkey is not a valid key");
             const auto& gk = gkp.Value().public_key;
-            long long h=0; try { h=std::stoll(v[2]); } catch(...) { throw std::runtime_error("reference_height must be a number"); }
+            long long h=0; try { h=N(v,2); } catch(...) { throw std::runtime_error("reference_height must be a number"); }
             if(h<0||h>0xffffffffLL) throw std::runtime_error("reference_height out of range");
             auto rh=hx(v[3]); if(rh.size()!=32) throw std::runtime_error("reference_block_hash must be 32 bytes (64 hex)");
             body.insert(body.end(),gk.begin(),gk.end());
@@ -447,10 +609,10 @@ static std::map<std::string, Cmd> registry() {
             int64_t gid=parse_id_i64(v[1],"app_id");
             auto p0=derive_zbc_keypair(v[2]); if(!p0.IsOk()) throw std::runtime_error("bad seat-0 key");
             auto p1=derive_zbc_keypair(v[3]); if(!p1.IsOk()) throw std::runtime_error("bad seat-1 key");
-            int turn=(v.size()>4&&!v[4].empty())?std::stoi(v[4]):0;
+            int turn=(v.size()>4&&!v[4].empty())?NI(v,4):0;
             if(turn!=0&&turn!=1) throw std::runtime_error("opening_turn must be 0 or 1");
             std::vector<int> cells; { std::stringstream ss(v[5]); std::string t;
-                while(std::getline(ss,t,',')){ if(!t.empty()) cells.push_back(std::stoi(t)); } }
+                while(std::getline(ss,t,',')){ if(!t.empty()) cells.push_back(static_cast<int>(whole(t, "cells", INT32_MAX))); } }
             if(cells.empty()) throw std::runtime_error("no moves given");
             std::vector<uint8_t> state(9,0); std::vector<std::vector<uint8_t>> entries;
             for(size_t k=0;k<cells.size();k++){
@@ -520,7 +682,7 @@ static std::map<std::string, Cmd> registry() {
             auto emit_error = make_emitter(params.json_output);
             auto owner_kp=derive_zbc_keypair(v[0]); if(!owner_kp.IsOk()){ emit_error(owner_kp.GetError().ToString()); return 1; }
             auto node_kp=derive_zbc_keypair(v[1]); if(!node_kp.IsOk()){ emit_error(node_kp.GetError().ToString()); return 1; }
-            int64_t locked=std::stoll(v[2]); if(locked<=0){ emit_error("locked_balance must be positive"); return 1; }
+            int64_t locked=N(v,2); if(locked<=0){ emit_error("locked_balance must be positive"); return 1; }
             auto poown=build_proof_of_ownership(owner_kp.Value(), params.api_url); if(!poown.IsOk()){ emit_error(poown.GetError().ToString()); return 1; }
             auto owner_addr=TransactionUtil::BuildAccountAddress(TransactionUtil::ACCOUNT_TYPE_ZBC, owner_kp.Value().public_key);
             auto body=TransactionUtil::GetNodeRegistrationBodyBytes(node_kp.Value().public_key, owner_addr, locked, poown.Value());
@@ -535,7 +697,7 @@ static std::map<std::string, Cmd> registry() {
             auto emit_error = make_emitter(params.json_output);
             auto owner_kp=derive_zbc_keypair(v[0]); if(!owner_kp.IsOk()){ emit_error(owner_kp.GetError().ToString()); return 1; }
             auto node_kp=derive_zbc_keypair(v[1]); if(!node_kp.IsOk()){ emit_error(node_kp.GetError().ToString()); return 1; }
-            int64_t locked=std::stoll(v[2]);
+            int64_t locked=N(v,2);
             auto poown=build_proof_of_ownership(owner_kp.Value(), params.api_url); if(!poown.IsOk()){ emit_error(poown.GetError().ToString()); return 1; }
             auto body=TransactionUtil::GetUpdateNodeRegistrationBodyBytes(node_kp.Value().public_key, locked, poown.Value());
             json extra={{"node_znk",zoobc::crypto::ZoobcAddress::Encode(node_kp.Value().public_key,"ZNK")}};
@@ -570,10 +732,10 @@ static std::map<std::string, Cmd> registry() {
             std::vector<std::vector<uint8_t>> participants;
             for(auto& p: split_csv(v[1])){ auto pr=parse_address(p); if(!pr.IsOk()){ emit_error("Invalid participant address: "+p); return 1; } participants.push_back(pr.Value().address); }
             if(participants.empty()){ emit_error("Need at least one participant"); return 1; }
-            uint32_t min_sigs=(uint32_t)std::stoul(v[2]); int64_t nonce=std::stoll(v[3]);
+            uint32_t min_sigs=NU32(v,2); int64_t nonce=N(v,3);
             auto signer_keys=split_csv(v[4]); if(signer_keys.empty()){ emit_error("Need at least one signer key"); return 1; }
             auto recip=parse_address(v[5]); if(!recip.IsOk()){ emit_error("Invalid recipient: "+recip.GetError().ToString()); return 1; }
-            int64_t amount=std::stoll(v[6]), inner_fee=std::stoll(v[7]);
+            int64_t amount=N(v,6), inner_fee=N(v,7);
             auto multisig_addr=zoobc::transaction::MultisignatureService::GenerateMultisigAddress(participants, nonce, min_sigs);
             if(multisig_addr.empty()){ emit_error("Failed to generate multisig address"); return 1; }
             std::vector<uint8_t> inner_body; TransactionUtil::WriteUint64LE(inner_body,(uint64_t)amount);
@@ -742,7 +904,7 @@ int main(int argc, char* argv[]) {
         std::cout << "ZooBC unified transaction CLI — " << reg.size() << " commands.\n"
                   << "  Default: JSON in, JSON out.   --verbose: prompt each field + text output.\n"
                   << "  echo '{...}' | zbc-cli <cmd> --json-input     zbc-cli help <cmd>  (fields for one tx)\n\n";
-        const char* order[] = {"value","tokens","exchange","apps","storage","account","node","gateway","governance","keys","other"};
+        const char* order[] = {"value","tokens","exchange","apps","storage","account","groups","node","gateway","governance","keys","other"};
         for (const char* g : order) {
             bool header=false;
             for (auto& kv : reg) {
@@ -772,14 +934,19 @@ int main(int argc, char* argv[]) {
     emit_error = make_emitter(params.json_output);
     if (!init_sodium(emit_error)) return exit_code::INTERNAL;
     chain_hint() = params.chain;
+    liquid_token_flag() = params.token_id;
+    if (params.token_id != 0 && cmd != "liquid-payment")
+        return fail(emit_error, exit_code::USAGE, "--token applies to liquid-payment only; " + cmd + " does not read it");
     // Custom handler (multisig, node reg, sign/verify): fully self-contained.
     // A builder or handler throws only for arguments it cannot use (bad address, out-of-range
     // value, bad hex), so an exception here is a usage error, not an internal one.
+    cur_params() = &c.params;
     if (c.custom) { try { return c.custom(params.values, params); } catch (const std::exception& e) { return fail(emit_error, exit_code::USAGE, e.what()); } }
     try {
         auto kp = derive_zbc_keypair(params.values[0]);
         if (!kp.IsOk()) return fail(emit_error, exit_code::USAGE, kp.GetError().ToString());
         std::vector<uint8_t> recipient, body; json extra;
+        cur_params() = &c.params;
         c.build(params.values, recipient, body, extra);
         return run_transaction(params, c.tx_type, kp.Value().public_key, recipient, body, kp.Value(),
                                KeyType::ZBC, extra, emit_error, "SUCCESS: " + cmd + " submitted!");

@@ -43,7 +43,7 @@ int main(int argc, char* argv[]) {
         auto kp=derive_zbc_keypair(params.values[0]); if(!kp.IsOk()){emit_error(kp.GetError().ToString());return 1;}
         const std::string name=params.values[1];
         if(name.empty()||name.size()>128){ emit_error("parameter name must be 1..128 characters"); return 1; }
-        int64_t value=std::stoll(params.values[2]);
+        int64_t value=whole_param(params.values, 2);
         std::vector<uint8_t> body;
         putU32(body,(uint32_t)name.size());
         body.insert(body.end(), name.begin(), name.end());

@@ -4,7 +4,7 @@
 #pragma once
 // Names for every event type the node writes into account_ledger.event_type (gap 4 of wallet prompt
 // 12). The numbers come from two places: model::EventType (1-16, 100: the Go-era transaction events)
-// and the EVENT_TYPE_* constants in common/constants.h (17-69). The DFS executors write their
+// and the EVENT_TYPE_* constants in common/constants.h (17-70). The DFS executors write their
 // transaction type as the event (8, 264, 520); 8 therefore also names a DFSCreateFile row, which is
 // told apart from a block reward by its non-zero transaction_id. ledger_events_test pins that every
 // constant has a name here, so a new event cannot reach the API unnamed.
@@ -84,6 +84,7 @@ inline const char* EventName(int64_t ev) {
         case 67:  return "app_rake";
         case 68:  return "prepaid_storage_funded";
         case 69:  return "stored_file_rent";
+        case 70:  return "multisig_inner_fee";          // rule multisig_inner_fee_path: the inner transaction's fee
         case 100: return "app_payout";
         case 264: return "dfs_file_updated";
         case 520: return "dfs_file_deleted";

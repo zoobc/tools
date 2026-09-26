@@ -21,7 +21,7 @@ int main(int argc, char* argv[]) {
     emit_error=make_emitter(params.json_output); if(!init_sodium(emit_error)) return 1;
     try {
         auto kp=derive_zbc_keypair(params.values[0]); if(!kp.IsOk()){emit_error(kp.GetError().ToString());return 1;}
-        int64_t amount=std::stoll(params.values[1]);
+        int64_t amount=whole_param(params.values, 1);
         if(amount<=0){emit_error("amount must be > 0");return 1;}
         std::vector<uint8_t> body; putU64(body,amount);
         std::string sender_addr=zoobc::crypto::ZoobcAddress::Encode(kp.Value().public_key,"ZBC");

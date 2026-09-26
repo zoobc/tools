@@ -1,0 +1,91 @@
+{
+  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
+  "name": "SetMemberPermissions",
+  "type": 57,
+  "command": "set-member-permissions",
+  "binary": null,
+  "description": "Set what a member of the sender's account group may spend (controller only).",
+  "sender_key": "sender_privkey",
+  "recipient": "none",
+  "options": [
+    "message",
+    "encrypt"
+  ],
+  "needs_node": false,
+  "custom": null,
+  "params": [
+    {
+      "name": "sender_privkey",
+      "kind": "privkey",
+      "required": true,
+      "help": "the signing key: 32-byte Ed25519 seed as 64 hex; '-' or omitted = ZBC_KEY"
+    },
+    {
+      "name": "member",
+      "kind": "address",
+      "required": true,
+      "help": "the member address"
+    },
+    {
+      "name": "flags",
+      "kind": "uint8",
+      "required": true,
+      "help": "1 = may spend, 3 = may spend and move tokens, 0 = receive only",
+      "min": 0,
+      "max": 3
+    },
+    {
+      "name": "spend_limit",
+      "kind": "int64",
+      "required": false,
+      "help": "atomic ZBC per period (0 = no limit)",
+      "default": "0"
+    },
+    {
+      "name": "period_blocks",
+      "kind": "uint32",
+      "required": false,
+      "help": "blocks per limit window (required when spend_limit > 0)",
+      "default": "0"
+    }
+  ],
+  "body": [
+    {
+      "name": "version",
+      "encoding": "literal",
+      "from": "version",
+      "value": "01"
+    },
+    {
+      "name": "member",
+      "encoding": "address8",
+      "from": "member"
+    },
+    {
+      "name": "flags",
+      "encoding": "u8",
+      "from": "flags"
+    },
+    {
+      "name": "spend_limit",
+      "encoding": "u64le",
+      "from": "spend_limit"
+    },
+    {
+      "name": "period_blocks",
+      "encoding": "u32le",
+      "from": "period_blocks"
+    }
+  ],
+  "example": {
+    "member": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+    "flags": "1",
+    "spend_limit": "100000000",
+    "period_blocks": "5760"
+  },
+  "notes": [
+    "zbc-cli set-member-permissions; no single program.",
+    "Rule account_groups: accepted from its activation height.",
+    "The C++ tools refuse a spend_limit above 0 with period_blocks 0."
+  ]
+}

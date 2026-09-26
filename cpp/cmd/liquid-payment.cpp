@@ -33,7 +33,7 @@ int main(int argc, char* argv[]) {
         auto recip_result = parse_address(params.values[1]);
         if (!recip_result.IsOk()) { emit_error("Invalid recipient: " + recip_result.GetError().ToString()); return 1; }
 
-        int64_t amount = std::stoll(params.values[2]);
+        int64_t amount = whole_param(params.values, 2);
         if (amount <= 0) { emit_error("Amount must be positive"); return 1; }
 
         uint64_t complete_minutes = std::stoull(params.values[3]);

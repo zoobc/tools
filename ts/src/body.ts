@@ -119,6 +119,7 @@ export function encodeField(f: FieldDef, params: Record<string, string>, ctx: Bo
     case "str16": { const b = utf8(value); return w.u16(b.length).bytes(b).finish(); }
     case "str32": { const b = utf8(value); return w.u32(b.length).bytes(b).finish(); }
     case "address": return parseAddress(value).bytes;
+    case "address8": { const a = parseAddress(value).bytes; return w.u8(a.length).bytes(a).finish(); }
     case "address_list": { for (const a of splitList(value)) w.bytes(parseAddress(a).bytes); return w.finish(); }
     case "address_list8": {
       const items = splitList(value);
