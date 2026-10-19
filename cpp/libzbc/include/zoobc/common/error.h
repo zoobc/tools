@@ -75,6 +75,35 @@ enum class ErrorCategory {
     Consensus
 };
 
+// A fault of THIS node (a database or network problem, a service not wired, a timeout) as opposed
+// to an answer about the input: every node computing the same thing gets the same NotFound,
+// InvalidArgument or ValidationError, but a DatabaseLocked says nothing about the transaction. The
+// block producer uses this to decide whether a transaction that failed in a candidate can be mined
+// by anyone (evict it) or whether the failure was local (keep it). DatabaseNotFound is "no such row",
+// an answer, not a fault.
+inline bool IsLocalFault(ErrorCode code) {
+    switch (code) {
+        case ErrorCode::Unknown:
+        case ErrorCode::Internal:
+        case ErrorCode::Timeout:
+        case ErrorCode::Unimplemented:
+        case ErrorCode::DatabaseError:
+        case ErrorCode::DatabaseReadError:
+        case ErrorCode::DatabaseWriteError:
+        case ErrorCode::DatabaseLocked:
+        case ErrorCode::DatabaseCorrupt:
+        case ErrorCode::NetworkError:
+        case ErrorCode::ConnectionFailed:
+        case ErrorCode::ConnectionLost:
+        case ErrorCode::NetworkTimeout:
+        case ErrorCode::InvalidProtocol:
+        case ErrorCode::MempoolFull:
+            return true;
+        default:
+            return false;
+    }
+}
+
 // Error structure
 struct Error {
     ErrorCode code;

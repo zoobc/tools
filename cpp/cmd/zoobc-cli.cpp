@@ -25,7 +25,12 @@ static std::string to_hex(const std::vector<uint8_t>& v){ std::ostringstream o; 
 static void u64(std::vector<uint8_t>& b, int64_t v){ for(int i=0;i<8;i++){ b.push_back((uint8_t)(v&0xff)); v>>=8; } }
 static void u16(std::vector<uint8_t>& b, int v){ b.push_back(v&0xff); b.push_back((v>>8)&0xff); }
 static void u32(std::vector<uint8_t>& b, uint32_t v){ for(int i=0;i<4;i++){ b.push_back((uint8_t)(v&0xff)); v>>=8; } }
-static std::vector<uint8_t> hx(const std::string& h){ std::vector<uint8_t> v; for(size_t i=0;i+1<h.size();i+=2) v.push_back((uint8_t)std::stoi(h.substr(i,2),nullptr,16)); return v; }
+static std::vector<uint8_t> hx(const std::string& h){
+    // Forum #400: a ZNK_/ZBG_ address given where 64 hex characters are expected used to die inside
+    // std::stoi with the bare message "stoi". Say what was expected.
+    if (h.size()%2!=0 || h.find_first_not_of("0123456789abcdefABCDEF")!=std::string::npos)
+        throw std::runtime_error("expected hex characters ("+std::to_string(h.size())+" given); a ZBC_/ZNK_/ZBG_ address is not accepted here, pass the raw 64-hex key");
+    std::vector<uint8_t> v; for(size_t i=0;i+1<h.size();i+=2) v.push_back((uint8_t)std::stoi(h.substr(i,2),nullptr,16)); return v; }
 // --chain <name>: read the envelope recipient as this chain (cli-contract.md). The builders have no
 // access to ParsedParams, so main() parks the option here before calling them.
 static std::string& chain_hint(){ static std::string s; return s; }
@@ -262,7 +267,10 @@ static std::map<std::string, Cmd> registry() {
     m["approve-escrow"] = {"Approve/reject/expire an escrow", (uint32_t)TT::ApprovalEscrow, false,
         {PK(), P("Approval","approval","0=approve 1=reject 2=expire"), P("Transaction hash","transaction_hash","escrowed tx hash (64 hex)")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
-            int a=NI(v,1); if(a<0||a>2) throw std::runtime_error("approval must be 0/1/2");
+            // 0/1/2 or the words (forum #400: "approve" used to be answered with an atomic-units error).
+            if(v[1]=="approve") v[1]="0"; else if(v[1]=="reject") v[1]="1"; else if(v[1]=="expire") v[1]="2";
+            int a=-1; try { a=NI(v,1); } catch(...) { a=-1; }
+            if(a<0||a>2) throw std::runtime_error("approval must be 0 (approve), 1 (reject) or 2 (expire)");
             // Full 32-byte hash of the escrowed tx (2026-09-08); the 8-byte id is derived from it on chain.
             auto h=hex_to_bytes(v[2]); if(h.size()!=32) throw std::runtime_error("transaction hash must be 64 hex characters");
             // The escrowed transaction is reported as escrowed_transaction_hash / transaction_id; the
@@ -295,21 +303,29 @@ static std::map<std::string, Cmd> registry() {
             auto h=hx(v[1]); if(h.size()!=32) throw std::runtime_error("vote_hash must be 32 bytes (64 hex)");
             body=TransactionUtil::GetFeeVoteCommitBodyBytes(h); ex={{"vote_hash",v[1]}}; }};
     m["setup-dataset"] = {"Set an account-dataset property", (uint32_t)TT::SetupAccountDataset, true,
-        {PK(), P("Subject","recipient","dataset subject address (ZBC_)"), P("Property","property","key"), P("Value","value","value","",false), P("Value (base64)","value_b64","value as base64, for bytes a JSON string cannot carry","",false)},
+        {PK(), P("Subject","recipient","dataset subject address (ZBC_), or `self` for the signer's own account"), P("Property","property","key"), P("Value","value","value","",false), P("Value (base64)","value_b64","value as base64, for bytes a JSON string cannot carry","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
-            auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid subject address"); rec=r.Value().address;
             auto kp=derive_zbc_keypair(v[0]); if(!kp.IsOk()) throw std::runtime_error("bad key");
             auto setter=TransactionUtil::BuildAccountAddress(TransactionUtil::ACCOUNT_TYPE_ZBC, kp.Value().public_key);
+            // A dataset can be written onto ANY account (setter = the signer, subject = whoever), so the subject
+            // is a parameter; `self` saves typing one's own address when the two are the same (the common case,
+            // e.g. release.nodes_per_block on the release authority's own account, 2026-09-28).
+            if(v[1]=="self"||v[1]=="me"){ rec=setter; }
+            else { auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid subject address (a ZBC_ address, or `self`)"); rec=r.Value().address; }
             std::string dsval=v[3];
             if(v.size()>4 && !v[4].empty()){ try { dsval=b64d(v[4]); } catch(const std::exception& e){ throw std::runtime_error(std::string("value_b64 is not valid base64: ")+e.what()); } }
             if(dsval.empty()) throw std::runtime_error("give value or value_b64");
             body=TransactionUtil::GetSetupAccountDatasetBodyBytes(v[2], dsval, setter, rec); ex={{"property",v[2]},{"value_bytes",(int)dsval.size()}}; }};
     m["remove-dataset"] = {"Remove an account-dataset property", (uint32_t)TT::RemoveAccountDataset, true,
-        {PK(), P("Subject","recipient","dataset subject address (ZBC_)"), P("Property","property","key"), P("Value","value","value","",false), P("Value (base64)","value_b64","value as base64, for bytes a JSON string cannot carry","",false)},
+        {PK(), P("Subject","recipient","dataset subject address (ZBC_), or `self` for the signer's own account"), P("Property","property","key"), P("Value","value","value","",false), P("Value (base64)","value_b64","value as base64, for bytes a JSON string cannot carry","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
-            auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid subject address"); rec=r.Value().address;
             auto kp=derive_zbc_keypair(v[0]); if(!kp.IsOk()) throw std::runtime_error("bad key");
             auto setter=TransactionUtil::BuildAccountAddress(TransactionUtil::ACCOUNT_TYPE_ZBC, kp.Value().public_key);
+            // A dataset can be written onto ANY account (setter = the signer, subject = whoever), so the subject
+            // is a parameter; `self` saves typing one's own address when the two are the same (the common case,
+            // e.g. release.nodes_per_block on the release authority's own account, 2026-09-28).
+            if(v[1]=="self"||v[1]=="me"){ rec=setter; }
+            else { auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid subject address (a ZBC_ address, or `self`)"); rec=r.Value().address; }
             std::string dsval=v[3];
             if(v.size()>4 && !v[4].empty()){ try { dsval=b64d(v[4]); } catch(const std::exception& e){ throw std::runtime_error(std::string("value_b64 is not valid base64: ")+e.what()); } }
             if(dsval.empty()) throw std::runtime_error("give value or value_b64");

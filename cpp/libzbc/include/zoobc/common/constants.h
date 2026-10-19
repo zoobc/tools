@@ -367,6 +367,10 @@ constexpr int64_t COINBASE_MAX_NUMBER_REWARDS_PER_BLOCK = 600;         // Max re
 // (bounded by the 600 cap and the active node count). 0 disables. Stateless and
 // deterministic — depends only on the pool size + active count, so all nodes agree.
 constexpr int64_t COINBASE_SMOOTHING_PER_WINNER = ONE_ZBC;            // ~1 winner per 1 ZBC of pool
+// Rule coinbase_maturity: blocks a registered node must wait after its registration transaction before
+// it holds a coinbase lottery ticket or a longevity-pool share. 14 days at 15-second blocks. A fresh
+// chain may set `coinbase_maturity_blocks` in its genesis config; live chains use this default.
+constexpr uint32_t COINBASE_MATURITY_BLOCKS = 80640;
 
 // PoP Consensus - Network Topology
 // Network topology is reshuffled every ΔΥh blocks to ensure fairness
