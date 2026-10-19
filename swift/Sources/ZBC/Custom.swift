@@ -13,11 +13,13 @@ public enum Custom {
         }
     }
 
-    /// owner (36) || block hash (32) || height u32le, then the owner's signature over those bytes.
-    public static func proofOfOwnership(_ owner: KeyPair, _ block: ReferenceBlock) -> [UInt8] {
+    /// owner (36) || block hash (32) || height u32le, then the NODE key's signature over those bytes: the node
+    /// consents to being owned by that account, and the chain verifies with the node's public key (signing.md 6,
+    /// rule poown_required). Until 2026-10-19 this signed with the owner key.
+    public static func proofOfOwnership(_ owner: KeyPair, node: KeyPair, _ block: ReferenceBlock) -> [UInt8] {
         var msg = owner.accountBytes
         msg += block.hash; msg += LE.u32(block.height)
-        return msg + owner.sign(msg)
+        return msg + node.sign(msg)
     }
 
     /// Fill `ctx.computed` for the fields the generic serialiser cannot produce; returns extra output fields.
@@ -32,8 +34,9 @@ public enum Custom {
             extra.append(("piece_count", pieces.count / 32))
         case "register-node", "update-node", "claim-node":
             guard let block = input.block else { throw ToolError.internalError("proof of ownership needs the latest block") }
-            ctx.computed["proof_of_ownership"] = proofOfOwnership(input.sender, block)
-            extra.append(("node_znk", try KeyPair(hex: p["node_privkey"] ?? "").nodeAddress))
+            guard let node = try? KeyPair(hex: p["node_privkey"] ?? "") else { throw ToolError.usage("node_privkey is not a valid key") }
+            ctx.computed["proof_of_ownership"] = proofOfOwnership(input.sender, node: node, block)
+            extra.append(("node_znk", node.nodeAddress))
             extra.append(("owner_zbc", input.sender.address))
         case "fee-vote-reveal":
             var info = Enc.unhex(p["recent_block_hash"] ?? "") ?? []

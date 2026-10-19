@@ -55,14 +55,27 @@ final class VectorsTests: XCTestCase {
 
     func testMessages() throws {
         let d = try load("messages.json")
-        for v in d["vectors"] as! [[String: Any]] {
-            let kp = try KeyPair(hex: s(v, "seed")); let msg = Enc.unhex(s(v, "message_hex"))!
-            let sm = Message.sign(kp, msg)
-            XCTAssertEqual([sm.address, sm.publicKey, sm.digest, sm.signature], [s(v, "address"), s(v, "public_key"), s(v, "digest"), s(v, "signature")])
-            XCTAssertTrue(Message.verify(s(v, "address"), msg, Enc.unhex(s(v, "signature"))!))
+        let chain = Enc.unhex(s((d["vectors"] as! [[String: Any]])[0], "genesis_hash"))!
+        for v in d["vectors"] as! [[String: Any]] {   // ZBC-MSG-v2: chain-bound
+            let kp = try KeyPair(hex: s(v, "seed")); let msg = Enc.unhex(s(v, "message_hex"))!; let g = Enc.unhex(s(v, "genesis_hash"))!; let sig = Enc.unhex(s(v, "signature"))!
+            let sm = Message.sign(kp, msg, genesisHash: g)
+            XCTAssertEqual([sm.scheme, sm.genesisHash, sm.address, sm.publicKey, sm.digest, sm.signature], ["ZBC-MSG-v2", s(v, "genesis_hash"), s(v, "address"), s(v, "public_key"), s(v, "digest"), s(v, "signature")])
+            let r = Message.check(s(v, "address"), msg, sig, genesisHash: g)
+            XCTAssertTrue(r.valid); XCTAssertEqual(r.scheme, Message.scheme); XCTAssertEqual(Enc.hex(r.digest), s(v, "digest"))
+            XCTAssertFalse(Message.verify(s(v, "address"), msg, sig, genesisHash: nil), "a v2 signature needs the chain it was signed for")
+        }
+        for v in d["legacy_v1"] as! [[String: Any]] {   // ZBC-MSG-v1: accepted until the sunset, refused after, never produced
+            let msg = Enc.unhex(s(v, "message_hex"))!; let sig = Enc.unhex(s(v, "signature"))!
+            XCTAssertEqual(Enc.hex(Message.digestV1(msg)), s(v, "digest"))
+            let r = Message.check(s(v, "address"), msg, sig, genesisHash: chain, now: Message.v1Sunset - 1)
+            XCTAssertTrue(r.valid, s(v, "message")); XCTAssertEqual(r.scheme, Message.schemeV1Accepted); XCTAssertEqual(Enc.hex(r.digest), s(v, "digest"))
+            XCTAssertTrue(Message.verify(s(v, "address"), msg, sig, genesisHash: nil, now: Message.v1Sunset - 1), "v1 needs no chain")
+            XCTAssertFalse(Message.verify(s(v, "address"), msg, sig, genesisHash: chain, now: Message.v1Sunset), "v1 is refused from the sunset on")
+            XCTAssertFalse(Message.verify(s(v, "address"), msg, sig, genesisHash: nil, now: Message.v1Sunset))
         }
         for n in d["invalid"] as! [[String: Any]] {
-            XCTAssertFalse(Message.verify(s(n, "address"), Array(s(n, "message").utf8), Enc.unhex(s(n, "signature")) ?? []), s(n, "case"))
+            let g = Enc.isHex(s(n, "genesis_hash"), 64) ? Enc.unhex(s(n, "genesis_hash")) : nil
+            XCTAssertFalse(Message.verify(s(n, "address"), Array(s(n, "message").utf8), Enc.unhex(s(n, "signature")) ?? [], genesisHash: g), s(n, "case"))
         }
     }
 
@@ -144,17 +157,38 @@ final class VectorsTests: XCTestCase {
 
     func testCliMessages() throws {
         let d = try load("messages.json")
-        for v in d["vectors"] as! [[String: Any]] {
+        let chain = s((d["vectors"] as! [[String: Any]])[0], "genesis_hash")
+        for v in d["vectors"] as! [[String: Any]] {   // ZBC-MSG-v2 needs the chain: --genesis (or a node)
+            let hexIn = v["hex_input"] as? Bool == true
+            let msg = hexIn ? s(v, "message_hex") : s(v, "message")
+            let flag = (hexIn ? ["--hex"] : []) + ["--genesis", s(v, "genesis_hash")]
+            let (code, out, _) = cli(["sign-message", s(v, "seed"), msg] + flag)
+            XCTAssertEqual(code, 0, out); let j = json(out)
+            XCTAssertEqual([s(j, "signature"), s(j, "scheme"), s(j, "genesis_hash")], [s(v, "signature"), "ZBC-MSG-v2", s(v, "genesis_hash")])
+            let (code2, out2, _) = cli(["verify-message", s(v, "address"), msg, s(v, "signature")] + flag)
+            XCTAssertEqual(code2, 0, out2); let j2 = json(out2)
+            XCTAssertEqual(j2["valid"] as? Bool, true); XCTAssertEqual(s(j2, "scheme"), "ZBC-MSG-v2")
+        }
+        // sign-message refuses to sign without a chain: 'v1' names no genesis, and an unreachable node gives none.
+        let v0 = (d["vectors"] as! [[String: Any]])[0]
+        XCTAssertEqual(cli(["sign-message", s(v0, "seed"), s(v0, "message"), "--genesis", "v1"]).0, ExitCode.usage)
+        XCTAssertEqual(cli(["sign-message", s(v0, "seed"), s(v0, "message"), "--api", "http://127.0.0.1:9", "--timeout", "2"]).0, ExitCode.nodeUnreachable)
+        // ZBC-MSG-v1 signatures verify until 2026-12-01T00:00:00Z (with or without a chain), then exit 10.
+        let sunsetPassed = Int64(Date().timeIntervalSince1970) >= Message.v1Sunset
+        for v in d["legacy_v1"] as! [[String: Any]] {
             let hexIn = v["hex_input"] as? Bool == true
             let msg = hexIn ? s(v, "message_hex") : s(v, "message")
             let flag = hexIn ? ["--hex"] : []
-            let (code, out, _) = cli(["sign-message", s(v, "seed"), msg] + flag)
-            XCTAssertEqual(code, 0); XCTAssertEqual(json(out)["signature"] as? String, s(v, "signature"))
-            let (code2, out2, _) = cli(["verify-message", s(v, "address"), msg, s(v, "signature")] + flag)
-            XCTAssertEqual(code2, 0); XCTAssertEqual(json(out2)["valid"] as? Bool, true)
+            for genesis in [chain, "v1"] {
+                let (code, out, _) = cli(["verify-message", s(v, "address"), msg, s(v, "signature"), "--genesis", genesis] + flag)
+                let j = json(out)
+                if sunsetPassed { XCTAssertEqual(code, ExitCode.verifyFailed, out); XCTAssertEqual(j["valid"] as? Bool, false) }
+                else { XCTAssertEqual(code, 0, out); XCTAssertEqual(j["valid"] as? Bool, true); XCTAssertEqual(s(j, "scheme"), Message.schemeV1Accepted); XCTAssertEqual(s(j, "digest"), s(v, "digest")) }
+            }
         }
         for n in d["invalid"] as! [[String: Any]] {
-            XCTAssertEqual(Int64(cli(["verify-message", s(n, "address"), s(n, "message"), s(n, "signature")]).0), i64(n["exit_code"]), s(n, "case"))
+            let genesis = Enc.isHex(s(n, "genesis_hash"), 64) ? ["--genesis", s(n, "genesis_hash")] : []
+            XCTAssertEqual(Int64(cli(["verify-message", s(n, "address"), s(n, "message"), s(n, "signature")] + genesis).0), i64(n["exit_code"]), s(n, "case"))
         }
     }
 

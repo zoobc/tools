@@ -19,10 +19,11 @@ pub struct ReferenceBlock {
     pub height: u32,
 }
 
-/// owner (36) || block hash (32) || height u32le, then the owner's signature over those bytes.
-pub fn proof_of_ownership(owner: &KeyPair, block: &ReferenceBlock) -> Vec<u8> {
+/// owner (36) || block hash (32) || height u32le, then the NODE key's signature over those bytes
+/// (signing.md 6: the node consents to being owned; the chain verifies with the node's public key).
+pub fn proof_of_ownership(owner: &KeyPair, node: &KeyPair, block: &ReferenceBlock) -> Vec<u8> {
     let msg = Writer::new().bytes(&owner.account_bytes()).bytes(&block.hash).u32(block.height).finish();
-    let sig = owner.sign(&msg);
+    let sig = node.sign(&msg);
     [msg, sig.to_vec()].concat()
 }
 
@@ -51,8 +52,8 @@ pub fn compute_fields(input: &CustomInput, ctx: &mut BodyContext) -> Result<Map<
         }
         "register-node" | "update-node" | "claim-node" => {
             let block = input.block.ok_or_else(|| ToolError::new(1, "proof of ownership needs the latest block"))?;
-            ctx.computed.insert("proof_of_ownership".into(), proof_of_ownership(input.sender, block));
             let node = KeyPair::from_hex(&get("node_privkey")).map_err(usage)?;
+            ctx.computed.insert("proof_of_ownership".into(), proof_of_ownership(input.sender, &node, block));
             extra.insert("node_znk".into(), json!(node.node_address()));
             extra.insert("owner_zbc".into(), json!(input.sender.address()));
         }

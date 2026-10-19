@@ -35,10 +35,10 @@ public enum Cli {
     }
 
     static let messageCommands: [(String, String, [ParamDef])] = [
-        ("sign-message", "Sign a message with a private key (ZBC-MSG-v1, off-chain, no node needed)", [
+        ("sign-message", "Sign a message with a private key (ZBC-MSG-v2: bound to one chain, needs --genesis <hex> or a node)", [
             ParamDef(name: "sender_privkey", kind: "privkey", required: true, help: "Sender private key (64 hex)", default: nil, min: nil, max: nil),
             ParamDef(name: "message", kind: "string", required: true, help: "text to sign (hex bytes with --hex)", default: nil, min: nil, max: nil)]),
-        ("verify-message", "Verify a ZBC-MSG-v1 message signature against a ZBC_ address (off-chain)", [
+        ("verify-message", "Verify a message signature against a ZBC_ address (ZBC-MSG-v2 with the chain genesis; v1 accepted until 2026-12-01)", [
             ParamDef(name: "address", kind: "string", required: true, help: "signer's ZBC_ address (or 64-hex public key)", default: nil, min: nil, max: nil),
             ParamDef(name: "message", kind: "string", required: true, help: "the signed text (hex bytes with --hex)", default: nil, min: nil, max: nil),
             ParamDef(name: "signature", kind: "string", required: true, help: "64-byte Ed25519 signature, 128 hex", default: nil, min: nil, max: nil)]),
@@ -266,9 +266,13 @@ public enum Cli {
 
     static func runSignMessage(_ v: [String: String], _ o: Options, _ io: Io) throws -> Int {
         guard let kp = try? KeyPair(hex: v["sender_privkey"]!) else { throw ToolError.usage("Private key must be 64 hex characters (32 bytes)") }
-        let s = Message.sign(kp, try messageBytes(v["message"]!, o.hex))
+        let msg = try messageBytes(v["message"]!, o.hex)
+        // ZBC-MSG-v2 binds the signature to one chain: the genesis comes from --genesis or the node, as for transactions.
+        let ctx = try signingContext(o, Client(api: o.api, timeoutSeconds: o.timeout), io)
+        guard ctx.genesisHash.count == 32 else { throw ToolError.usage("ZBC-MSG-v2 binds the signature to one chain: it needs the chain's genesis (a node, or --genesis <hex>)") }
+        let s = Message.sign(kp, msg, genesisHash: ctx.genesisHash)
         if o.verbose { io.stdout("Address:   \(s.address)\nDigest:    \(s.digest)\nSignature: \(s.signature)\n"); return 0 }
-        var m: [(String, Any)] = [("success", true), ("scheme", s.scheme), ("address", s.address), ("public_key", s.publicKey), ("message_hex", s.messageHex), ("digest", s.digest), ("signature", s.signature)]
+        var m: [(String, Any)] = [("success", true), ("scheme", s.scheme), ("genesis_hash", s.genesisHash), ("address", s.address), ("public_key", s.publicKey), ("message_hex", s.messageHex), ("digest", s.digest), ("signature", s.signature)]
         if !o.hex { m.append(("message", v["message"]!)) }
         out(io, m); return 0
     }
@@ -278,11 +282,15 @@ public enum Cli {
         let msg = try messageBytes(v["message"]!, o.hex)
         guard Enc.isHex(v["signature"]!) else { throw ToolError.usage("signature must be hex") }
         guard v["signature"]!.utf8.count == 128 else { throw ToolError.usage("signature must be 64 bytes (128 hex characters)") }
-        let valid = Message.verify(v["address"]!, msg, Enc.unhex(v["signature"]!)!)
+        // v2 first (needs the chain genesis: --genesis <hex> or a node; unknown = skipped), then v1 until its sunset.
+        let genesis: [UInt8]? = (try? signingContext(o, Client(api: o.api, timeoutSeconds: o.timeout), io))
+            .flatMap { $0.genesisHash.count == 32 ? $0.genesisHash : nil }
+        let r = Message.check(v["address"]!, msg, Enc.unhex(v["signature"]!)!, genesisHash: genesis)
+        let valid = r.valid
         let address = Address.encode(pub, prefix: "ZBC")!
         let code = valid ? ExitCode.ok : ExitCode.verifyFailed
         if o.verbose { io.stdout("\(valid ? "VALID" : "INVALID") signature for \(address)\n"); return code }
-        out(io, [("success", true), ("valid", valid), ("scheme", Message.scheme), ("address", address), ("digest", Enc.hex(Message.digest(msg))), ("exit_code", code), ("error_class", ExitCode.errorClass(code))])
+        out(io, [("success", true), ("valid", valid), ("scheme", r.scheme), ("address", address), ("digest", Enc.hex(r.digest)), ("exit_code", code), ("error_class", ExitCode.errorClass(code))])
         return code
     }
 

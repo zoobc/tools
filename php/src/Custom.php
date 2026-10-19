@@ -8,11 +8,14 @@ namespace Zoobc\Zbc;
 /** The hand-written parts the descriptions mark computed or custom (spec/transactions/README.md). */
 final class Custom
 {
-    /** owner (36) || block hash (32) || height u32le, then the owner's signature over those bytes. */
-    public static function proofOfOwnership(KeyPair $owner, ReferenceBlock $block): string
+    /**
+     * owner (36) || block hash (32) || height u32le, then the NODE key's signature over those bytes (signing.md section 6):
+     * the node consents to being owned by that account, and the chain verifies with the node's public key.
+     */
+    public static function proofOfOwnership(KeyPair $owner, ReferenceBlock $block, KeyPair $node): string
     {
         $msg = $owner->accountBytes() . $block->hash . Encoding::le32($block->height);
-        return $msg . $owner->sign($msg);
+        return $msg . $node->sign($msg);
     }
 
     /** Fill $ctx->computed for the fields the generic serialiser cannot produce; returns extra output fields. */
@@ -28,8 +31,9 @@ final class Custom
                 break;
             case 'register-node': case 'update-node': case 'claim-node':
                 if ($in->block === null) { throw ToolError::internal('proof of ownership needs the latest block'); }
-                $ctx->computed['proof_of_ownership'] = self::proofOfOwnership($in->sender, $in->block);
-                $extra['node_znk'] = KeyPair::fromHex($p['node_privkey'])->nodeAddress();
+                $node = KeyPair::fromHex($p['node_privkey']);
+                $ctx->computed['proof_of_ownership'] = self::proofOfOwnership($in->sender, $in->block, $node);
+                $extra['node_znk'] = $node->nodeAddress();
                 $extra['owner_zbc'] = $in->sender->address();
                 break;
             case 'fee-vote-reveal':

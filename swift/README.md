@@ -29,8 +29,8 @@ and depend on the product `ZBC` (the package manifest is in `swift/`; from a che
 .build/release/zbc-cli send-zbc - ZBC_... 100000000 --genesis <64 hex> --timestamp 1700000000 --offline    # no node
 printf '%s' '{"recipient":"ZBC_...","amount":100000000}' | ZBC_KEY=<64 hex> .build/release/zbc-cli send-zbc --json-input
 .build/release/zbc-cli approve-escrow - 0 <escrowed tx hash>
-.build/release/zbc-cli sign-message <64 hex key> "text"
-.build/release/zbc-cli verify-message ZBC_... "text" <signature>       # exit 0 valid, 10 not
+.build/release/zbc-cli sign-message <64 hex key> "text" --genesis <hex>   # ZBC-MSG-v2: bound to one chain (or ask a node via --api)
+.build/release/zbc-cli verify-message ZBC_... "text" <signature> --genesis <hex>   # exit 0 valid, 10 not; v1 accepted until 2026-12-01
 .build/release/zbc-cli help send-zbc                                    # the fields of one command
 .build/release/zbc-cli send-zbc --help                                  # options, environment, exit codes
 ```
@@ -50,8 +50,9 @@ import ZBC
 let kp = try KeyPair(hex: "<64 hex seed>")                  // kp.address ZBC_, kp.nodeAddress ZNK_, kp.accountBytes
 let (acct, path) = try Wallet.account("<12 or 24 words>", index: 0)   // m/44'/883'/0'
 
-let s = Message.sign(kp, Array("hello".utf8))               // ZBC-MSG-v1: address, digest, signature
-Message.verify(kp.address, Array("hello".utf8), Enc.unhex(s.signature)!)   // true
+let genesis = Enc.unhex("<64-hex genesis block hash>")!      // the chain signed for (or client.signingRule().genesisHash)
+let s = Message.sign(kp, Array("hello".utf8), genesisHash: genesis)   // ZBC-MSG-v2 (chain-bound): address, digest, signature
+Message.verify(kp.address, Array("hello".utf8), Enc.unhex(s.signature)!, genesisHash: genesis)   // true; v1 signatures accepted until 2026-12-01
 
 let client = Client(api: "https://<gateway>", timeoutSeconds: 20)
 let ctx = try client.signingRule()                          // version 2 + genesis from /api/v1/node/info

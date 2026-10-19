@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zoobc/tools/go/zbc"
 )
@@ -152,42 +153,72 @@ func TestExitCodes(t *testing.T) {
 
 func TestMessagesThroughCLI(t *testing.T) {
 	clearEnv(t)
+	type messageVector struct {
+		Seed        string `json:"seed"`
+		Message     string `json:"message"`
+		MessageHex  string `json:"message_hex"`
+		GenesisHash string `json:"genesis_hash"`
+		Address     string `json:"address"`
+		Signature   string `json:"signature"`
+		HexInput    bool   `json:"hex_input"`
+	}
 	var d struct {
-		Vectors []struct {
-			Seed       string `json:"seed"`
-			Message    string `json:"message"`
-			MessageHex string `json:"message_hex"`
-			Address    string `json:"address"`
-			Signature  string `json:"signature"`
-			HexInput   bool   `json:"hex_input"`
-		}
-		Invalid []struct {
-			Case, Address, Message, Signature string
-			ExitCode                          int `json:"exit_code"`
+		Vectors  []messageVector
+		LegacyV1 []messageVector `json:"legacy_v1"`
+		Invalid  []struct {
+			Case, Address, Message, Signature, GenesisHash string
+			ExitCode                                       int `json:"exit_code"`
 		}
 	}
 	load(t, "messages.json", &d)
-	for _, v := range d.Vectors {
-		msg := v.Message
-		var flag []string
+	text := func(v messageVector) (string, []string) {
 		if v.HexInput {
-			msg = v.MessageHex
-			flag = []string{"--hex"}
+			return v.MessageHex, []string{"--hex"}
 		}
-		code, out, _ := run(t, "", append([]string{"sign-message", v.Seed, msg}, flag...)...)
+		return v.Message, nil
+	}
+	for _, v := range d.Vectors {
+		msg, flag := text(v)
+		code, out, _ := run(t, "", append([]string{"sign-message", v.Seed, msg, "--genesis", v.GenesisHash}, flag...)...)
 		var j map[string]any
 		_ = json.Unmarshal([]byte(out), &j)
-		if code != 0 || j["signature"] != v.Signature {
-			t.Errorf("sign-message %s: %d %v", v.Seed, code, j["signature"])
+		if code != 0 || j["signature"] != v.Signature || j["scheme"] != zbc.MessageSigningScheme || j["genesis_hash"] != v.GenesisHash {
+			t.Errorf("sign-message %s: %d %v", v.Seed, code, j)
 		}
-		code, out, _ = run(t, "", append([]string{"verify-message", v.Address, msg, v.Signature}, flag...)...)
+		if code, out, _ := run(t, "", append([]string{"sign-message", v.Seed, msg, "--genesis", "v1"}, flag...)...); code != zbc.ExitUsage {
+			t.Errorf("sign-message %s without a chain: exit %d %s", v.Seed, code, out)
+		}
+		code, out, _ = run(t, "", append([]string{"verify-message", v.Address, msg, v.Signature, "--genesis", v.GenesisHash}, flag...)...)
 		_ = json.Unmarshal([]byte(out), &j)
-		if code != 0 || j["valid"] != true {
-			t.Errorf("verify-message %s: %d", v.Seed, code)
+		if code != 0 || j["valid"] != true || j["scheme"] != zbc.MessageSigningScheme || j["genesis_hash"] != v.GenesisHash {
+			t.Errorf("verify-message %s: %d %v", v.Seed, code, j)
+		}
+		if code, _, _ := run(t, "", append([]string{"verify-message", v.Address, msg, v.Signature, "--genesis", "v1"}, flag...)...); code != zbc.ExitVerifyFailed {
+			t.Errorf("verify-message %s without its chain: exit %d", v.Seed, code)
+		}
+	}
+	// Legacy v1 signatures verify (scheme says so) until the sunset, with or without a genesis; after it they are invalid.
+	wantCode, wantScheme := zbc.ExitVerifyFailed, zbc.MessageSigningScheme
+	if time.Now().Unix() < zbc.MessageSigningV1Sunset {
+		wantCode, wantScheme = 0, zbc.MessageSigningV1Accepted
+	}
+	for _, v := range d.LegacyV1 {
+		msg, flag := text(v)
+		for _, genesis := range [][]string{{"--genesis", d.Vectors[0].GenesisHash}, {"--genesis", "v1"}, nil} {
+			code, out, _ := run(t, "", append(append([]string{"verify-message", v.Address, msg, v.Signature}, genesis...), flag...)...)
+			var j map[string]any
+			_ = json.Unmarshal([]byte(out), &j)
+			if code != wantCode || j["scheme"] != wantScheme {
+				t.Errorf("legacy verify-message %s %v: exit %d %v", v.Seed, genesis, code, j)
+			}
 		}
 	}
 	for _, n := range d.Invalid {
-		if code, _, _ := run(t, "", "verify-message", n.Address, n.Message, n.Signature); code != n.ExitCode {
+		args := []string{"verify-message", n.Address, n.Message, n.Signature}
+		if n.GenesisHash != "" {
+			args = append(args, "--genesis", n.GenesisHash)
+		}
+		if code, _, _ := run(t, "", args...); code != n.ExitCode {
 			t.Errorf("%s: exit %d, want %d", n.Case, code, n.ExitCode)
 		}
 	}

@@ -16,10 +16,11 @@ type ReferenceBlock struct {
 	Height uint32
 }
 
-// ProofOfOwnership is owner (36) || block hash (32) || height u32le, then the owner's signature over it.
-func ProofOfOwnership(owner KeyPair, block ReferenceBlock) []byte {
+// ProofOfOwnership is owner (36) || block hash (32) || height u32le, then the NODE key's signature over it
+// (signing.md 6: the node consents to being owned; the chain verifies with the node's public key, rule poown_required).
+func ProofOfOwnership(owner, node KeyPair, block ReferenceBlock) []byte {
 	msg := NewWriter().Bytes(owner.AccountBytes()).Bytes(block.Hash).U32(block.Height).Finish()
-	return append(msg, owner.Sign(msg)...)
+	return append(msg, node.Sign(msg)...)
 }
 
 // CustomInput is what the hand-written parts need.
@@ -51,11 +52,11 @@ func ComputeFields(in CustomInput, ctx *BodyContext) (map[string]any, error) {
 		if in.Block == nil {
 			return nil, Internal("proof of ownership needs the latest block")
 		}
-		ctx.Computed["proof_of_ownership"] = ProofOfOwnership(in.Sender, *in.Block)
 		node, err := KeyPairFromHex(p["node_privkey"])
 		if err != nil {
 			return nil, Usage("%v", err)
 		}
+		ctx.Computed["proof_of_ownership"] = ProofOfOwnership(in.Sender, node, *in.Block)
 		extra["node_znk"] = node.NodeAddress()
 		extra["owner_zbc"] = in.Sender.Address()
 	case "fee-vote-reveal":

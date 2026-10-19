@@ -16,11 +16,13 @@ use ZBC::Transaction qw(SEND_ZBC u32 u64 unsigned_bytes signing_digest);
 our @EXPORT_OK = qw(proof_of_ownership compute_fields multisig_address custom_body);
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
 
-# owner address (36) || block hash (32) || height u32le, then the owner's signature over those 72 bytes.
+# owner address (36) || block hash (32) || height u32le, then the NODE key's signature over those 72 bytes (signing.md
+# section 6): the node consents to being owned by that account, and the chain verifies with the node's public key.
 sub proof_of_ownership {
-    my ($owner, $block_hash, $height) = @_;
+    my ($owner, $block_hash, $height, $node) = @_;
+    die "proof of ownership is signed by the node key" unless $node;
     my $msg = $owner->account_bytes . $block_hash . u32($height);
-    return $msg . ZBC::Ed25519::sign($msg, $owner->seed);
+    return $msg . ZBC::Ed25519::sign($msg, $node->seed);
 }
 
 # Fill `computed` for the fields the generic serialiser cannot produce; returns a hash of extra output fields.
@@ -35,8 +37,9 @@ sub compute_fields {
         $extra{piece_count} = length($pieces) / 32;
     } elsif ($cmd eq 'register-node' || $cmd eq 'update-node' || $cmd eq 'claim-node') {
         die "proof of ownership needs the latest block" unless $reference_block;
-        $computed->{proof_of_ownership} = proof_of_ownership($sender, $reference_block->[0], $reference_block->[1]);
-        $extra{node_znk} = key_pair($params->{node_privkey})->node_address;
+        my $node = key_pair($params->{node_privkey});
+        $computed->{proof_of_ownership} = proof_of_ownership($sender, $reference_block->[0], $reference_block->[1], $node);
+        $extra{node_znk} = $node->node_address;
         $extra{owner_zbc} = $sender->address;
     } elsif ($cmd eq 'fee-vote-reveal') {
         my $info = from_hex($params->{recent_block_hash}) . u32(parse_integer($params->{recent_block_height}, 'uint32', 'recent_block_height'))

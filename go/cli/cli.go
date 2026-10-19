@@ -40,10 +40,10 @@ var messageCommands = map[string]struct {
 	desc   string
 	params []zbc.ParamDef
 }{
-	"sign-message": {"Sign a message with a private key (ZBC-MSG-v1, off-chain, no node needed)", []zbc.ParamDef{
+	"sign-message": {"Sign a message with a private key (ZBC-MSG-v2: bound to one chain, needs --genesis <hex> or a node)", []zbc.ParamDef{
 		{Name: "sender_privkey", Kind: "privkey", Required: true, Help: "Sender private key (64 hex)"},
 		{Name: "message", Kind: "string", Required: true, Help: "text to sign (hex bytes with --hex)"}}},
-	"verify-message": {"Verify a ZBC-MSG-v1 message signature against a ZBC_ address (off-chain)", []zbc.ParamDef{
+	"verify-message": {"Verify a message signature against a ZBC_ address (ZBC-MSG-v2 with the chain genesis; v1 accepted until 2026-12-01)", []zbc.ParamDef{
 		{Name: "address", Kind: "string", Required: true, Help: "signer's ZBC_ address (or 64-hex public key)"},
 		{Name: "message", Kind: "string", Required: true, Help: "the signed text (hex bytes with --hex)"},
 		{Name: "signature", Kind: "string", Required: true, Help: "64-byte Ed25519 signature, 128 hex"}}},
@@ -516,7 +516,7 @@ const usageText = `Options:
   --chain <name>        Read the recipient as this chain: zbc, btc, eth, sol, dot, ada, xrp, trx, xtz
   --message <text>      Optional transaction message
   --encrypt             Encrypt --message to the recipient (ZBC only)
-  --genesis <hex|v1>    Sign for this chain (its genesis block hash) without asking the node; 'v1' = legacy unbound digest. Default: ask --api.
+  --genesis <hex|v1>    Sign for this chain (its genesis block hash) without asking the node; 'v1' = legacy unbound digest. Default: ask --api. sign-message needs it (or a node).
   --escrow-approver <addr>   Escrow approver address
   --escrow-commission <n>    Escrow commission (atomic units)
   --escrow-timeout <n>       Escrow timeout as a FUTURE Unix timestamp (seconds)
@@ -572,12 +572,20 @@ func runSignMessage(v map[string]string, o *options, e *env) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	s := zbc.SignMessage(kp, msg)
+	// ZBC-MSG-v2 binds the signature to one chain: the genesis comes from --genesis or the node (signing.md 5a).
+	ctx, err := signingContext(o, zbc.NewClient(o.api, o.timeout), e)
+	if err != nil {
+		return 0, err
+	}
+	s, err := zbc.SignMessage(kp, msg, ctx.GenesisHash)
+	if err != nil {
+		return 0, err
+	}
 	if o.verbose {
 		fmt.Fprintf(e.stdout, "Address:   %s\nDigest:    %s\nSignature: %s\n", s.Address, s.Digest, s.Signature)
 		return 0, nil
 	}
-	out := map[string]any{"success": true, "scheme": s.Scheme, "address": s.Address, "public_key": s.PublicKey, "message_hex": s.MessageHex, "digest": s.Digest, "signature": s.Signature}
+	out := map[string]any{"success": true, "scheme": s.Scheme, "genesis_hash": s.GenesisHash, "address": s.Address, "public_key": s.PublicKey, "message_hex": s.MessageHex, "digest": s.Digest, "signature": s.Signature}
 	if !o.hex {
 		out["message"] = v["message"]
 	}
@@ -625,7 +633,13 @@ func runVerifyMessage(v map[string]string, o *options, e *env) (int, error) {
 		return 0, zbc.Usage("signature must be 64 bytes (128 hex characters)")
 	}
 	sig, _ := hex.DecodeString(v["signature"])
-	valid := zbc.VerifyMessage(v["address"], msg, sig)
+	// v2 first, with the chain genesis when one is known (--genesis or a reachable node); v1 only until its sunset.
+	var genesis []byte
+	if ctx, err := signingContext(o, zbc.NewClient(o.api, o.timeout), e); err == nil {
+		genesis = ctx.GenesisHash
+	}
+	r := zbc.VerifyMessageAny(v["address"], msg, sig, genesis, time.Now().Unix())
+	valid := r.Valid
 	address := zbc.MustEncodeZbcAddress(pub, "ZBC")
 	code := zbc.ExitOK
 	if !valid {
@@ -639,8 +653,12 @@ func runVerifyMessage(v map[string]string, o *options, e *env) (int, error) {
 		fmt.Fprintf(e.stdout, "%s signature for %s\n", word, address)
 		return code, nil
 	}
-	e.out(map[string]any{"success": true, "valid": valid, "scheme": zbc.MessageSigningScheme, "address": address,
-		"digest": hex.EncodeToString(zbc.MessageDigest(msg)), "exit_code": code, "error_class": zbc.ErrorClass(code)})
+	out := map[string]any{"success": true, "valid": valid, "scheme": r.Scheme, "address": address,
+		"digest": hex.EncodeToString(r.Digest), "exit_code": code, "error_class": zbc.ErrorClass(code)}
+	if len(genesis) == 32 {
+		out["genesis_hash"] = hex.EncodeToString(genesis)
+	}
+	e.out(out)
 	return code, nil
 }
 

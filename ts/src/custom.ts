@@ -26,10 +26,15 @@ export interface CustomInput {
   referenceBlock?: { hash: Uint8Array; height: number };
 }
 
-/** Proof of ownership: owner address (36) ‖ block hash (32) ‖ height u32le, signed by the owner (spec/signing.md 6). */
-export function proofOfOwnership(owner: KeyPair, block: { hash: Uint8Array; height: number }): Uint8Array {
+/**
+ * Proof of ownership: owner address (36) ‖ block hash (32) ‖ height u32le, signed by the NODE key
+ * (spec/signing.md 6): the node consents to being owned by that account, and the chain verifies the
+ * signature with the node's public key (rule poown_required, node 0.5.6). Until 2026-10-19 this
+ * signed with the owner key; the chain never checked the bytes, so it passed.
+ */
+export function proofOfOwnership(owner: KeyPair, node: KeyPair, block: { hash: Uint8Array; height: number }): Uint8Array {
   const msg = new ByteWriter().bytes(owner.accountBytes).bytes(block.hash).u32(block.height).finish();
-  return concat(msg, sign(msg, owner.seed));
+  return concat(msg, sign(msg, node.seed));
 }
 
 /** Fill `ctx.computed` for the fields the generic serialiser cannot produce. Returns extra output fields. */
@@ -47,8 +52,8 @@ export function computeFields(input: CustomInput, body: BodyContext): Record<str
     }
     case "register-node": case "update-node": case "claim-node": {
       if (!input.referenceBlock) throw new Error("proof of ownership needs the latest block");
-      computed.proof_of_ownership = proofOfOwnership(sender, input.referenceBlock);
       const node = keyPairFromSeed(params.node_privkey);
+      computed.proof_of_ownership = proofOfOwnership(sender, node, input.referenceBlock);
       extra.node_znk = node.nodeAddress; extra.owner_zbc = sender.address;
       break;
     }

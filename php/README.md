@@ -24,8 +24,8 @@ php bin/zbc-cli send-zbc <64 hex key> ZBC_... 100000000 --api https://<gateway o
 php bin/zbc-cli send-zbc - ZBC_... 100000000 --genesis <64 hex> --timestamp 1700000000 --offline    # no node
 printf '%s' '{"recipient":"ZBC_...","amount":100000000}' | ZBC_KEY=<64 hex> php bin/zbc-cli send-zbc --json-input
 php bin/zbc-cli approve-escrow - 0 <escrowed tx hash>
-php bin/zbc-cli sign-message <64 hex key> "text"
-php bin/zbc-cli verify-message ZBC_... "text" <signature>       # exit 0 valid, 10 not
+php bin/zbc-cli sign-message <64 hex key> "text" --genesis <64 hex>  # ZBC-MSG-v2, chain-bound (or --api a node)
+php bin/zbc-cli verify-message ZBC_... "text" <signature> --genesis <64 hex>   # exit 0 valid, 10 not; v1 accepted until 2026-12-01
 php bin/zbc-cli help send-zbc                                    # the fields of one command
 php bin/zbc-cli send-zbc --help                                  # options, environment, exit codes
 ```
@@ -45,8 +45,8 @@ use Zoobc\Zbc\{KeyPair, Wallet, Message, Transaction, SigningContext, Escrow, Ad
 $kp = KeyPair::fromHex('<64 hex seed>');                 // $kp->address() ZBC_, $kp->nodeAddress() ZNK_, $kp->accountBytes()
 [$acct, $path] = Wallet::account('<12 or 24 words>', 0); // m/44'/883'/0'
 
-$s = Message::sign($kp, 'hello');                        // ZBC-MSG-v1: address, digest, signature
-Message::verify($kp->address(), 'hello', hex2bin($s['signature']));   // true
+$s = Message::sign($kp, 'hello', $genesisHash);          // ZBC-MSG-v2 (32-byte genesis): address, digest, signature, genesis_hash
+Message::verify($kp->address(), 'hello', hex2bin($s['signature']), $genesisHash);   // 'ZBC-MSG-v2' (or 'ZBC-MSG-v1' until 2026-12-01), null when invalid
 
 $client = new Client('https://<gateway>', 20);
 $ctx = $client->signingRule();                           // SigningContext(2, genesis) from /api/v1/node/info
@@ -61,7 +61,7 @@ $client->account($kp->address());                        // balances
 Offline signing takes `SigningContext::of('<genesis hex>')` (or `'v1'`) instead of asking the
 node. Every body of `../spec/transactions` is available through `Body::build($def, $params,
 $ctx)` with `Spec::command('issue-token')` and friends; `Custom::multisigAddress`,
-`Custom::proofOfOwnership` and the custom builders are public.
+`Custom::proofOfOwnership` (signed by the node key) and the custom builders are public.
 
 ## Layout
 

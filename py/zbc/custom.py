@@ -13,10 +13,13 @@ from .keys import KeyPair, key_pair
 from .transaction import SEND_ZBC, SigningContext, signing_digest, u64, unsigned_bytes
 
 
-def proof_of_ownership(owner: KeyPair, block_hash: bytes, height: int) -> bytes:
-    """owner address (36) || block hash (32) || height u32le, then the owner's signature over those 72 bytes."""
+def proof_of_ownership(owner: KeyPair, node: KeyPair, block_hash: bytes, height: int) -> bytes:
+    """owner address (36) || block hash (32) || height u32le, then the NODE key's signature over those 72 bytes.
+
+    The node consents to being owned by that account; the chain verifies with the node's public key
+    (spec/signing.md 6, rule poown_required). Until 2026-10-19 this signed with the owner key."""
     msg = owner.account_bytes + block_hash + struct.pack("<I", height)
-    return msg + ed25519.sign(msg, owner.seed)
+    return msg + ed25519.sign(msg, node.seed)
 
 
 def compute_fields(spec: dict, params: Dict[str, str], sender: KeyPair, computed: Dict[str, bytes],
@@ -32,8 +35,11 @@ def compute_fields(spec: dict, params: Dict[str, str], sender: KeyPair, computed
     elif cmd in ("register-node", "update-node", "claim-node"):
         if reference_block is None:
             raise ValueError("proof of ownership needs the latest block")
-        computed["proof_of_ownership"] = proof_of_ownership(sender, reference_block[0], reference_block[1])
-        extra["node_znk"] = key_pair(params["node_privkey"]).node_address
+        if not is_hex(params.get("node_privkey", ""), 64):
+            raise usage("node_privkey must be 64 hex characters (32 bytes)")
+        node = key_pair(params["node_privkey"])
+        computed["proof_of_ownership"] = proof_of_ownership(sender, node, reference_block[0], reference_block[1])
+        extra["node_znk"] = node.node_address
         extra["owner_zbc"] = sender.address
     elif cmd == "fee-vote-reveal":
         info = (bytes.fromhex(params["recent_block_hash"]) + struct.pack("<I", parse_integer(params["recent_block_height"], "uint32", "recent_block_height"))

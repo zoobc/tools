@@ -44,8 +44,8 @@ use zbc::*;
 let kp = KeyPair::from_hex("<64 hex seed>")?;             // kp.address() ZBC_, kp.node_address() ZNK_, kp.account_bytes()
 let (acct, path) = wallet_account("<12 or 24 words>", 0, "")?;   // m/44'/883'/0'
 
-let s = sign_message(&kp, b"hello");                       // ZBC-MSG-v1: address, digest, signature
-verify_message(&kp.address(), b"hello", &sig_bytes);
+let s = sign_message(&kp, b"hello", &genesis_hash);        // ZBC-MSG-v2 (chain-bound): address, digest, signature
+verify_message(&kp.address(), b"hello", &sig_bytes, Some(&genesis_hash)); // v2, then v1 until 2026-12-01
 
 let client = Client::new("https://<gateway>", 20);
 let ctx = client.signing_rule()?;                          // {2, genesis} from /api/v1/node/info

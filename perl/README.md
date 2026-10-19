@@ -27,8 +27,8 @@ perl bin/zbc-cli send-zbc <64 hex key> ZBC_... 100000000 --api https://<gateway 
 perl bin/zbc-cli send-zbc - ZBC_... 100000000 --genesis <64 hex> --timestamp 1700000000 --offline    # no node
 printf '%s' '{"recipient":"ZBC_...","amount":100000000}' | ZBC_KEY=<64 hex> perl bin/zbc-cli send-zbc --json-input
 perl bin/zbc-cli approve-escrow - 0 <escrowed tx hash>
-perl bin/zbc-cli sign-message <64 hex key> "text"
-perl bin/zbc-cli verify-message ZBC_... "text" <signature>       # exit 0 valid, 10 not
+perl bin/zbc-cli sign-message <64 hex key> "text" --genesis <64 hex>  # ZBC-MSG-v2, chain-bound (or --api a node)
+perl bin/zbc-cli verify-message ZBC_... "text" <signature> --genesis <64 hex>   # exit 0 valid, 10 not; v1 accepted until 2026-12-01
 perl bin/zbc-cli help send-zbc                                    # the fields of one command
 perl bin/zbc-cli send-zbc --help                                  # options, environment, exit codes
 ```
@@ -53,8 +53,8 @@ use ZBC::Client;
 my $kp = key_pair('<64 hex seed>');                     # $kp->address ZBC_, $kp->node_address ZNK_, $kp->account_bytes
 my $acct = wallet_account('<12 or 24 words>', 0, '');   # m/44'/883'/0': $acct->seed, $acct->address, $acct->path
 
-my $s = sign_message($kp->seed, 'hello');               # ZBC-MSG-v1: {address, digest, signature, ...} as hex
-verify_message($kp->address, 'hello', $s->{signature}); # 1
+my $s = sign_message($kp->seed, 'hello', $genesis_hash); # ZBC-MSG-v2 (32-byte genesis): {address, digest, signature, genesis_hash, ...} as hex
+verify_message($kp->address, 'hello', $s->{signature}, $genesis_hash); # 'ZBC-MSG-v2' (or 'ZBC-MSG-v1' until 2026-12-01), 0 when invalid
 
 my $client = ZBC::Client->new('https://<gateway>', 20);
 my $ctx = $client->signing_rule;                        # ZBC::SigningContext (2, genesis) from /api/v1/node/info
@@ -69,7 +69,7 @@ $client->account($kp->address);                         # balances
 Offline signing takes `ZBC::SigningContext->of('<genesis hex>')` (or `'v1'`) instead of asking the
 node. Every body of `../spec/transactions` is available through `ZBC::Body::build_body($def,
 \%params, $kp)` with `ZBC::Commands::by_name('issue-token')` and friends; `multisig_address`,
-`proof_of_ownership` and the custom builders in `ZBC::Custom` are public. Strings are bytes
+`proof_of_ownership` (signed by the node key) and the custom builders in `ZBC::Custom` are public. Strings are bytes
 throughout: pass UTF-8 encoded text, as the command line does.
 
 ## Layout

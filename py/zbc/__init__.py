@@ -11,7 +11,8 @@ from .encryption import (SEALED_MAGIC, SEALED_OVERHEAD, ed25519_pk_to_x25519, ed
 from .errors import ToolError, classify_node_error, error_class, usage
 from .keys import (KeyPair, WalletAccount, generate_mnemonic, key_pair, mnemonic_from_entropy, mnemonic_to_seed,
                    random_seed, slip10_derive, validate_mnemonic, wallet_account)
-from .message import SCHEME as MESSAGE_SIGNING_SCHEME, message_digest, public_key_of_address, sign_message, verify_message
+from .message import (SCHEME as MESSAGE_SIGNING_SCHEME, SCHEME_V1 as MESSAGE_SIGNING_SCHEME_V1, V1_SUNSET as MESSAGE_SIGNING_V1_SUNSET,
+                      message_digest, message_digest_v1, public_key_of_address, sign_message, verify_message, verify_message_scheme)
 from .transaction import (APPROVAL_ESCROW, APPROVE, EXPIRE, REJECT, SEND_ZBC, Escrow, SignedTransaction, SigningContext,
                           approval_escrow_body, send_zbc_body, sign_transaction, signing_digest, transaction_hash,
                           transaction_id, unsigned_bytes)

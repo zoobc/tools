@@ -21,8 +21,8 @@ zbc-cli send-zbc <64 hex key> ZBC_... 100000000 --api https://<gateway or node>
 zbc-cli send-zbc - ZBC_... 100000000 --genesis <64 hex> --timestamp 1700000000 --offline    # no node
 printf '%s' '{"recipient":"ZBC_...","amount":100000000}' | ZBC_KEY=<64 hex> zbc-cli send-zbc --json-input
 zbc-cli approve-escrow - 0 <escrowed tx hash>
-zbc-cli sign-message <64 hex key> "text"
-zbc-cli verify-message ZBC_... "text" <signature>       # exit 0 valid, 10 not
+zbc-cli sign-message <64 hex key> "text" --genesis <64 hex>        # ZBC-MSG-v2, bound to that chain (or --api a node)
+zbc-cli verify-message ZBC_... "text" <signature> --genesis <64 hex> # exit 0 valid, 10 not; v1 accepted until 2026-12-01
 zbc-cli help send-zbc                                    # the fields of one command
 zbc-cli send-zbc --help                                  # options, environment, exit codes
 ```
@@ -43,8 +43,8 @@ import zbc
 kp = zbc.key_pair("<64 hex seed>")                 # kp.address (ZBC_), kp.node_address (ZNK_), kp.account_bytes
 acct = zbc.wallet_account("<12 or 24 words>", 0)   # m/44'/883'/0'
 
-s = zbc.sign_message(kp.seed, b"hello")             # ZBC-MSG-v1: dict with address, digest, signature
-zbc.verify_message(kp.address, b"hello", s["signature"])   # True
+s = zbc.sign_message(kp.seed, b"hello", genesis)    # ZBC-MSG-v2: dict with address, genesis_hash, digest, signature
+zbc.verify_message(kp.address, b"hello", s["signature"], genesis)   # True; v1 signatures pass until 2026-12-01
 
 client = zbc.Client("https://<gateway>", timeout_seconds=20)
 ctx = client.signing_rule()                         # SigningContext(2, genesis) from /api/v1/node/info
@@ -60,7 +60,7 @@ client.account(kp.address)                          # balances
 Offline signing takes `zbc.SigningContext.of("<genesis hex>")` (or `"v1"`) instead of asking the
 node. Every body of `../spec/transactions` is available through `zbc.build_body(spec, params,
 sender)` with `zbc.COMMAND_BY_NAME["issue-token"]` and friends; `zbc.custom` has
-`multisig_address`, `proof_of_ownership` and the custom builders.
+`multisig_address`, `proof_of_ownership` (signed by the node key, `../spec/signing.md` 6) and the custom builders.
 
 ## Layout
 
@@ -69,7 +69,7 @@ zbc/ed25519.py      Ed25519 on Python integers
 zbc/encoding.py     base32, base58/base58check, bech32/bech32m, SS58
 zbc/address.py      account types, ZBC_/ZNK_/ZBS_ text form, parse_address for every supported chain
 zbc/keys.py         seed -> key pair; BIP-39 + SLIP-10 wallets (zbc/bip39_words.py)
-zbc/message.py      ZBC-MSG-v1
+zbc/message.py      ZBC-MSG-v2 (chain-bound); ZBC-MSG-v1 verified until 2026-12-01
 zbc/transaction.py  envelope, escrow block, digest, signature, hash, submit payload
 zbc/body.py         the data-driven body serialiser; zbc/custom.py the hand-written parts
 zbc/api.py          the node/gateway client

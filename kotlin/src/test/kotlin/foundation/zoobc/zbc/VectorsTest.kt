@@ -61,15 +61,28 @@ class VectorsTest {
 
     @Test fun messages() {
         val d = load("messages.json")
-        for (v in d["vectors"]!!.jsonArray.map { it.jsonObject }) {
-            val kp = KeyPair.fromHex(s(v, "seed")); val msg = Encoding.hexToBytes(s(v, "message_hex"))
-            val sm = Message.sign(kp, msg)
-            assertEquals(listOf(s(v, "address"), s(v, "public_key"), s(v, "digest"), s(v, "signature")), listOf(sm.address, sm.publicKey, sm.digest, sm.signature))
-            assertTrue(Message.verify(s(v, "address"), msg, Encoding.hexToBytes(s(v, "signature"))))
+        val chain = Encoding.hexToBytes(s(d["vectors"]!!.jsonArray[0].jsonObject, "genesis_hash"))
+        for (v in d["vectors"]!!.jsonArray.map { it.jsonObject }) {   // ZBC-MSG-v2: chain-bound
+            val kp = KeyPair.fromHex(s(v, "seed")); val msg = Encoding.hexToBytes(s(v, "message_hex")); val g = Encoding.hexToBytes(s(v, "genesis_hash")); val sig = Encoding.hexToBytes(s(v, "signature"))
+            val sm = Message.sign(kp, msg, g)
+            assertEquals(listOf("ZBC-MSG-v2", s(v, "genesis_hash"), s(v, "address"), s(v, "public_key"), s(v, "digest"), s(v, "signature")), listOf(sm.scheme, sm.genesisHash, sm.address, sm.publicKey, sm.digest, sm.signature))
+            val r = Message.check(s(v, "address"), msg, sig, g)
+            assertTrue(r.valid); assertEquals(Message.SCHEME, r.scheme); assertEquals(s(v, "digest"), Encoding.bytesToHex(r.digest))
+            assertTrue(!Message.verify(s(v, "address"), msg, sig, null), "a v2 signature needs the chain it was signed for")
+        }
+        for (v in d["legacy_v1"]!!.jsonArray.map { it.jsonObject }) {   // ZBC-MSG-v1: accepted until the sunset, refused after, never produced
+            val msg = Encoding.hexToBytes(s(v, "message_hex")); val sig = Encoding.hexToBytes(s(v, "signature"))
+            assertEquals(s(v, "digest"), Encoding.bytesToHex(Message.digestV1(msg)))
+            val r = Message.check(s(v, "address"), msg, sig, chain, Message.V1_SUNSET - 1)
+            assertTrue(r.valid, s(v, "message")); assertEquals(Message.SCHEME_V1_ACCEPTED, r.scheme); assertEquals(s(v, "digest"), Encoding.bytesToHex(r.digest))
+            assertTrue(Message.verify(s(v, "address"), msg, sig, null, Message.V1_SUNSET - 1), "v1 needs no chain")
+            assertTrue(!Message.verify(s(v, "address"), msg, sig, chain, Message.V1_SUNSET), "v1 is refused from the sunset on")
+            assertTrue(!Message.verify(s(v, "address"), msg, sig, null, Message.V1_SUNSET))
         }
         for (n in d["invalid"]!!.jsonArray.map { it.jsonObject }) {
             val sig = if (Encoding.isHex(s(n, "signature"))) Encoding.hexToBytes(s(n, "signature")) else ByteArray(0)
-            assertTrue(!Message.verify(s(n, "address"), s(n, "message").toByteArray(), sig), s(n, "case"))
+            val g = s(n, "genesis_hash").let { if (Encoding.isHex(it, 64)) Encoding.hexToBytes(it) else null }
+            assertTrue(!Message.verify(s(n, "address"), s(n, "message").toByteArray(), sig, g), s(n, "case"))
         }
     }
 
@@ -144,16 +157,39 @@ class VectorsTest {
 
     @Test fun cliMessages() {
         val d = load("messages.json")
-        for (v in d["vectors"]!!.jsonArray.map { it.jsonObject }) {
+        val chain = s(d["vectors"]!!.jsonArray[0].jsonObject, "genesis_hash")
+        for (v in d["vectors"]!!.jsonArray.map { it.jsonObject }) {   // ZBC-MSG-v2 needs the chain: --genesis (or a node)
+            val hexIn = v["hex_input"]!!.jsonPrimitive.booleanOrNull == true
+            val msg = if (hexIn) s(v, "message_hex") else s(v, "message")
+            val flag = (if (hexIn) listOf("--hex") else emptyList()) + listOf("--genesis", s(v, "genesis_hash"))
+            val (code, out, _) = cli(listOf("sign-message", s(v, "seed"), msg) + flag)
+            assertEquals(0, code, out); val j = Json.parseToJsonElement(out).jsonObject
+            assertEquals(listOf(s(v, "signature"), "ZBC-MSG-v2", s(v, "genesis_hash")), listOf(s(j, "signature"), s(j, "scheme"), s(j, "genesis_hash")))
+            val (code2, out2, _) = cli(listOf("verify-message", s(v, "address"), msg, s(v, "signature")) + flag)
+            assertEquals(0, code2, out2); val j2 = Json.parseToJsonElement(out2).jsonObject
+            assertEquals(true, j2["valid"]!!.jsonPrimitive.booleanOrNull); assertEquals("ZBC-MSG-v2", s(j2, "scheme"))
+        }
+        // sign-message refuses to sign without a chain: 'v1' names no genesis, and an unreachable node gives none.
+        val v0 = d["vectors"]!!.jsonArray[0].jsonObject
+        assertEquals(ExitCode.USAGE, cli(listOf("sign-message", s(v0, "seed"), s(v0, "message"), "--genesis", "v1")).first)
+        assertEquals(ExitCode.NODE_UNREACHABLE, cli(listOf("sign-message", s(v0, "seed"), s(v0, "message"), "--api", "http://127.0.0.1:9", "--timeout", "2")).first)
+        // ZBC-MSG-v1 signatures verify until 2026-12-01T00:00:00Z (with or without a chain), then exit 10.
+        val sunsetPassed = System.currentTimeMillis() / 1000 >= Message.V1_SUNSET
+        for (v in d["legacy_v1"]!!.jsonArray.map { it.jsonObject }) {
             val hexIn = v["hex_input"]!!.jsonPrimitive.booleanOrNull == true
             val msg = if (hexIn) s(v, "message_hex") else s(v, "message")
             val flag = if (hexIn) listOf("--hex") else emptyList()
-            val (code, out, _) = cli(listOf("sign-message", s(v, "seed"), msg) + flag)
-            assertEquals(0, code); assertEquals(s(v, "signature"), Json.parseToJsonElement(out).jsonObject["signature"]!!.jsonPrimitive.content)
-            val (code2, out2, _) = cli(listOf("verify-message", s(v, "address"), msg, s(v, "signature")) + flag)
-            assertEquals(0, code2); assertEquals(true, Json.parseToJsonElement(out2).jsonObject["valid"]!!.jsonPrimitive.booleanOrNull)
+            for (genesis in listOf(chain, "v1")) {
+                val (code, out, _) = cli(listOf("verify-message", s(v, "address"), msg, s(v, "signature"), "--genesis", genesis) + flag)
+                val j = Json.parseToJsonElement(out).jsonObject
+                if (sunsetPassed) { assertEquals(ExitCode.VERIFY_FAILED, code, out); assertEquals(false, j["valid"]!!.jsonPrimitive.booleanOrNull) }
+                else { assertEquals(0, code, out); assertEquals(true, j["valid"]!!.jsonPrimitive.booleanOrNull); assertEquals(Message.SCHEME_V1_ACCEPTED, s(j, "scheme")); assertEquals(s(v, "digest"), s(j, "digest")) }
+            }
         }
-        for (n in d["invalid"]!!.jsonArray.map { it.jsonObject }) assertEquals(n["exit_code"]!!.jsonPrimitive.content.toInt(), cli(listOf("verify-message", s(n, "address"), s(n, "message"), s(n, "signature"))).first, s(n, "case"))
+        for (n in d["invalid"]!!.jsonArray.map { it.jsonObject }) {
+            val genesis = if (Encoding.isHex(s(n, "genesis_hash"), 64)) listOf("--genesis", s(n, "genesis_hash")) else emptyList()
+            assertEquals(n["exit_code"]!!.jsonPrimitive.content.toInt(), cli(listOf("verify-message", s(n, "address"), s(n, "message"), s(n, "signature")) + genesis).first, s(n, "case"))
+        }
     }
 
     @Test fun cliJsonInputAndEnvKey() {

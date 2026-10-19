@@ -9,7 +9,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { keyPairFromSeed, walletAccount, validateMnemonic } from "../keys.js";
 import { parseAddress, decodeZbcAddress } from "../address.js";
-import { signMessage, verifyMessage } from "../message.js";
+import { MESSAGE_SIGNING_V1_SUNSET, signMessage, verifyMessage, verifyMessageDetailed } from "../message.js";
 import { signTransaction, signingContext, sendZbcBody, approvalEscrowBody, transactionId } from "../transaction.js";
 import { buildBody, BodyContext } from "../body.js";
 import { computeFields, customBody } from "../custom.js";
@@ -62,15 +62,27 @@ test("addresses.json: every input is read exactly as the reference reads it", ()
     }
   }
 });
-test("messages.json: ZBC-MSG-v1 sign and verify", () => {
+test("messages.json: ZBC-MSG-v2 sign and verify, v1 accepted until the sunset, invalid cases fail", () => {
   const m = load("messages.json");
   for (const v of m.vectors) {
-    const s = signMessage(v.seed, hexToBytes(v.message_hex));
+    const s = signMessage(v.seed, hexToBytes(v.message_hex), v.genesis_hash);
+    assert.equal(s.scheme, "ZBC-MSG-v2"); assert.equal(s.genesis_hash, v.genesis_hash);
     assert.equal(s.address, v.address); assert.equal(s.public_key, v.public_key);
     assert.equal(s.digest, v.digest); assert.equal(s.signature, v.signature);
-    assert.ok(verifyMessage(v.address, hexToBytes(v.message_hex), v.signature));
+    const r = verifyMessageDetailed(v.address, hexToBytes(v.message_hex), v.signature, v.genesis_hash);
+    assert.ok(r.valid); assert.equal(r.scheme, "ZBC-MSG-v2"); assert.equal(bytesToHex(r.digest), v.digest);
+    assert.equal(verifyMessage(v.address, hexToBytes(v.message_hex), v.signature), false, "v2 needs the genesis");
   }
-  for (const n of m.invalid) assert.equal(verifyMessage(n.address, utf8(n.message), n.signature), false, n.case);
+  assert.throws(() => signMessage(m.vectors[0].seed, utf8("x"), ""), "sign-message without a genesis");
+  const before = MESSAGE_SIGNING_V1_SUNSET - 1, after = MESSAGE_SIGNING_V1_SUNSET;
+  for (const v of m.legacy_v1) {
+    const msg = hexToBytes(v.message_hex);
+    const r = verifyMessageDetailed(v.address, msg, v.signature, m.vectors[0].genesis_hash, before);
+    assert.ok(r.valid, v.message); assert.equal(r.scheme, "ZBC-MSG-v1 (accepted until 2026-12-01)"); assert.equal(bytesToHex(r.digest), v.digest);
+    assert.ok(verifyMessage(v.address, msg, v.signature, undefined, before), "v1 verifies without a genesis");
+    assert.equal(verifyMessage(v.address, msg, v.signature, m.vectors[0].genesis_hash, after), false, "v1 refused from the sunset");
+  }
+  for (const n of m.invalid) assert.equal(verifyMessage(n.address, utf8(n.message), n.signature, n.genesis_hash), false, n.case);
 });
 
 function ctxOf(v: Vec) { return signingContext(v.genesis); }
@@ -145,19 +157,28 @@ test("zbc-cli: cli.json exit codes and error classes", { skip: !cliAvailable }, 
     if (c.error_class) assert.equal(JSON.parse(r.stdout).error_class, c.error_class, c.case);
   }
 });
-test("zbc-cli: sign-message and verify-message vectors, exit 10 on a bad signature", { skip: !cliAvailable }, () => {
+test("zbc-cli: sign-message and verify-message vectors (v2 with --genesis, legacy v1 accepted), exit 10 on a bad signature", { skip: !cliAvailable }, () => {
   const m = load("messages.json");
+  const env = { ...process.env, ZBC_KEY: "", ZOOBC_GENESIS_HASH: "" };
+  const msgArgs = (v: Vec) => [v.hex_input ? v.message_hex : v.message, ...(v.hex_input ? ["--hex"] : [])];
   for (const v of m.vectors) {
-    const args = [CLI, "sign-message", v.seed, v.hex_input ? v.message_hex : v.message, ...(v.hex_input ? ["--hex"] : [])];
-    const r = spawnSync(process.execPath, args, { encoding: "utf8" });
+    const r = spawnSync(process.execPath, [CLI, "sign-message", v.seed, ...msgArgs(v), "--genesis", v.genesis_hash], { encoding: "utf8", env });
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.equal(JSON.parse(r.stdout).signature, v.signature);
-    const ok = spawnSync(process.execPath, [CLI, "verify-message", v.address, v.hex_input ? v.message_hex : v.message, v.signature, ...(v.hex_input ? ["--hex"] : [])], { encoding: "utf8" });
-    assert.equal(ok.status, 0); assert.equal(JSON.parse(ok.stdout).valid, true);
+    const j = JSON.parse(r.stdout);
+    assert.equal(j.signature, v.signature); assert.equal(j.scheme, "ZBC-MSG-v2"); assert.equal(j.genesis_hash, v.genesis_hash); assert.equal(j.digest, v.digest);
+    const ok = spawnSync(process.execPath, [CLI, "verify-message", v.address, ...msgArgs(v), v.signature, "--genesis", v.genesis_hash], { encoding: "utf8", env });
+    assert.equal(ok.status, 0, ok.stdout); assert.equal(JSON.parse(ok.stdout).valid, true); assert.equal(JSON.parse(ok.stdout).scheme, "ZBC-MSG-v2");
+  }
+  const noGenesis = spawnSync(process.execPath, [CLI, "sign-message", m.vectors[0].seed, "x", "--genesis", "v1"], { encoding: "utf8", env });
+  assert.equal(noGenesis.status, 2, "sign-message needs the chain genesis");
+  for (const v of m.legacy_v1) {
+    const ok = spawnSync(process.execPath, [CLI, "verify-message", v.address, ...msgArgs(v), v.signature, "--genesis", m.vectors[0].genesis_hash], { encoding: "utf8", env });
+    assert.equal(ok.status, 0, ok.stdout); assert.equal(JSON.parse(ok.stdout).valid, true); assert.equal(JSON.parse(ok.stdout).scheme, "ZBC-MSG-v1 (accepted until 2026-12-01)");
   }
   for (const n of m.invalid) {
-    const r = spawnSync(process.execPath, [CLI, "verify-message", n.address, n.message, n.signature], { encoding: "utf8" });
-    assert.equal(r.status, n.exit_code, n.case);
+    const r = spawnSync(process.execPath, [CLI, "verify-message", n.address, n.message, n.signature, ...(n.genesis_hash ? ["--genesis", n.genesis_hash] : ["--genesis", "v1"])], { encoding: "utf8", env });
+    assert.equal(r.status, n.exit_code, n.case + ": " + r.stdout);
+    if (n.error_class) assert.equal(JSON.parse(r.stdout).error_class, n.error_class, n.case);
   }
 });
 test("zbc-cli: --json-input with offline and timestamp reproduces vector 0", { skip: !cliAvailable }, () => {

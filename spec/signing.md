@@ -104,7 +104,7 @@ proof-of-ownership or a multisig participant signature, and vice versa.
 genesis block hash (the same 32 bytes the transaction digest binds, section 4). A message signed for
 devnet therefore never verifies on testnet or mainnet. `sign-message` needs the genesis (`--genesis
 <hex>` or a node); `verify-message` tries v2 first and accepts a v1 signature **only until
-2026-12-01T00:00:00Z** (unix 1764547200); after that v1 is refused. New signatures are always v2.
+2026-12-01T00:00:00Z** (unix 1796083200); after that v1 is refused. New signatures are always v2.
 Vectors: `vectors/messages.json`, entries with `"scheme": "ZBC-MSG-v2"` carry `genesis_hash`.
 
 ## 6. Proof of ownership (node registration)

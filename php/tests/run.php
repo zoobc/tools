@@ -10,7 +10,7 @@ spl_autoload_register(function (string $class): void {
     if (str_starts_with($class, 'Zoobc\\Zbc\\')) { require __DIR__ . '/../src/' . substr($class, 10) . '.php'; }
 });
 
-use Zoobc\Zbc\{Address, Body, BodyContext, Cli, Custom, CustomInput, Encoding, Encryption, Escrow, Io, KeyPair, Message, ReferenceBlock, SigningContext, Spec, Transaction, Wallet};
+use Zoobc\Zbc\{Address, Body, BodyContext, Cli, Custom, CustomInput, Encoding, Encryption, Escrow, ExitCode, Io, KeyPair, Message, ReferenceBlock, SigningContext, Spec, Transaction, Wallet};
 
 $dir = __DIR__ . '/../../spec/vectors';
 $load = fn(string $f) => json_decode(file_get_contents("$dir/$f"), true, 512, JSON_THROW_ON_ERROR);
@@ -54,17 +54,28 @@ foreach ($load('addresses.json')['vectors'] as $v) {
     check("address $input $chain", $ok, $detail);
 }
 
-// messages.json
+// messages.json: ZBC-MSG-v2, and v1 until its sunset
 $m = $load('messages.json');
 foreach ($m['vectors'] as $v) {
-    $kp = KeyPair::fromHex($v['seed']); $msg = hex2bin($v['message_hex']);
-    $s = Message::sign($kp, $msg);
-    check("sign-message {$v['seed']}", $s['address'] === $v['address'] && $s['public_key'] === $v['public_key'] && $s['digest'] === $v['digest'] && $s['signature'] === $v['signature']);
-    check("verify-message {$v['seed']}", Message::verify($v['address'], $msg, hex2bin($v['signature'])));
+    $kp = KeyPair::fromHex($v['seed']); $msg = hex2bin($v['message_hex']); $g = hex2bin($v['genesis_hash']);
+    $s = Message::sign($kp, $msg, $g);
+    check("sign-message {$v['seed']}", $s['scheme'] === $v['scheme'] && $s['genesis_hash'] === $v['genesis_hash'] && $s['address'] === $v['address']
+        && $s['public_key'] === $v['public_key'] && $s['digest'] === $v['digest'] && $s['signature'] === $v['signature']);
+    check("verify-message {$v['seed']}", Message::verify($v['address'], $msg, hex2bin($v['signature']), $g) === Message::SCHEME);
+    check("verify-message {$v['seed']} needs the genesis (v2 is chain-bound)", Message::verify($v['address'], $msg, hex2bin($v['signature'])) === null);
+}
+try { Message::sign(KeyPair::fromHex($m['vectors'][0]['seed']), 'x', ''); $ok = false; } catch (InvalidArgumentException) { $ok = true; }
+check('sign-message refuses to sign without a genesis', $ok);
+$g = hex2bin($m['vectors'][0]['genesis_hash']);
+foreach ($m['legacy_v1'] as $v) {
+    $msg = hex2bin($v['message_hex']); $sig = hex2bin($v['signature']);
+    check("legacy v1 {$v['message_hex']} accepted before the sunset", Message::verify($v['address'], $msg, $sig, $g, Message::V1_SUNSET - 1) === Message::SCHEME_V1);
+    check("legacy v1 {$v['message_hex']} refused from the sunset on", Message::verify($v['address'], $msg, $sig, $g, Message::V1_SUNSET) === null);
+    check("legacy v1 {$v['message_hex']} digest", bin2hex(Message::digest($msg)) === $v['digest']);
 }
 foreach ($m['invalid'] as $n) {
     $sig = Encoding::isHex($n['signature']) ? hex2bin($n['signature']) : '';
-    check("invalid message: {$n['case']}", !Message::verify($n['address'], $n['message'], $sig));
+    check("invalid message: {$n['case']}", Message::verify($n['address'], $n['message'], $sig, isset($n['genesis_hash']) ? hex2bin($n['genesis_hash']) : null) === null);
 }
 
 // transactions
@@ -130,12 +141,32 @@ foreach ($load('cli.json')['vectors'] as $c) {
 // CLI: messages
 foreach ($m['vectors'] as $v) {
     $msg = $v['hex_input'] ? $v['message_hex'] : $v['message']; $flag = $v['hex_input'] ? ['--hex'] : [];
-    [$code, $out] = cli(array_merge(['sign-message', $v['seed'], $msg], $flag));
-    check("cli sign-message {$v['seed']}", $code === 0 && (json_decode($out, true)['signature'] ?? '') === $v['signature']);
-    [$code2, $out2] = cli(array_merge(['verify-message', $v['address'], $msg, $v['signature']], $flag));
-    check("cli verify-message {$v['seed']}", $code2 === 0 && (json_decode($out2, true)['valid'] ?? false) === true);
+    [$code, $out] = cli(array_merge(['sign-message', $v['seed'], $msg, '--genesis', $v['genesis_hash']], $flag));
+    $j = json_decode($out, true) ?? [];
+    check("cli sign-message {$v['seed']}", $code === 0 && ($j['signature'] ?? '') === $v['signature'] && ($j['scheme'] ?? '') === $v['scheme'] && ($j['genesis_hash'] ?? '') === $v['genesis_hash'], "exit $code $out");
+    [$code2, $out2] = cli(array_merge(['verify-message', $v['address'], $msg, $v['signature'], '--genesis', $v['genesis_hash']], $flag));
+    $j = json_decode($out2, true) ?? [];
+    check("cli verify-message {$v['seed']}", $code2 === 0 && ($j['valid'] ?? false) === true && ($j['scheme'] ?? '') === Message::SCHEME
+        && ($j['genesis_hash'] ?? '') === $v['genesis_hash'] && ($j['digest'] ?? '') === $v['digest'], "exit $code2 $out2");
 }
-foreach ($m['invalid'] as $n) { [$code] = cli(['verify-message', $n['address'], $n['message'], $n['signature']]); check("cli invalid message: {$n['case']}", $code === $n['exit_code'], "exit $code"); }
+[$code] = cli(['sign-message', $m['vectors'][0]['seed'], 'x', '--genesis', 'v1']);
+check('cli sign-message without a chain genesis is a usage error', $code === ExitCode::USAGE, "exit $code");
+$g = $m['vectors'][0]['genesis_hash'];
+foreach ($m['legacy_v1'] as $v) {
+    $msg = $v['hex_input'] ? $v['message_hex'] : $v['message']; $flag = $v['hex_input'] ? ['--hex'] : [];
+    [$code, $out] = cli(array_merge(['verify-message', $v['address'], $msg, $v['signature'], '--genesis', $g], $flag));
+    $j = json_decode($out, true) ?? [];
+    if (time() < Message::V1_SUNSET) {
+        check("cli legacy v1 {$v['message_hex']} still accepted", $code === 0 && ($j['scheme'] ?? '') === Message::SCHEME_V1 . ' (accepted until 2026-12-01)' && ($j['digest'] ?? '') === $v['digest'], "exit $code $out");
+    } else {
+        check("cli legacy v1 {$v['message_hex']} refused after the sunset", $code === ExitCode::VERIFY_FAILED, "exit $code $out");
+    }
+}
+foreach ($m['invalid'] as $n) {
+    $genesis = isset($n['genesis_hash']) ? ['--genesis', $n['genesis_hash']] : [];
+    [$code, $out] = cli(array_merge(['verify-message', $n['address'], $n['message'], $n['signature']], $genesis));
+    check("cli invalid message: {$n['case']}", $code === $n['exit_code'] && (json_decode($out, true)['error_class'] ?? null) === $n['error_class'], "exit $code $out");
+}
 // CLI: json input and ZBC_KEY
 $v = $load('transactions.json')['vectors'][0]; $p = $v['params'];
 [$code, $out, $err] = cli(['send-zbc', '--json-input', '--genesis', $v['genesis']], json_encode(['sender_privkey' => $v['key'], 'recipient' => $p['recipient'], 'amount' => $p['amount'], 'fee' => $v['fee'], 'timestamp' => $v['timestamp'], 'offline' => true]));

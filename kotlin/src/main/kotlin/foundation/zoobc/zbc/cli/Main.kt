@@ -49,9 +49,9 @@ object Cli {
     }
 
     private val messageCommands: Map<String, Pair<String, List<ParamDef>>> = mapOf(
-        "sign-message" to ("Sign a message with a private key (ZBC-MSG-v1, off-chain, no node needed)" to listOf(
+        "sign-message" to ("Sign a message with a private key (ZBC-MSG-v2: bound to one chain, needs --genesis <hex> or a node)" to listOf(
             ParamDef("sender_privkey", "privkey", true, null, "Sender private key (64 hex)"), ParamDef("message", "string", true, null, "text to sign (hex bytes with --hex)"))),
-        "verify-message" to ("Verify a ZBC-MSG-v1 message signature against a ZBC_ address (off-chain)" to listOf(
+        "verify-message" to ("Verify a message signature against a ZBC_ address (ZBC-MSG-v2 with the chain genesis; v1 accepted until 2026-12-01)" to listOf(
             ParamDef("address", "string", true, null, "signer's ZBC_ address (or 64-hex public key)"), ParamDef("message", "string", true, null, "the signed text (hex bytes with --hex)"),
             ParamDef("signature", "string", true, null, "64-byte Ed25519 signature, 128 hex"))),
         "decrypt-message" to ("Decrypt a transaction message sealed with --encrypt, with the recipient's private key (off-chain)" to listOf(
@@ -254,9 +254,13 @@ Exit codes:
 
     private fun runSignMessage(v: Map<String, String>, o: Options, io: Io): Int {
         val kp = try { KeyPair.fromHex(v["sender_privkey"]!!) } catch (e: IllegalArgumentException) { throw ToolError.usage("Private key must be 64 hex characters (32 bytes)") }
-        val s = Message.sign(kp, messageBytes(v["message"]!!, o.hex))
+        val msg = messageBytes(v["message"]!!, o.hex)
+        // ZBC-MSG-v2 binds the signature to one chain: the genesis comes from --genesis or the node, as for transactions.
+        val ctx = signingContext(o, Client(o.api, o.timeout), io)
+        if (ctx.genesisHash.size != 32) throw ToolError.usage("ZBC-MSG-v2 binds the signature to one chain: it needs the chain's genesis (a node, or --genesis <hex>)")
+        val s = Message.sign(kp, msg, ctx.genesisHash)
         if (o.verbose) { io.stdout.print("Address:   ${s.address}\nDigest:    ${s.digest}\nSignature: ${s.signature}\n"); return 0 }
-        val m = mutableMapOf<String, JsonElement>("success" to JsonPrimitive(true), "scheme" to JsonPrimitive(s.scheme), "address" to JsonPrimitive(s.address), "public_key" to JsonPrimitive(s.publicKey),
+        val m = mutableMapOf<String, JsonElement>("success" to JsonPrimitive(true), "scheme" to JsonPrimitive(s.scheme), "genesis_hash" to JsonPrimitive(s.genesisHash), "address" to JsonPrimitive(s.address), "public_key" to JsonPrimitive(s.publicKey),
             "message_hex" to JsonPrimitive(s.messageHex), "digest" to JsonPrimitive(s.digest), "signature" to JsonPrimitive(s.signature))
         if (!o.hex) m["message"] = JsonPrimitive(v["message"]!!)
         out(io, JsonObject(m)); return 0
@@ -267,12 +271,15 @@ Exit codes:
         val msg = messageBytes(v["message"]!!, o.hex)
         if (!Encoding.isHex(v["signature"]!!)) throw ToolError.usage("signature must be hex")
         if (v["signature"]!!.length != 128) throw ToolError.usage("signature must be 64 bytes (128 hex characters)")
-        val valid = Message.verify(v["address"]!!, msg, Encoding.hexToBytes(v["signature"]!!))
+        // v2 first (needs the chain genesis: --genesis <hex> or a node; unknown = skipped), then v1 until its sunset.
+        val genesis = try { signingContext(o, Client(o.api, o.timeout), io).genesisHash.takeIf { it.size == 32 } } catch (e: ToolError) { null }
+        val r = Message.check(v["address"]!!, msg, Encoding.hexToBytes(v["signature"]!!), genesis)
+        val valid = r.valid
         val address = Address.encode(pub, "ZBC")
         val code = if (valid) ExitCode.OK else ExitCode.VERIFY_FAILED
         if (o.verbose) { io.stdout.println("${if (valid) "VALID" else "INVALID"} signature for $address"); return code }
-        out(io, JsonObject(mapOf("success" to JsonPrimitive(true), "valid" to JsonPrimitive(valid), "scheme" to JsonPrimitive(Message.SCHEME), "address" to JsonPrimitive(address),
-            "digest" to JsonPrimitive(Encoding.bytesToHex(Message.digest(msg))), "exit_code" to JsonPrimitive(code), "error_class" to JsonPrimitive(ExitCode.errorClass(code)))))
+        out(io, JsonObject(mapOf("success" to JsonPrimitive(true), "valid" to JsonPrimitive(valid), "scheme" to JsonPrimitive(r.scheme), "address" to JsonPrimitive(address),
+            "digest" to JsonPrimitive(Encoding.bytesToHex(r.digest)), "exit_code" to JsonPrimitive(code), "error_class" to JsonPrimitive(ExitCode.errorClass(code)))))
         return code
     }
 

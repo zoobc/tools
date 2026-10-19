@@ -96,31 +96,68 @@ func TestAddresses(t *testing.T) {
 }
 
 func TestMessages(t *testing.T) {
+	type messageVector struct {
+		Seed        string `json:"seed"`
+		MessageHex  string `json:"message_hex"`
+		GenesisHash string `json:"genesis_hash"`
+		Address     string `json:"address"`
+		PublicKey   string `json:"public_key"`
+		Digest      string `json:"digest"`
+		Signature   string `json:"signature"`
+		Scheme      string `json:"scheme"`
+	}
 	var d struct {
-		Vectors []struct {
-			Seed       string `json:"seed"`
-			MessageHex string `json:"message_hex"`
-			Address    string `json:"address"`
-			PublicKey  string `json:"public_key"`
-			Digest     string `json:"digest"`
-			Signature  string `json:"signature"`
-		}
-		Invalid []struct{ Case, Address, Message, Signature string }
+		Vectors  []messageVector
+		LegacyV1 []messageVector `json:"legacy_v1"`
+		Invalid  []struct{ Case, Address, Message, Signature, GenesisHash string }
 	}
 	loadVectors(t, "messages.json", &d)
+	before, after := MessageSigningV1Sunset-1, MessageSigningV1Sunset
 	for _, v := range d.Vectors {
 		kp, _ := KeyPairFromHex(v.Seed)
-		s := SignMessage(kp, unhex(t, v.MessageHex))
-		if s.Address != v.Address || s.PublicKey != v.PublicKey || s.Digest != v.Digest || s.Signature != v.Signature {
-			t.Errorf("sign %s: %+v", v.Seed, s)
+		msg, genesis := unhex(t, v.MessageHex), unhex(t, v.GenesisHash)
+		s, err := SignMessage(kp, msg, genesis)
+		if err != nil || s.Scheme != v.Scheme || s.Scheme != MessageSigningScheme || s.GenesisHash != v.GenesisHash ||
+			s.Address != v.Address || s.PublicKey != v.PublicKey || s.Digest != v.Digest || s.Signature != v.Signature {
+			t.Errorf("sign %s: %v %+v", v.Seed, err, s)
 		}
-		if !VerifyMessage(v.Address, unhex(t, v.MessageHex), unhex(t, v.Signature)) {
+		sig := unhex(t, v.Signature)
+		if !VerifyMessage(v.Address, msg, sig, genesis) {
 			t.Errorf("verify %s failed", v.Seed)
+		}
+		if r := VerifyMessageAny(v.Address, msg, sig, genesis, after); !r.Valid || r.Scheme != MessageSigningScheme || hex.EncodeToString(r.Digest) != v.Digest {
+			t.Errorf("verify-any %s: %+v", v.Seed, r)
+		}
+		if VerifyMessageV1(v.Address, msg, sig) || VerifyMessage(v.Address, msg, sig, nil) {
+			t.Errorf("%s: a v2 signature verified as v1 or without a genesis", v.Seed)
+		}
+	}
+	if _, err := SignMessage(KeyPair{}, []byte("x"), nil); err == nil {
+		t.Error("sign without a genesis must fail")
+	}
+	genesis := unhex(t, d.Vectors[0].GenesisHash)
+	for _, v := range d.LegacyV1 {
+		msg, sig := unhex(t, v.MessageHex), unhex(t, v.Signature)
+		if v.Scheme != MessageSigningSchemeV1 || hex.EncodeToString(MessageDigestV1(msg)) != v.Digest || !VerifyMessageV1(v.Address, msg, sig) {
+			t.Errorf("legacy %s: digest or signature", v.Seed)
+		}
+		if VerifyMessage(v.Address, msg, sig, genesis) {
+			t.Errorf("legacy %s: verified as v2", v.Seed)
+		}
+		if r := VerifyMessageAny(v.Address, msg, sig, genesis, before); !r.Valid || r.Scheme != MessageSigningV1Accepted || hex.EncodeToString(r.Digest) != v.Digest {
+			t.Errorf("legacy %s before the sunset: %+v", v.Seed, r)
+		}
+		if r := VerifyMessageAny(v.Address, msg, sig, nil, before); !r.Valid || r.Scheme != MessageSigningV1Accepted {
+			t.Errorf("legacy %s without a genesis: %+v", v.Seed, r)
+		}
+		if r := VerifyMessageAny(v.Address, msg, sig, genesis, after); r.Valid {
+			t.Errorf("legacy %s accepted after the sunset", v.Seed)
 		}
 	}
 	for _, n := range d.Invalid {
 		sig, _ := hex.DecodeString(n.Signature)
-		if VerifyMessage(n.Address, []byte(n.Message), sig) {
+		g, _ := hex.DecodeString(n.GenesisHash)
+		if VerifyMessageAny(n.Address, []byte(n.Message), sig, g, before).Valid {
 			t.Errorf("%s: verified, must not", n.Case)
 		}
 	}

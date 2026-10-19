@@ -13,6 +13,7 @@ use ZBC::Commands;
 use ZBC::Custom qw(compute_fields custom_body);
 use ZBC::Encoding qw(from_hex to_hex is_hex);
 use ZBC::Encryption qw(:all);
+use ZBC::ExitCode qw(USAGE VERIFY_FAILED);
 use ZBC::Keys qw(key_pair validate_mnemonic wallet_account);
 use ZBC::Message qw(sign_message verify_message);
 use ZBC::Transaction qw(sign_transaction send_zbc_body approval_escrow_body transaction_id);
@@ -97,14 +98,26 @@ subtest 'addresses.json: every recipient form' => sub {
     }
 };
 
-subtest 'messages.json: ZBC-MSG-v1' => sub {
+subtest 'messages.json: ZBC-MSG-v2, and v1 until its sunset' => sub {
     my $m = load('messages.json');
     for my $v (@{ $m->{vectors} }) {
-        my $s = sign_message($v->{seed}, from_hex($v->{message_hex}));
-        is_deeply([@$s{qw(address public_key digest signature)}], [@$v{qw(address public_key digest signature)}], "sign $v->{message_hex}");
-        ok(verify_message($v->{address}, from_hex($v->{message_hex}), $v->{signature}), 'verifies');
+        my $g = from_hex($v->{genesis_hash});
+        my $s = sign_message($v->{seed}, from_hex($v->{message_hex}), $g);
+        is_deeply([@$s{qw(scheme genesis_hash address public_key digest signature)}], [@$v{qw(scheme genesis_hash address public_key digest signature)}], "sign $v->{message_hex}");
+        is(verify_message($v->{address}, from_hex($v->{message_hex}), $v->{signature}, $g), 'ZBC-MSG-v2', 'verifies as v2');
+        ok(!verify_message($v->{address}, from_hex($v->{message_hex}), $v->{signature}), 'not without the genesis (v2 is chain-bound)');
     }
-    for my $n (@{ $m->{invalid} }) { ok(!verify_message($n->{address}, bytes_of($n->{message}), $n->{signature}), "invalid: $n->{case}"); }
+    ok(!eval { sign_message($m->{vectors}[0]{seed}, 'x'); 1 }, 'sign_message refuses to sign without a genesis');
+    my $g = from_hex($m->{vectors}[0]{genesis_hash});
+    for my $v (@{ $m->{legacy_v1} }) {
+        my $msg = from_hex($v->{message_hex});
+        is(verify_message($v->{address}, $msg, $v->{signature}, $g, ZBC::Message::V1_SUNSET - 1), 'ZBC-MSG-v1', "legacy $v->{message_hex}: accepted before the sunset");
+        ok(!verify_message($v->{address}, $msg, $v->{signature}, $g, ZBC::Message::V1_SUNSET), "legacy $v->{message_hex}: refused from the sunset on");
+        is(to_hex(ZBC::Message::message_digest($msg)), $v->{digest}, 'v1 digest');
+    }
+    for my $n (@{ $m->{invalid} }) {
+        ok(!verify_message($n->{address}, bytes_of($n->{message}), $n->{signature}, defined $n->{genesis_hash} ? from_hex($n->{genesis_hash}) : undef), "invalid: $n->{case}");
+    }
 };
 
 subtest 'transactions.json: SendZBC and ApprovalEscrow' => sub {
@@ -164,16 +177,37 @@ subtest 'zbc-cli sign-message and verify-message' => sub {
     for my $v (@{ $m->{vectors} }) {
         my @hexflag = $v->{hex_input} ? ('--hex') : ();
         my $msg = $v->{hex_input} ? $v->{message_hex} : $v->{message};
-        my ($rc, $out) = run_cli(['sign-message', $v->{seed}, $msg, @hexflag]);
+        my ($rc, $out) = run_cli(['sign-message', $v->{seed}, $msg, '--genesis', $v->{genesis_hash}, @hexflag]);
         is($rc, 0, 'sign-message exits 0');
-        is(($JSON->decode($out))->{signature}, $v->{signature}, 'signature');
-        ($rc, $out) = run_cli(['verify-message', $v->{address}, $msg, $v->{signature}, @hexflag]);
+        my $j = $JSON->decode($out);
+        is_deeply([@$j{qw(scheme genesis_hash signature)}], [@$v{qw(scheme genesis_hash signature)}], 'scheme, genesis_hash, signature');
+        ($rc, $out) = run_cli(['verify-message', $v->{address}, $msg, $v->{signature}, '--genesis', $v->{genesis_hash}, @hexflag]);
         is($rc, 0, 'verify-message exits 0');
-        ok(($JSON->decode($out))->{valid}, 'valid');
+        $j = $JSON->decode($out);
+        ok($j->{valid}, 'valid');
+        is_deeply([@$j{qw(scheme genesis_hash digest)}], ['ZBC-MSG-v2', @$v{qw(genesis_hash digest)}], 'reports the v2 scheme and genesis');
+    }
+    my ($rc, $out) = run_cli(['sign-message', $m->{vectors}[0]{seed}, 'x', '--genesis', 'v1']);
+    is($rc, USAGE, 'sign-message without a chain genesis is a usage error');
+    my $g = $m->{vectors}[0]{genesis_hash};
+    for my $v (@{ $m->{legacy_v1} }) {
+        my @hexflag = $v->{hex_input} ? ('--hex') : ();
+        my $msg = $v->{hex_input} ? $v->{message_hex} : $v->{message};
+        ($rc, $out) = run_cli(['verify-message', $v->{address}, $msg, $v->{signature}, '--genesis', $g, @hexflag]);
+        my $j = $JSON->decode($out);
+        if (time < ZBC::Message::V1_SUNSET) {
+            is($rc, 0, "legacy $v->{message_hex}: still accepted");
+            is($j->{scheme}, 'ZBC-MSG-v1 (accepted until 2026-12-01)', 'reports the v1 scheme with its sunset');
+            is($j->{digest}, $v->{digest}, 'v1 digest');
+        } else {
+            is($rc, VERIFY_FAILED, "legacy $v->{message_hex}: refused after the sunset");
+        }
     }
     for my $n (@{ $m->{invalid} }) {
-        my ($rc) = run_cli(['verify-message', $n->{address}, $n->{message}, $n->{signature}]);
+        my @genesis = defined $n->{genesis_hash} ? ('--genesis', $n->{genesis_hash}) : ();
+        my ($rc, $out) = run_cli(['verify-message', $n->{address}, $n->{message}, $n->{signature}, @genesis]);
         is($rc, $n->{exit_code}, "invalid: $n->{case}");
+        is(($JSON->decode($out))->{error_class}, $n->{error_class}, "invalid: $n->{case}: error_class");
     }
 };
 

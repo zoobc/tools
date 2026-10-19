@@ -10,7 +10,7 @@ import { buildBody, validateParam, BodyContext } from "./body.js";
 import { computeFields, customBody } from "./custom.js";
 import { ExitCode, ToolError, usage } from "./errors.js";
 import { keyPairFromSeed, KeyPair } from "./keys.js";
-import { MESSAGE_SIGNING_SCHEME, messageDigest, publicKeyOfAddress, signMessage, verifyMessage } from "./message.js";
+import { publicKeyOfAddress, signMessage, verifyMessageDetailed } from "./message.js";
 import { COMMANDS, COMMAND_BY_NAME } from "./generated/commands.js";
 import { EscrowTerms, SigningContext, signingContext, signTransaction, transactionId, UnsignedTransaction } from "./transaction.js";
 import { bytesToHex, fromUtf8, hexToBytes, isHex, utf8 } from "./util/bytes.js";
@@ -38,10 +38,10 @@ const CATEGORY: Record<string, string> = {
   "sign-message": "keys", "verify-message": "keys", "decrypt-message": "keys",
 };
 const MESSAGE_COMMANDS: Record<string, { desc: string; params: ParamDef[] }> = {
-  "sign-message": { desc: "Sign a message with a private key (ZBC-MSG-v1, off-chain, no node needed)", params: [
+  "sign-message": { desc: "Sign a message with a private key (ZBC-MSG-v2: bound to one chain, needs --genesis <hex> or a node)", params: [
     { name: "sender_privkey", kind: "privkey", required: true, help: "Sender private key (64 hex)" },
     { name: "message", kind: "string", required: true, help: "text to sign (hex bytes with --hex)" }] },
-  "verify-message": { desc: "Verify a ZBC-MSG-v1 message signature against a ZBC_ address (off-chain)", params: [
+  "verify-message": { desc: "Verify a message signature against a ZBC_ address (ZBC-MSG-v2 with the chain genesis; v1 accepted until 2026-12-01)", params: [
     { name: "address", kind: "string", required: true, help: "signer's ZBC_ address (or 64-hex public key)" },
     { name: "message", kind: "string", required: true, help: "the signed text (hex bytes with --hex)" },
     { name: "signature", kind: "string", required: true, help: "64-byte Ed25519 signature, 128 hex" }] },
@@ -239,7 +239,7 @@ function printUsage(cmd: string, params: ParamDef[]): void {
   --chain <name>        Read the recipient as this chain: zbc, btc, eth, sol, dot, ada, xrp, trx, xtz
   --message <text>      Optional transaction message
   --encrypt             Encrypt --message to the recipient (ZBC only)
-  --genesis <hex|v1>    Sign for this chain (its genesis block hash) without asking the node; 'v1' = legacy unbound digest. Default: ask --api.
+  --genesis <hex|v1>    Sign for this chain (its genesis block hash) without asking the node; 'v1' = legacy unbound digest (not for sign-message). Default: ask --api.
   --escrow-approver <addr>   Escrow approver address
   --escrow-commission <n>    Escrow commission (atomic units)
   --escrow-timeout <n>       Escrow timeout as a FUTURE Unix timestamp (seconds)
@@ -247,7 +247,7 @@ function printUsage(cmd: string, params: ParamDef[]): void {
   --fee <n>             Transaction fee (default: 5000000 = 0.05 ZBC)
   --api <url>           API endpoint (default: $ZBC_API, else http://localhost:8080)
   --timeout <s>         Bound for each HTTP call, seconds (default: $ZBC_TIMEOUT, else 20; also --timeout-seconds)
-  --hex                 sign-message/verify-message: the message is hex bytes, not text
+  --hex                 sign-message/verify-message: the message is hex bytes, not text (ZBC-MSG-v2 needs the chain genesis: --genesis or a node)
   --offline             Build, sign and hash, print unsigned_bytes, digest, signature, transaction_bytes and transaction_hash, exit 0 without submitting. Needs --genesis.
   --timestamp <n>       Transaction timestamp, Unix seconds (default: now)
 
@@ -273,25 +273,33 @@ function messageBytes(text: string, hex: boolean): Uint8Array {
   if (!isHex(text)) throw usage("--hex message is not valid hex");
   return hexToBytes(text);
 }
-function runSignMessage(v: Record<string, string>, o: Options): number {
+// ZBC-MSG-v2 binds the signature to one chain (spec/signing.md 5a): the genesis comes from --genesis
+// (or ZOOBC_GENESIS_HASH), else from the node's /api/v1/node/info like a transaction's.
+async function runSignMessage(v: Record<string, string>, o: Options): Promise<number> {
   if (!isHex(v.sender_privkey, 64)) throw usage("Private key must be 64 hex characters (32 bytes)");
   const msg = messageBytes(v.message, o.hex);
-  const s = signMessage(v.sender_privkey, msg);
+  const ctx = await resolveSigningContext(o, new Client({ api: o.api, timeoutSeconds: o.timeout }));
+  if (ctx.version !== 2) throw usage("ZBC-MSG-v2 binds the signature to one chain: it needs the chain's genesis (a node, or --genesis <hex>)");
+  const s = signMessage(v.sender_privkey, msg, ctx.genesisHash);
   if (o.verbose) process.stdout.write(`Address:   ${s.address}\nDigest:    ${s.digest}\nSignature: ${s.signature}\n`);
   else jsonOut({ success: true, ...s, ...(o.hex ? {} : { message: v.message }) });
   return 0;
 }
-function runVerifyMessage(v: Record<string, string>, o: Options): number {
+// v2 first with the chain genesis (a node, or --genesis <hex>; an unreachable node is not an error here,
+// it only leaves v2 untried), then v1 until its sunset, 2026-12-01T00:00:00Z.
+async function runVerifyMessage(v: Record<string, string>, o: Options): Promise<number> {
   const pub = publicKeyOfAddress(v.address);
   if (!pub) throw usage("address must be a ZBC_ account (Ed25519) address");
   const msg = messageBytes(v.message, o.hex);
   if (!isHex(v.signature)) throw usage("signature must be hex");
   if (v.signature.length !== 128) throw usage("signature must be 64 bytes (128 hex characters)");
-  const valid = verifyMessage(v.address, msg, v.signature);
+  let genesis: Uint8Array | undefined;
+  try { const ctx = await resolveSigningContext(o, new Client({ api: o.api, timeoutSeconds: o.timeout })); if (ctx.version === 2) genesis = ctx.genesisHash; } catch { genesis = undefined; }
+  const r = verifyMessageDetailed(v.address, msg, v.signature, genesis);
   const address = parseAddress(bytesToHex(pub)).display;
-  const code = valid ? ExitCode.ok : ExitCode.verify_failed;
-  if (o.verbose) process.stdout.write(`${valid ? "VALID" : "INVALID"} signature for ${address}\n`);
-  else jsonOut({ success: true, valid, scheme: MESSAGE_SIGNING_SCHEME, address, digest: bytesToHex(messageDigest(msg)), exit_code: code, error_class: valid ? "ok" : "verify_failed" });
+  const code = r.valid ? ExitCode.ok : ExitCode.verify_failed;
+  if (o.verbose) process.stdout.write(`${r.valid ? "VALID" : "INVALID"} signature for ${address}\n`);
+  else jsonOut({ success: true, valid: r.valid, scheme: r.scheme, address, digest: bytesToHex(r.digest), exit_code: code, error_class: r.valid ? "ok" : "verify_failed" });
   return code;
 }
 
@@ -410,8 +418,8 @@ export async function main(argv: string[]): Promise<number> {
     if (o.help) { printUsage(cmd, c.params); return 0; }
     const { values } = await resolveParams(c.params, positional, o);
     verbose = o.verbose;
-    if (cmd === "sign-message") return runSignMessage(values, o);
-    if (cmd === "verify-message") return runVerifyMessage(values, o);
+    if (cmd === "sign-message") return await runSignMessage(values, o);
+    if (cmd === "verify-message") return await runVerifyMessage(values, o);
     if (cmd === "decrypt-message") return runDecryptMessage(values, o);
     return await runTransaction(COMMAND_BY_NAME.get(cmd)!, values, o);
   } catch (e) {

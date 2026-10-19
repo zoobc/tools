@@ -36,6 +36,8 @@ var ZBC = (() => {
     EscrowApproval: () => EscrowApproval,
     ExitCode: () => ExitCode,
     MESSAGE_SIGNING_SCHEME: () => MESSAGE_SIGNING_SCHEME,
+    MESSAGE_SIGNING_SCHEME_V1: () => MESSAGE_SIGNING_SCHEME_V1,
+    MESSAGE_SIGNING_V1_SUNSET: () => MESSAGE_SIGNING_V1_SUNSET,
     SEALED_MAGIC: () => SEALED_MAGIC,
     SEALED_OVERHEAD: () => SEALED_OVERHEAD,
     SPLIT_POLICY_MAX_RECIPIENTS: () => SPLIT_POLICY_MAX_RECIPIENTS,
@@ -79,6 +81,7 @@ var ZBC = (() => {
     isZbcAddress: () => isZbcAddress,
     keyPairFromSeed: () => keyPairFromSeed,
     messageDigest: () => messageDigest,
+    messageDigestV1: () => messageDigestV1,
     mnemonicFromEntropy: () => mnemonicFromEntropy,
     mnemonicToSeed: () => mnemonicToSeed,
     multisigAddress: () => multisigAddress,
@@ -123,6 +126,7 @@ var ZBC = (() => {
     validateMnemonic: () => validateMnemonic,
     validateParam: () => validateParam,
     verifyMessage: () => verifyMessage,
+    verifyMessageDetailed: () => verifyMessageDetailed,
     walletAccount: () => walletAccount,
     x25519: () => x25519,
     x25519Base: () => x25519Base,
@@ -3370,16 +3374,29 @@ var ZBC = (() => {
   var publicKeyHex = (kp) => bytesToHex(kp.publicKey);
 
   // src/message.ts
-  var MESSAGE_SIGNING_SCHEME = "ZBC-MSG-v1";
-  var TAG = utf8("ZBC-MSG");
-  function messageDigest(message) {
-    return sha3_256(concat(TAG, message));
+  var MESSAGE_SIGNING_SCHEME = "ZBC-MSG-v2";
+  var MESSAGE_SIGNING_SCHEME_V1 = "ZBC-MSG-v1";
+  var MESSAGE_SIGNING_V1_SUNSET = 1796083200;
+  var TAG_V2 = utf8("ZBC-MSG-v2");
+  var TAG_V1 = utf8("ZBC-MSG");
+  function genesisBytes(genesis) {
+    const g = typeof genesis === "string" ? isHex(genesis, 64) ? hexToBytes(genesis) : null : genesis;
+    if (!g || g.length !== 32) throw new Error("ZBC-MSG-v2 binds the signature to one chain: it needs the chain's genesis hash (32 bytes, 64 hex)");
+    return g;
   }
-  function signMessage(seed, message) {
+  function messageDigest(message, genesis) {
+    return sha3_256(concat(TAG_V2, genesisBytes(genesis), message));
+  }
+  function messageDigestV1(message) {
+    return sha3_256(concat(TAG_V1, message));
+  }
+  function signMessage(seed, message, genesis) {
     const kp = keyPairFromSeed(seed);
-    const digest = messageDigest(message);
+    const g = genesisBytes(genesis);
+    const digest = messageDigest(message, g);
     return {
       scheme: MESSAGE_SIGNING_SCHEME,
+      genesis_hash: bytesToHex(g),
       address: kp.address,
       public_key: bytesToHex(kp.publicKey),
       message_hex: bytesToHex(message),
@@ -3387,12 +3404,31 @@ var ZBC = (() => {
       signature: bytesToHex(sign(digest, kp.seed))
     };
   }
-  function verifyMessage(address, message, signature) {
+  function verifyMessageDetailed(address, message, signature, genesis, now = Math.floor(Date.now() / 1e3)) {
     const pub = publicKeyOfAddress(address);
-    if (!pub) return false;
     const sig = typeof signature === "string" ? isHex(signature, 128) ? hexToBytes(signature) : null : signature;
-    if (!sig || sig.length !== 64) return false;
-    return verify(messageDigest(message), sig, pub);
+    const ok = (digest2) => !!pub && !!sig && sig.length === 64 && verify(digest2, sig, pub);
+    let digest = null;
+    if (genesis !== void 0) {
+      let g = null;
+      try {
+        g = genesisBytes(genesis);
+      } catch {
+        g = null;
+      }
+      if (g) {
+        digest = messageDigest(message, g);
+        if (ok(digest)) return { valid: true, scheme: MESSAGE_SIGNING_SCHEME, digest };
+      }
+    }
+    if (now < MESSAGE_SIGNING_V1_SUNSET) {
+      const d1 = messageDigestV1(message);
+      if (ok(d1)) return { valid: true, scheme: MESSAGE_SIGNING_SCHEME_V1 + " (accepted until 2026-12-01)", digest: d1 };
+    }
+    return { valid: false, scheme: MESSAGE_SIGNING_SCHEME, digest: digest ?? messageDigestV1(message) };
+  }
+  function verifyMessage(address, message, signature, genesis, now) {
+    return verifyMessageDetailed(address, message, signature, genesis, now).valid;
   }
   function publicKeyOfAddress(address) {
     if (isHex(address, 64)) return hexToBytes(address);
@@ -3820,9 +3856,9 @@ var ZBC = (() => {
   }
 
   // src/custom.ts
-  function proofOfOwnership(owner, block) {
+  function proofOfOwnership(owner, node, block) {
     const msg = new ByteWriter().bytes(owner.accountBytes).bytes(block.hash).u32(block.height).finish();
-    return concat(msg, sign(msg, owner.seed));
+    return concat(msg, sign(msg, node.seed));
   }
   function computeFields(input, body) {
     const { def, params, sender } = input;
@@ -3840,8 +3876,8 @@ var ZBC = (() => {
       case "update-node":
       case "claim-node": {
         if (!input.referenceBlock) throw new Error("proof of ownership needs the latest block");
-        computed.proof_of_ownership = proofOfOwnership(sender, input.referenceBlock);
         const node = keyPairFromSeed(params.node_privkey);
+        computed.proof_of_ownership = proofOfOwnership(sender, node, input.referenceBlock);
         extra.node_znk = node.nodeAddress;
         extra.owner_zbc = sender.address;
         break;

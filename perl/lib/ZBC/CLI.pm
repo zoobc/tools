@@ -15,7 +15,7 @@ use ZBC::Encryption qw(is_sealed open_sealed seal);
 use ZBC::Error;
 use ZBC::ExitCode qw(:all);
 use ZBC::Keys qw(key_pair);
-use ZBC::Message qw(SCHEME message_digest public_key_of_address sign_message verify_message);
+use ZBC::Message qw(SCHEME SCHEME_V1 message_digest message_digest_v2 public_key_of_address sign_message verify_message);
 use ZBC::Transaction qw(sign_transaction transaction_id);
 
 use constant DEFAULT_FEE => 5000000;
@@ -32,10 +32,10 @@ my %CATEGORY = (
     'sign-message' => 'keys', 'verify-message' => 'keys', 'decrypt-message' => 'keys',
 );
 my %MESSAGE_COMMANDS = (
-    'sign-message' => ['Sign a message with a private key (ZBC-MSG-v1, off-chain, no node needed)', [
+    'sign-message' => ['Sign a message with a private key (ZBC-MSG-v2: bound to one chain, needs --genesis <hex> or a node)', [
         { name => 'sender_privkey', kind => 'privkey', required => 1, help => 'Sender private key (64 hex)' },
         { name => 'message', kind => 'string', required => 1, help => 'text to sign (hex bytes with --hex)' } ]],
-    'verify-message' => ['Verify a ZBC-MSG-v1 message signature against a ZBC_ address (off-chain)', [
+    'verify-message' => ['Verify a message signature against a ZBC_ address (ZBC-MSG-v2 with the chain genesis; v1 accepted until 2026-12-01)', [
         { name => 'address', kind => 'string', required => 1, help => "signer's ZBC_ address (or 64-hex public key)" },
         { name => 'message', kind => 'string', required => 1, help => 'the signed text (hex bytes with --hex)' },
         { name => 'signature', kind => 'string', required => 1, help => '64-byte Ed25519 signature, 128 hex' } ]],
@@ -341,7 +341,11 @@ sub _message_bytes {
 sub run_sign_message {
     my ($v, $o) = @_;
     die usage("Private key must be 64 hex characters (32 bytes)") unless is_hex($v->{sender_privkey}, 64);
-    my $s = sign_message($v->{sender_privkey}, _message_bytes($v->{message}, $o->{hex}));
+    my $msg = _message_bytes($v->{message}, $o->{hex});
+    # ZBC-MSG-v2 binds the signature to one chain: the genesis comes from --genesis (or ZOOBC_GENESIS_HASH) or the node.
+    my $ctx = _signing_context($o, ZBC::Client->new($o->{api}, $o->{timeout}));
+    die usage("ZBC-MSG-v2 binds the signature to one chain: it needs the chain's genesis (a node, or --genesis <hex>)") unless length($ctx->genesis_hash) == 32;
+    my $s = sign_message($v->{sender_privkey}, $msg, $ctx->genesis_hash);
     if ($o->{verbose}) { _out_text("Address:   $s->{address}\nDigest:    $s->{digest}\nSignature: $s->{signature}\n"); }
     else {
         my %out = (success => JSON::PP::true, %$s);
@@ -358,13 +362,21 @@ sub run_verify_message {
     my $msg = _message_bytes($v->{message}, $o->{hex});
     die usage("signature must be hex") unless is_hex($v->{signature});
     die usage("signature must be 64 bytes (128 hex characters)") unless length($v->{signature}) == 128;
-    my $valid = verify_message($v->{address}, $msg, $v->{signature});
+    # v2 first, when the chain genesis is known (--genesis, ZOOBC_GENESIS_HASH, or a node that answers); v1 only until its sunset.
+    my $ctx = eval { _signing_context($o, ZBC::Client->new($o->{api}, $o->{timeout})) };
+    my $genesis = $ctx && length($ctx->genesis_hash) == 32 ? $ctx->genesis_hash : undef;
+    my $accepted = verify_message($v->{address}, $msg, $v->{signature}, $genesis);    # 'ZBC-MSG-v2', 'ZBC-MSG-v1' or 0
+    my $valid = $accepted ? 1 : 0;
+    my $scheme = $accepted eq SCHEME_V1 ? SCHEME_V1 . ' (accepted until 2026-12-01)' : SCHEME;
+    my $digest = ($accepted eq SCHEME_V1 || !defined $genesis) ? message_digest($msg) : message_digest_v2($msg, $genesis);
     my $address = parse_address(to_hex($pub))->display;
     my $code = $valid ? OK : VERIFY_FAILED;
     if ($o->{verbose}) { _out_text(($valid ? 'VALID' : 'INVALID') . " signature for $address\n"); }
     else {
-        _out_json({ success => JSON::PP::true, valid => $valid ? JSON::PP::true : JSON::PP::false, scheme => SCHEME, address => $address,
-                    digest => to_hex(message_digest($msg)), exit_code => 0 + $code, error_class => $valid ? 'ok' : 'verify_failed' });
+        my %out = (success => JSON::PP::true, valid => $valid ? JSON::PP::true : JSON::PP::false, scheme => $scheme, address => $address,
+                   digest => to_hex($digest), exit_code => 0 + $code, error_class => $valid ? 'ok' : 'verify_failed');
+        $out{genesis_hash} = to_hex($genesis) if defined $genesis;
+        _out_json(\%out);
     }
     return $code;
 }

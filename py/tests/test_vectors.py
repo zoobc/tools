@@ -70,12 +70,23 @@ class Vectors(unittest.TestCase):
 
     def test_messages(self):
         m = load("messages.json")
+        before, after = zbc.MESSAGE_SIGNING_V1_SUNSET - 1, zbc.MESSAGE_SIGNING_V1_SUNSET
         for v in m["vectors"]:
-            s = zbc.sign_message(v["seed"], bytes.fromhex(v["message_hex"]))
-            self.assertEqual((s["address"], s["public_key"], s["digest"], s["signature"]), (v["address"], v["public_key"], v["digest"], v["signature"]))
-            self.assertTrue(zbc.verify_message(v["address"], bytes.fromhex(v["message_hex"]), v["signature"]))
+            msg = bytes.fromhex(v["message_hex"])
+            s = zbc.sign_message(v["seed"], msg, v["genesis_hash"])
+            self.assertEqual((s["scheme"], s["genesis_hash"], s["address"], s["public_key"], s["digest"], s["signature"]),
+                             ("ZBC-MSG-v2", v["genesis_hash"], v["address"], v["public_key"], v["digest"], v["signature"]))
+            self.assertEqual(zbc.verify_message_scheme(v["address"], msg, v["signature"], v["genesis_hash"]), "ZBC-MSG-v2")
+            self.assertTrue(zbc.verify_message(v["address"], msg, v["signature"], v["genesis_hash"], now=after), "v2 has no sunset")
+            self.assertFalse(zbc.verify_message(v["address"], msg, v["signature"]), "v2 never verifies without the genesis")
+        for v in m["legacy_v1"]:
+            msg = bytes.fromhex(v["message_hex"])
+            self.assertEqual(zbc.message_digest_v1(msg).hex(), v["digest"])
+            self.assertEqual(zbc.verify_message_scheme(v["address"], msg, v["signature"], now=before), "ZBC-MSG-v1 (accepted until 2026-12-01)")
+            self.assertTrue(zbc.verify_message(v["address"], msg, v["signature"], m["vectors"][0]["genesis_hash"], now=before), "v1 still passes with a genesis")
+            self.assertFalse(zbc.verify_message(v["address"], msg, v["signature"], now=after), "v1 is refused after the sunset")
         for n in m["invalid"]:
-            self.assertFalse(zbc.verify_message(n["address"], n["message"].encode(), n["signature"]), n["case"])
+            self.assertFalse(zbc.verify_message(n["address"], n["message"].encode(), n["signature"], n.get("genesis_hash")), n["case"])
 
     def test_core_transactions(self):
         for v in load("transactions.json")["vectors"]:
@@ -140,14 +151,31 @@ class Vectors(unittest.TestCase):
         for v in m["vectors"]:
             hexflag = ["--hex"] if v["hex_input"] else []
             msg = v["message_hex"] if v["hex_input"] else v["message"]
-            rc, out, _ = run_cli(["sign-message", v["seed"], msg] + hexflag)
-            self.assertEqual(rc, 0)
-            self.assertEqual(json.loads(out)["signature"], v["signature"])
-            rc, out, _ = run_cli(["verify-message", v["address"], msg, v["signature"]] + hexflag)
-            self.assertEqual((rc, json.loads(out)["valid"]), (0, True))
+            genesis = ["--genesis", v["genesis_hash"]]
+            rc, out, _ = run_cli(["sign-message", v["seed"], msg] + hexflag + genesis)
+            self.assertEqual(rc, 0, out)
+            j = json.loads(out)
+            self.assertEqual((j["scheme"], j["genesis_hash"], j["signature"]), ("ZBC-MSG-v2", v["genesis_hash"], v["signature"]))
+            rc, out, _ = run_cli(["verify-message", v["address"], msg, v["signature"]] + hexflag + genesis)
+            j = json.loads(out)
+            self.assertEqual((rc, j["valid"], j["scheme"], j["digest"]), (0, True, "ZBC-MSG-v2", v["digest"]))
+        # sign-message needs the genesis: no node answers at the default --api, 'v1' is not a chain
+        rc, out, _ = run_cli(["sign-message", m["vectors"][0]["seed"], "hello zoobc"])
+        self.assertEqual(rc, 3, out)
+        rc, out, _ = run_cli(["sign-message", m["vectors"][0]["seed"], "hello zoobc", "--genesis", "v1"])
+        self.assertEqual((rc, json.loads(out)["error_class"]), (2, "usage"), out)
+        for v in m["legacy_v1"]:
+            hexflag = ["--hex"] if v["hex_input"] else []
+            msg = v["message_hex"] if v["hex_input"] else v["message"]
+            for genesis in ([], ["--genesis", m["vectors"][0]["genesis_hash"]]):
+                rc, out, _ = run_cli(["verify-message", v["address"], msg, v["signature"]] + hexflag + genesis)
+                j = json.loads(out)
+                self.assertEqual((rc, j["valid"], j["scheme"], j["digest"]), (0, True, "ZBC-MSG-v1 (accepted until 2026-12-01)", v["digest"]), v["message"])
         for n in m["invalid"]:
-            rc, out, _ = run_cli(["verify-message", n["address"], n["message"], n["signature"]])
+            genesis = ["--genesis", n["genesis_hash"]] if n.get("genesis_hash") else []
+            rc, out, _ = run_cli(["verify-message", n["address"], n["message"], n["signature"]] + genesis)
             self.assertEqual(rc, n["exit_code"], n["case"])
+            self.assertEqual(json.loads(out)["error_class"], n["error_class"], n["case"])
 
     def test_cli_json_input_and_env_key(self):
         v = load("transactions.json")["vectors"][0]

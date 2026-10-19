@@ -26,6 +26,77 @@ A_V = "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX"
 A_1 = "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
 V_SIG_1 = "4cdf8cafca5d06dd6c81c5460c9affec7eada96a63943e485b673ae33da6330570885a8b3f5dd752cbbe2b4404ae9402cdd2f6c36a09941e5d8546dbdd4ef10b"  # sign-message(SEED_1, "hello zoobc")
 REF_BLOCK = {"block_hash": "5a" * 32, "height": 1000}
+# ZBC-MSG-v1 vectors frozen when v2 shipped (2026-10-19): the tools no longer PRODUCE v1 signatures, but
+# verify-message accepts them until MESSAGE_SIGNING_V1_SUNSET (2026-12-01T00:00:00Z). Ports keep verifying
+# these until then; remove them, and the two v1 cases in cli.json, after the sunset.
+LEGACY_V1_MESSAGE_VECTORS = [
+ {
+  "seed": "1111111111111111111111111111111111111111111111111111111111111111",
+  "message": "hello zoobc",
+  "message_hex": "68656c6c6f207a6f6f6263",
+  "hex_input": False,
+  "address": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+  "public_key": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+  "digest": "124e46e8b679ff7d2e9b20d40c07b2f9b25fc4589a8050b4db77fb7d58bf8db7",
+  "signature": "4cdf8cafca5d06dd6c81c5460c9affec7eada96a63943e485b673ae33da6330570885a8b3f5dd752cbbe2b4404ae9402cdd2f6c36a09941e5d8546dbdd4ef10b",
+  "scheme": "ZBC-MSG-v1"
+ },
+ {
+  "seed": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+  "message": "",
+  "message_hex": "",
+  "hex_input": False,
+  "address": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+  "public_key": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+  "digest": "254fc9a7e66e381f0131d380d5f0cad5308eb941d17a618159e6749d2ae7987e",
+  "signature": "539a64d654ededde23ca2300caf730eb92fea8f020b93867f99e0eae52f848a5bc021cc67374abbf173d901fae645f2a637900930176eccdf3cd3c3ed295360e",
+  "scheme": "ZBC-MSG-v1"
+ },
+ {
+  "seed": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+  "message": "héllo ✓ zoobc",
+  "message_hex": "68c3a96c6c6f20e29c93207a6f6f6263",
+  "hex_input": False,
+  "address": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+  "public_key": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+  "digest": "3fe22c6eebd90012a7b42c1026ac5a4251248106bcb83a2e3270f18a728513ca",
+  "signature": "e073445c513326d9952ecea037640b84aa3d8d7838db125983a6ec4ffc7a34b387128c9e0658d7d9239f621ee6513de18541e1dc08473fb9ac68ce31dbd8bb06",
+  "scheme": "ZBC-MSG-v1"
+ },
+ {
+  "seed": "2222222222222222222222222222222222222222222222222222222222222222",
+  "message": None,
+  "message_hex": "00ff10",
+  "hex_input": True,
+  "address": "ZBC_UCNKL5D2_M5MYAL7Z_KX4NYLJK_CSS4THJD_X2L7QZAS_P74TQNCV_UTYAGL5D",
+  "public_key": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+  "digest": "c95cb3b96b40032834abb7aaa8e549321c55a72f74a4feeda5de516ac62d365b",
+  "signature": "c844a6c49bed43d0a65814c809a70fdd0bce3b6ed93d59649f48d70228cfe8fcdb1820b42fb1bd162b59a68237e0c17b852eb21199ded46730bf70a19d1eec0a",
+  "scheme": "ZBC-MSG-v1"
+ },
+ {
+  "seed": "2222222222222222222222222222222222222222222222222222222222222222",
+  "message": None,
+  "message_hex": "",
+  "hex_input": True,
+  "address": "ZBC_UCNKL5D2_M5MYAL7Z_KX4NYLJK_CSS4THJD_X2L7QZAS_P74TQNCV_UTYAGL5D",
+  "public_key": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+  "digest": "254fc9a7e66e381f0131d380d5f0cad5308eb941d17a618159e6749d2ae7987e",
+  "signature": "7bf51671eebbaca6d4912e508305d62b2d0a77135e2ed66922b2a3944639c6a4372117fe6681560267d157b9bd5cb52385d137de989ee68444db57fd086ba406",
+  "scheme": "ZBC-MSG-v1"
+ },
+ {
+  "seed": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+  "message": "The quick brown fox jumps over the lazy dog",
+  "message_hex": "54686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f67",
+  "hex_input": False,
+  "address": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+  "public_key": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+  "digest": "996fd492a482c0c70b96f7e83828ccc82651b56adb4b7ae2bf9486b02d89bdfd",
+  "signature": "a02defa0f79f37ab9c88a54b52e1518adb844706c13b94dbbc97ca525be9eaf15efb28f294eb4b63837a5d51433c48ffa8786d7874495dd94e67ae3945c73a03",
+  "scheme": "ZBC-MSG-v1"
+ }
+]
 
 BIN = None
 def run(args, stdin=None):
@@ -154,28 +225,32 @@ def messages_vectors():
              (SEED_V, "The quick brown fox jumps over the lazy dog", False)]
     out = []
     for seed, msg, hexin in cases:
-        args = ["sign-message", seed, msg] + (["--hex"] if hexin else [])
+        args = ["sign-message", seed, msg, "--genesis", GENESIS] + (["--hex"] if hexin else [])
         j = must_json(*cli(*args), "sign-message")
-        v = must_json(*cli("verify-message", j["address"], msg, j["signature"], *(["--hex"] if hexin else [])), "verify-message")
-        assert v["valid"] is True and v["exit_code"] == 0
-        out.append({"seed": seed, "message": None if hexin else msg, "message_hex": j["message_hex"], "hex_input": hexin,
+        assert j["scheme"] == "ZBC-MSG-v2" and j["genesis_hash"] == GENESIS
+        v = must_json(*cli("verify-message", j["address"], msg, j["signature"], "--genesis", GENESIS, *(["--hex"] if hexin else [])), "verify-message")
+        assert v["valid"] is True and v["exit_code"] == 0 and v["scheme"] == "ZBC-MSG-v2"
+        out.append({"seed": seed, "message": None if hexin else msg, "message_hex": j["message_hex"], "hex_input": hexin, "genesis_hash": GENESIS,
                     "address": j["address"], "public_key": j["public_key"], "digest": j["digest"], "signature": j["signature"], "scheme": j["scheme"]})
     v0 = out[0]
     neg = []
-    for name, addr, msg, sig in [("tampered message", v0["address"], "hello zoobd", v0["signature"]),
-                                 ("other signer", out[1]["address"], "hello zoobc", v0["signature"]),
-                                 ("corrupted signature", v0["address"], "hello zoobc", "00" + v0["signature"][2:])]:
-        rc, o, e = cli("verify-message", addr, msg, sig)
+    for name, addr, msg, sig, genesis in [("tampered message", v0["address"], "hello zoobd", v0["signature"], GENESIS),
+                                          ("other signer", out[1]["address"], "hello zoobc", v0["signature"], GENESIS),
+                                          ("corrupted signature", v0["address"], "hello zoobc", "00" + v0["signature"][2:], GENESIS),
+                                          ("other chain (v2 is chain-bound)", v0["address"], "hello zoobc", v0["signature"], GENESIS_B)]:
+        rc, o, e = cli("verify-message", addr, msg, sig, "--genesis", genesis)
         j = json.loads(o)
-        neg.append({"case": name, "address": addr, "message": msg, "signature": sig, "valid": j["valid"], "exit_code": rc, "error_class": j["error_class"]})
+        neg.append({"case": name, "address": addr, "message": msg, "signature": sig, "genesis_hash": genesis, "valid": j["valid"], "exit_code": rc, "error_class": j["error_class"]})
     for name, addr, msg, sig, code in [("signature not hex", v0["address"], "hello zoobc", "zz" * 64, 2),
                                        ("signature wrong length", v0["address"], "hello zoobc", "00" * 63, 2),
                                        ("address not ZBC", "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", "hello zoobc", v0["signature"], 2)]:
         rc, o, e = cli("verify-message", addr, msg, sig)
         neg.append({"case": name, "address": addr, "message": msg, "signature": sig, "valid": False, "exit_code": rc, "error_class": json.loads(o)["error_class"]})
-    return {"description": "ZBC-MSG-v1 (signing.md 5): digest = SHA3-256('ZBC-MSG' || message), signature = Ed25519(seed, digest). "
-                           "`hex_input` = the message was given as hex bytes. `invalid` lists verify-message outcomes that must fail.",
-            "vectors": out, "invalid": neg}
+    return {"description": "ZBC-MSG-v2 (signing.md 5a): digest = SHA3-256('ZBC-MSG-v2' || genesis_hash || message), signature = Ed25519(seed, digest); "
+                           "`genesis_hash` is the chain signed for. `hex_input` = the message was given as hex bytes. `invalid` lists verify-message "
+                           "outcomes that must fail (one of them: a v2 signature checked against another chain). `legacy_v1`: ZBC-MSG-v1 vectors, "
+                           "digest = SHA3-256('ZBC-MSG' || message); verify-message accepts them until 2026-12-01T00:00:00Z, never produces them.",
+            "vectors": out, "invalid": neg, "legacy_v1": LEGACY_V1_MESSAGE_VECTORS}
 
 # ---------------------------------------------------------------- encryption ----------------
 # The sealed-message construction (signing.md 9) is libsodium's crypto_box_seal, which draws a random
@@ -365,8 +440,12 @@ def cli_vectors():
     case("json-input missing field", ["send-zbc", "--json-input", "--genesis", "v1", "--offline"], 2, stdin=json.dumps({"sender_privkey": SEED_V, "recipient": A_V}))
     case("json-input invalid json", ["send-zbc", "--json-input"], 2, stdin="{not json")
     case("verify-message wrong signature", ["verify-message", A_1, "hello zoobc", "00" * 64], 10)
-    case("verify-message dashed address", ["verify-message", A_1.replace("_", "-"), "hello zoobc", V_SIG_1], 0)
-    case("verify-message bare address", ["verify-message", A_1.replace("_", "").lower(), "hello zoobc", V_SIG_1], 0)
+    # The address-shape cases use a ZBC-MSG-v2 signature made here (chain GENESIS), so they outlive the v1 sunset.
+    v2sig = must_json(*cli("sign-message", SEED_1, "hello zoobc", "--genesis", GENESIS), "sign-message for cli cases")["signature"]
+    case("verify-message dashed address", ["verify-message", A_1.replace("_", "-"), "hello zoobc", v2sig, "--genesis", GENESIS], 0)
+    case("verify-message bare address", ["verify-message", A_1.replace("_", "").lower(), "hello zoobc", v2sig, "--genesis", GENESIS], 0)
+    # A v1 signature still verifies without a genesis until the sunset (2026-12-01); drop this case after that date.
+    case("verify-message legacy v1 (until 2026-12-01)", ["verify-message", A_1, "hello zoobc", V_SIG_1], 0)
     case("send-zbc bare recipient", ["send-zbc", SEED_V, A_V.replace("_", ""), "1", "--genesis", "v1", "--offline"], 0)
     case("unknown command", ["no-such-command"], 2)
     case("no arguments", [], 2)

@@ -44,8 +44,9 @@ import "github.com/zoobc/tools/go/zbc"
 kp, _ := zbc.KeyPairFromHex("<64 hex seed>")       // kp.Address() ZBC_, kp.NodeAddress() ZNK_, kp.AccountBytes()
 acct, path, _ := zbc.WalletAccount("<12 or 24 words>", 0, "")   // m/44'/883'/0'
 
-s := zbc.SignMessage(kp, []byte("hello"))         // ZBC-MSG-v1: Address, Digest, Signature
-zbc.VerifyMessage(kp.Address(), []byte("hello"), sig)
+s, _ := zbc.SignMessage(kp, []byte("hello"), genesis)   // ZBC-MSG-v2 (chain-bound): Address, Digest, Signature
+zbc.VerifyMessage(kp.Address(), []byte("hello"), sig, genesis)
+zbc.VerifyMessageAny(addr, msg, sig, genesis, time.Now().Unix())   // v2, then legacy v1 until 2026-12-01
 
 c := zbc.NewClient("https://<gateway>", 20)
 ctx, _ := c.SigningRule()                          // {2, genesis} from /api/v1/node/info

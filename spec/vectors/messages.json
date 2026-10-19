@@ -1,7 +1,150 @@
 {
  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
- "description": "ZBC-MSG-v1 (signing.md 5): digest = SHA3-256('ZBC-MSG' || message), signature = Ed25519(seed, digest). `hex_input` = the message was given as hex bytes. `invalid` lists verify-message outcomes that must fail. ZBC-MSG-v2 (signing.md 5a): digest = SHA3-256('ZBC-MSG-v2' || genesis_hash || message); entries carry `genesis_hash`. v1 verifies until 2026-12-01T00:00:00Z.",
+ "description": "ZBC-MSG-v2 (signing.md 5a): digest = SHA3-256('ZBC-MSG-v2' || genesis_hash || message), signature = Ed25519(seed, digest); `genesis_hash` is the chain signed for. `hex_input` = the message was given as hex bytes. `invalid` lists verify-message outcomes that must fail (one of them: a v2 signature checked against another chain). `legacy_v1`: ZBC-MSG-v1 vectors, digest = SHA3-256('ZBC-MSG' || message); verify-message accepts them until 2026-12-01T00:00:00Z, never produces them.",
  "vectors": [
+  {
+   "seed": "1111111111111111111111111111111111111111111111111111111111111111",
+   "message": "hello zoobc",
+   "message_hex": "68656c6c6f207a6f6f6263",
+   "hex_input": false,
+   "genesis_hash": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "address": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+   "public_key": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+   "digest": "234dcaa68d9d221747b675cce79f8b5a521096f03d33147a3ef1d42d7cd87fa2",
+   "signature": "1c13b77284ef4d96967cc931a688b2d88aa8da7dd7dc2fd865dfdb2c04e0df4f1e99e28dced62ee06f146d57c474f352fd8979a6046dca616eae5a02c3e86505",
+   "scheme": "ZBC-MSG-v2"
+  },
+  {
+   "seed": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+   "message": "",
+   "message_hex": "",
+   "hex_input": false,
+   "genesis_hash": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "address": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+   "public_key": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+   "digest": "da055dcd176456faf201d9484cd1a34758ad75d8f1e8aace9317ae1e8f7f26e0",
+   "signature": "c65c458e83c3d6af350c3e030c4bbd9807d98c995ff4eeedb6e6a4de5a4d09b69e1450547dc0b60a1f67c762ff6e7b4a19c67ea749391939344e8786d3c7a00d",
+   "scheme": "ZBC-MSG-v2"
+  },
+  {
+   "seed": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+   "message": "héllo ✓ zoobc",
+   "message_hex": "68c3a96c6c6f20e29c93207a6f6f6263",
+   "hex_input": false,
+   "genesis_hash": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "address": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+   "public_key": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+   "digest": "ff4ce8fbe8596d5a0f6d97d414f0964383efffc741d109a02b832591f6c1126e",
+   "signature": "86a6a9f3a20bb0d37f278bcbf44103d5df78a380dfa94067d3bb8b04b137f8363dd85288278e588aa4710028b91f5e369e6e42e5b13df59645ab0d7d05b08002",
+   "scheme": "ZBC-MSG-v2"
+  },
+  {
+   "seed": "2222222222222222222222222222222222222222222222222222222222222222",
+   "message": null,
+   "message_hex": "00ff10",
+   "hex_input": true,
+   "genesis_hash": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "address": "ZBC_UCNKL5D2_M5MYAL7Z_KX4NYLJK_CSS4THJD_X2L7QZAS_P74TQNCV_UTYAGL5D",
+   "public_key": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+   "digest": "5f376e6c58140c5f43d23b0956a6ba329f8fa57231d5e4b8e788cbeb0c04adaf",
+   "signature": "481e378e8e472430d346a765b6feaeb55a8db7f72da58775a32e91d512ad3ea63a5a09339cdb0c192e5e391f6483652c03bd00971add8498908f78a2686c160c",
+   "scheme": "ZBC-MSG-v2"
+  },
+  {
+   "seed": "2222222222222222222222222222222222222222222222222222222222222222",
+   "message": null,
+   "message_hex": "",
+   "hex_input": true,
+   "genesis_hash": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "address": "ZBC_UCNKL5D2_M5MYAL7Z_KX4NYLJK_CSS4THJD_X2L7QZAS_P74TQNCV_UTYAGL5D",
+   "public_key": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+   "digest": "da055dcd176456faf201d9484cd1a34758ad75d8f1e8aace9317ae1e8f7f26e0",
+   "signature": "46ab623e3710f82a04db52900e8c16a30b70d3b874e4dd80a4fcb2e19162298b28e91bd59a9a4ace5762ed18d585b89a9b40080fb19c8b689b701e8626d74a05",
+   "scheme": "ZBC-MSG-v2"
+  },
+  {
+   "seed": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+   "message": "The quick brown fox jumps over the lazy dog",
+   "message_hex": "54686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f67",
+   "hex_input": false,
+   "genesis_hash": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "address": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+   "public_key": "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+   "digest": "b9da42abf8e00d5ce0e0d0271692c9bb4f481b82fb534e44f2d4be487422a123",
+   "signature": "0569ccc3e10e2f60db60119cd92aa673e553a1695a6ed6561566d184238b2f295bf72bf994bb167f8f6329e52a2f0df281616cf4b9ebf0107af20996bec7350c",
+   "scheme": "ZBC-MSG-v2"
+  }
+ ],
+ "invalid": [
+  {
+   "case": "tampered message",
+   "address": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+   "message": "hello zoobd",
+   "signature": "1c13b77284ef4d96967cc931a688b2d88aa8da7dd7dc2fd865dfdb2c04e0df4f1e99e28dced62ee06f146d57c474f352fd8979a6046dca616eae5a02c3e86505",
+   "genesis_hash": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "valid": false,
+   "exit_code": 10,
+   "error_class": "verify_failed"
+  },
+  {
+   "case": "other signer",
+   "address": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+   "message": "hello zoobc",
+   "signature": "1c13b77284ef4d96967cc931a688b2d88aa8da7dd7dc2fd865dfdb2c04e0df4f1e99e28dced62ee06f146d57c474f352fd8979a6046dca616eae5a02c3e86505",
+   "genesis_hash": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "valid": false,
+   "exit_code": 10,
+   "error_class": "verify_failed"
+  },
+  {
+   "case": "corrupted signature",
+   "address": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+   "message": "hello zoobc",
+   "signature": "0013b77284ef4d96967cc931a688b2d88aa8da7dd7dc2fd865dfdb2c04e0df4f1e99e28dced62ee06f146d57c474f352fd8979a6046dca616eae5a02c3e86505",
+   "genesis_hash": "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d",
+   "valid": false,
+   "exit_code": 10,
+   "error_class": "verify_failed"
+  },
+  {
+   "case": "other chain (v2 is chain-bound)",
+   "address": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+   "message": "hello zoobc",
+   "signature": "1c13b77284ef4d96967cc931a688b2d88aa8da7dd7dc2fd865dfdb2c04e0df4f1e99e28dced62ee06f146d57c474f352fd8979a6046dca616eae5a02c3e86505",
+   "genesis_hash": "090ab3c7e0ce0630f9b6a3d9694dc4d2d5e1ccd018352ef27de6cd8de0a61878",
+   "valid": false,
+   "exit_code": 10,
+   "error_class": "verify_failed"
+  },
+  {
+   "case": "signature not hex",
+   "address": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+   "message": "hello zoobc",
+   "signature": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+   "valid": false,
+   "exit_code": 2,
+   "error_class": "usage"
+  },
+  {
+   "case": "signature wrong length",
+   "address": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+   "message": "hello zoobc",
+   "signature": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "valid": false,
+   "exit_code": 2,
+   "error_class": "usage"
+  },
+  {
+   "case": "address not ZBC",
+   "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+   "message": "hello zoobc",
+   "signature": "1c13b77284ef4d96967cc931a688b2d88aa8da7dd7dc2fd865dfdb2c04e0df4f1e99e28dced62ee06f146d57c474f352fd8979a6046dca616eae5a02c3e86505",
+   "valid": false,
+   "exit_code": 2,
+   "error_class": "usage"
+  }
+ ],
+ "legacy_v1": [
   {
    "seed": "1111111111111111111111111111111111111111111111111111111111111111",
    "message": "hello zoobc",
@@ -67,74 +210,6 @@
    "digest": "996fd492a482c0c70b96f7e83828ccc82651b56adb4b7ae2bf9486b02d89bdfd",
    "signature": "a02defa0f79f37ab9c88a54b52e1518adb844706c13b94dbbc97ca525be9eaf15efb28f294eb4b63837a5d51433c48ffa8786d7874495dd94e67ae3945c73a03",
    "scheme": "ZBC-MSG-v1"
-  },
-  {
-   "seed": "1111111111111111111111111111111111111111111111111111111111111111",
-   "message": "hello zoobc",
-   "message_hex": "68656c6c6f207a6f6f6263",
-   "hex_input": false,
-   "genesis_hash": "2222222222222222222222222222222222222222222222222222222222222222",
-   "address": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
-   "public_key": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
-   "digest": "6d11f2bb5135ac78d20384b55165c9a81803df499bc8d3d3ed305b59c40bc80a",
-   "signature": "f0d86e195d28cd3208b1a037abae5d451deee77e1199a252594758196c742f8977ebc6e4ac95c6f5001b18bf39c62cb7636339f6db9ed661f66a927508f77700",
-   "scheme": "ZBC-MSG-v2"
-  }
- ],
- "invalid": [
-  {
-   "case": "tampered message",
-   "address": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
-   "message": "hello zoobd",
-   "signature": "4cdf8cafca5d06dd6c81c5460c9affec7eada96a63943e485b673ae33da6330570885a8b3f5dd752cbbe2b4404ae9402cdd2f6c36a09941e5d8546dbdd4ef10b",
-   "valid": false,
-   "exit_code": 10,
-   "error_class": "verify_failed"
-  },
-  {
-   "case": "other signer",
-   "address": "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
-   "message": "hello zoobc",
-   "signature": "4cdf8cafca5d06dd6c81c5460c9affec7eada96a63943e485b673ae33da6330570885a8b3f5dd752cbbe2b4404ae9402cdd2f6c36a09941e5d8546dbdd4ef10b",
-   "valid": false,
-   "exit_code": 10,
-   "error_class": "verify_failed"
-  },
-  {
-   "case": "corrupted signature",
-   "address": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
-   "message": "hello zoobc",
-   "signature": "00df8cafca5d06dd6c81c5460c9affec7eada96a63943e485b673ae33da6330570885a8b3f5dd752cbbe2b4404ae9402cdd2f6c36a09941e5d8546dbdd4ef10b",
-   "valid": false,
-   "exit_code": 10,
-   "error_class": "verify_failed"
-  },
-  {
-   "case": "signature not hex",
-   "address": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
-   "message": "hello zoobc",
-   "signature": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
-   "valid": false,
-   "exit_code": 2,
-   "error_class": "usage"
-  },
-  {
-   "case": "signature wrong length",
-   "address": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
-   "message": "hello zoobc",
-   "signature": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-   "valid": false,
-   "exit_code": 2,
-   "error_class": "usage"
-  },
-  {
-   "case": "address not ZBC",
-   "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
-   "message": "hello zoobc",
-   "signature": "4cdf8cafca5d06dd6c81c5460c9affec7eada96a63943e485b673ae33da6330570885a8b3f5dd752cbbe2b4404ae9402cdd2f6c36a09941e5d8546dbdd4ef10b",
-   "valid": false,
-   "exit_code": 2,
-   "error_class": "usage"
   }
  ]
 }

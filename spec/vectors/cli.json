@@ -254,7 +254,9 @@
     "verify-message",
     "ZBC-2BFLEMTU-FO2KWOQT-NC6UMFPE-43ICESVX-DIAWXL4F-ECRTFSLX-Q43UIV2I",
     "hello zoobc",
-    "4cdf8cafca5d06dd6c81c5460c9affec7eada96a63943e485b673ae33da6330570885a8b3f5dd752cbbe2b4404ae9402cdd2f6c36a09941e5d8546dbdd4ef10b"
+    "1c13b77284ef4d96967cc931a688b2d88aa8da7dd7dc2fd865dfdb2c04e0df4f1e99e28dced62ee06f146d57c474f352fd8979a6046dca616eae5a02c3e86505",
+    "--genesis",
+    "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d"
    ],
    "stdin": null,
    "exit_code": 0,
@@ -266,6 +268,21 @@
    "args": [
     "verify-message",
     "zbc2bflemtufo2kwoqtnc6umfpe43icesvxdiawxl4fecrtfslxq43uiv2i",
+    "hello zoobc",
+    "1c13b77284ef4d96967cc931a688b2d88aa8da7dd7dc2fd865dfdb2c04e0df4f1e99e28dced62ee06f146d57c474f352fd8979a6046dca616eae5a02c3e86505",
+    "--genesis",
+    "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d"
+   ],
+   "stdin": null,
+   "exit_code": 0,
+   "error_class": "ok",
+   "success": true
+  },
+  {
+   "case": "verify-message legacy v1 (until 2026-12-01)",
+   "args": [
+    "verify-message",
+    "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
     "hello zoobc",
     "4cdf8cafca5d06dd6c81c5460c9affec7eada96a63943e485b673ae33da6330570885a8b3f5dd752cbbe2b4404ae9402cdd2f6c36a09941e5d8546dbdd4ef10b"
    ],

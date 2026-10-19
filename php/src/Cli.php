@@ -22,10 +22,10 @@ final class Cli
         'sign-message' => 'keys', 'verify-message' => 'keys', 'decrypt-message' => 'keys',
     ];
     private const MESSAGE_COMMANDS = [
-        'sign-message' => ['Sign a message with a private key (ZBC-MSG-v1, off-chain, no node needed)', [
+        'sign-message' => ['Sign a message with a private key (ZBC-MSG-v2: bound to one chain, needs --genesis <hex> or a node)', [
             ['name' => 'sender_privkey', 'kind' => 'privkey', 'required' => true, 'help' => 'Sender private key (64 hex)'],
             ['name' => 'message', 'kind' => 'string', 'required' => true, 'help' => 'text to sign (hex bytes with --hex)']]],
-        'verify-message' => ['Verify a ZBC-MSG-v1 message signature against a ZBC_ address (off-chain)', [
+        'verify-message' => ['Verify a message signature against a ZBC_ address (ZBC-MSG-v2 with the chain genesis; v1 accepted until 2026-12-01)', [
             ['name' => 'address', 'kind' => 'string', 'required' => true, 'help' => "signer's ZBC_ address (or 64-hex public key)"],
             ['name' => 'message', 'kind' => 'string', 'required' => true, 'help' => 'the signed text (hex bytes with --hex)'],
             ['name' => 'signature', 'kind' => 'string', 'required' => true, 'help' => '64-byte Ed25519 signature, 128 hex']]],
@@ -261,7 +261,11 @@ TXT;
     private static function runSignMessage(array $v, array $o, Io $io): int
     {
         try { $kp = KeyPair::fromHex($v['sender_privkey']); } catch (\InvalidArgumentException) { throw ToolError::usage('Private key must be 64 hex characters (32 bytes)'); }
-        $s = Message::sign($kp, self::messageBytes($v['message'], $o['hex']));
+        $msg = self::messageBytes($v['message'], $o['hex']);
+        // ZBC-MSG-v2 binds the signature to one chain: the genesis comes from --genesis (or ZOOBC_GENESIS_HASH) or the node.
+        $ctx = self::signingContext($o, new Client($o['api'], $o['timeout']), $io);
+        if (strlen($ctx->genesisHash) !== 32) { throw ToolError::usage("ZBC-MSG-v2 binds the signature to one chain: it needs the chain's genesis (a node, or --genesis <hex>)"); }
+        $s = Message::sign($kp, $msg, $ctx->genesisHash);
         if ($o['verbose']) { ($io->stdout)("Address:   {$s['address']}\nDigest:    {$s['digest']}\nSignature: {$s['signature']}\n"); return 0; }
         $m = ['success' => true] + $s;
         if (!$o['hex']) { $m['message'] = $v['message']; }
@@ -289,12 +293,20 @@ TXT;
         $msg = self::messageBytes($v['message'], $o['hex']);
         if (!Encoding::isHex($v['signature'])) { throw ToolError::usage('signature must be hex'); }
         if (strlen($v['signature']) !== 128) { throw ToolError::usage('signature must be 64 bytes (128 hex characters)'); }
-        $valid = Message::verify($v['address'], $msg, hex2bin($v['signature']));
+        // v2 first, when the chain genesis is known (--genesis, ZOOBC_GENESIS_HASH, or a node that answers); v1 only until its sunset.
+        try { $ctx = self::signingContext($o, new Client($o['api'], $o['timeout']), $io); } catch (ToolError) { $ctx = null; }
+        $genesis = ($ctx !== null && strlen($ctx->genesisHash) === 32) ? $ctx->genesisHash : null;
+        $accepted = Message::verify($v['address'], $msg, hex2bin($v['signature']), $genesis);    // SCHEME, SCHEME_V1 or null
+        $valid = $accepted !== null;
+        $scheme = $accepted === Message::SCHEME_V1 ? Message::SCHEME_V1 . ' (accepted until 2026-12-01)' : Message::SCHEME;
+        $digest = ($accepted === Message::SCHEME_V1 || $genesis === null) ? Message::digest($msg) : Message::digestV2($msg, $genesis);
         $address = Address::encode($pub, 'ZBC');
         $code = $valid ? ExitCode::OK : ExitCode::VERIFY_FAILED;
         if ($o['verbose']) { ($io->stdout)(($valid ? 'VALID' : 'INVALID') . " signature for $address\n"); return $code; }
-        self::out($io, ['success' => true, 'valid' => $valid, 'scheme' => Message::SCHEME, 'address' => $address, 'digest' => bin2hex(Message::digest($msg)),
-                        'exit_code' => $code, 'error_class' => ExitCode::errorClass($code)]);
+        $m = ['success' => true, 'valid' => $valid, 'scheme' => $scheme, 'address' => $address, 'digest' => bin2hex($digest),
+              'exit_code' => $code, 'error_class' => ExitCode::errorClass($code)];
+        if ($genesis !== null) { $m['genesis_hash'] = bin2hex($genesis); }
+        self::out($io, $m);
         return $code;
     }
 

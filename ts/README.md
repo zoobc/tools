@@ -22,8 +22,8 @@ node dist/cli.js send-zbc <64 hex key> ZBC_... 100000000 --api https://<gateway 
 node dist/cli.js send-zbc - ZBC_... 100000000 --genesis <64 hex> --timestamp 1700000000 --offline    # no node
 printf '%s' '{"recipient":"ZBC_...","amount":100000000}' | ZBC_KEY=<64 hex> node dist/cli.js send-zbc --json-input
 node dist/cli.js approve-escrow - 0 <escrowed tx hash>
-node dist/cli.js sign-message <64 hex key> "text"
-node dist/cli.js verify-message ZBC_... "text" <signature>       # exit 0 valid, 10 not
+node dist/cli.js sign-message <64 hex key> "text" --genesis <hex>   # ZBC-MSG-v2, bound to one chain (or ask a node with --api)
+node dist/cli.js verify-message ZBC_... "text" <signature> --genesis <hex>   # exit 0 valid, 10 not; v1 accepted until 2026-12-01
 node dist/cli.js help send-zbc                                    # the fields of one command
 node dist/cli.js send-zbc --help                                  # options, environment, exit codes
 ```
@@ -50,8 +50,8 @@ import { keyPairFromSeed, walletAccount, signMessage, verifyMessage, signTransac
 const kp = keyPairFromSeed("<64 hex seed>");            // kp.address is the ZBC_ form, kp.nodeAddress the ZNK_ form
 const acct = walletAccount("<12 or 24 words>", 0);       // m/44'/883'/0'
 
-const s = signMessage(kp.seed, utf8("hello"));           // ZBC-MSG-v1: { address, digest, signature, ... }
-verifyMessage(kp.address, utf8("hello"), s.signature);   // true
+const s = signMessage(kp.seed, utf8("hello"), "<genesis hex>");   // ZBC-MSG-v2: { scheme, genesis_hash, address, digest, signature, ... }
+verifyMessage(kp.address, utf8("hello"), s.signature, "<genesis hex>");   // true (a v1 signature verifies until 2026-12-01)
 
 const client = new Client({ api: "https://<gateway>", timeoutSeconds: 20 });
 const ctx = await client.signingRule();                  // { version: 2, genesisHash } from /api/v1/node/info
@@ -78,7 +78,7 @@ src/crypto/     sha3, sha2 (sha256, sha512, hmac, pbkdf2), blake2b, ed25519
 src/util/       bytes, base32, base58, bech32, ss58, the BIP-39 word list
 src/address.ts  account types, ZBC_/ZNK_/ZBS_ text form, parseAddress for every supported chain
 src/keys.ts     seed -> key pair; BIP-39 + SLIP-10 wallets
-src/message.ts  ZBC-MSG-v1
+src/message.ts  ZBC-MSG-v2 (chain-bound), v1 verification until 2026-12-01
 src/transaction.ts  envelope, escrow block, digest, signature, hash, submit payload
 src/body.ts     the data-driven body serialiser; src/custom.ts the hand-written parts
 src/api.ts      the node/gateway client

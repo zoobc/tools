@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use zbc::body::{build_body, BodyContext};
 use zbc::cli::{run_with, Io};
 use zbc::custom::{compute_fields, custom_body, CustomInput, ReferenceBlock};
+use zbc::message::{message_digest_v1, verify_message_at, SCHEME, SCHEME_V1_ACCEPTED, V1_SUNSET};
 use zbc::*;
 
 fn load(name: &str) -> Value {
@@ -74,16 +75,34 @@ fn addresses() {
 #[test]
 fn messages() {
     let d = load("messages.json");
+    let other_chain = hex::decode("090ab3c7e0ce0630f9b6a3d9694dc4d2d5e1ccd018352ef27de6cd8de0a61878").unwrap();
     for v in d["vectors"].as_array().unwrap() {
         let kp = KeyPair::from_hex(&s(v, "seed")).unwrap();
         let msg = hex::decode(s(v, "message_hex")).unwrap();
-        let sm = sign_message(&kp, &msg);
+        let genesis = hex::decode(s(v, "genesis_hash")).unwrap();
+        let sm = sign_message(&kp, &msg, &genesis);
+        assert_eq!((sm.scheme, sm.genesis_hash), (SCHEME, s(v, "genesis_hash")));
         assert_eq!((sm.address, sm.public_key, sm.digest, sm.signature.clone()), (s(v, "address"), s(v, "public_key"), s(v, "digest"), s(v, "signature")));
-        assert!(verify_message(&s(v, "address"), &msg, &hex::decode(s(v, "signature")).unwrap()));
+        let sig = hex::decode(s(v, "signature")).unwrap();
+        let r = verify_message_at(&s(v, "address"), &msg, &sig, Some(&genesis), V1_SUNSET + 1);
+        assert!(r.valid && r.scheme == SCHEME && hex::encode(r.digest) == s(v, "digest"), "{}", s(v, "message"));
+        assert!(verify_message(&s(v, "address"), &msg, &sig, Some(&genesis)));
+        assert!(!verify_message(&s(v, "address"), &msg, &sig, None), "v2 needs the genesis");
+        assert!(!verify_message(&s(v, "address"), &msg, &sig, Some(&other_chain)), "v2 is chain-bound");
+    }
+    for v in d["legacy_v1"].as_array().unwrap() {
+        let msg = hex::decode(s(v, "message_hex")).unwrap();
+        let sig = hex::decode(s(v, "signature")).unwrap();
+        assert_eq!(hex::encode(message_digest_v1(&msg)), s(v, "digest"));
+        let r = verify_message_at(&s(v, "address"), &msg, &sig, Some(&other_chain), V1_SUNSET - 1);
+        assert!(r.valid && r.scheme == SCHEME_V1_ACCEPTED && hex::encode(r.digest) == s(v, "digest"), "{}", s(v, "message"));
+        assert!(verify_message_at(&s(v, "address"), &msg, &sig, None, V1_SUNSET - 1).valid, "v1 needs no genesis");
+        assert!(!verify_message_at(&s(v, "address"), &msg, &sig, Some(&other_chain), V1_SUNSET).valid, "v1 is refused from the sunset on");
     }
     for n in d["invalid"].as_array().unwrap() {
         let sig = hex::decode(s(n, "signature")).unwrap_or_default();
-        assert!(!verify_message(&s(n, "address"), s(n, "message").as_bytes(), &sig), "{}", s(n, "case"));
+        let genesis = n["genesis_hash"].as_str().map(|g| hex::decode(g).unwrap());
+        assert!(!verify_message(&s(n, "address"), s(n, "message").as_bytes(), &sig, genesis.as_deref()), "{}", s(n, "case"));
     }
 }
 
@@ -208,27 +227,76 @@ fn cli_exit_codes() {
 #[test]
 fn cli_messages() {
     let d = load("messages.json");
+    // No node in the tests: --genesis gives the chain, and an unreachable --api stands in for "no genesis".
+    let no_node = ["--api", "http://127.0.0.1:9", "--timeout", "2"];
     for v in d["vectors"].as_array().unwrap() {
         let hex_in = v["hex_input"].as_bool().unwrap();
         let msg = if hex_in { s(v, "message_hex") } else { s(v, "message") };
-        let mut args = vec!["sign-message", v["seed"].as_str().unwrap(), &msg];
+        let genesis = v["genesis_hash"].as_str().unwrap();
+        let mut args = vec!["sign-message", v["seed"].as_str().unwrap(), &msg, "--genesis", genesis];
         if hex_in {
             args.push("--hex");
         }
-        let (code, out, _) = cli(&args, "", &[]);
-        let j: Value = serde_json::from_str(&out).unwrap();
+        let (code, out, err) = cli(&args, "", &[]);
+        let j: Value = serde_json::from_str(&out).unwrap_or_else(|_| panic!("{out}{err}"));
         assert_eq!((code, j["signature"].as_str().unwrap()), (0, v["signature"].as_str().unwrap()));
-        let mut args = vec!["verify-message", v["address"].as_str().unwrap(), &msg, v["signature"].as_str().unwrap()];
+        assert_eq!((j["scheme"].as_str().unwrap(), j["genesis_hash"].as_str().unwrap(), j["digest"].as_str().unwrap()), (SCHEME, genesis, v["digest"].as_str().unwrap()));
+        let mut args = vec!["verify-message", v["address"].as_str().unwrap(), &msg, v["signature"].as_str().unwrap(), "--genesis", genesis];
         if hex_in {
             args.push("--hex");
         }
         let (code, out, _) = cli(&args, "", &[]);
         let j: Value = serde_json::from_str(&out).unwrap();
-        assert_eq!((code, j["valid"].as_bool().unwrap()), (0, true));
+        assert_eq!((code, j["valid"].as_bool().unwrap(), j["scheme"].as_str().unwrap(), j["genesis_hash"].as_str().unwrap()), (0, true, SCHEME, genesis));
+        // a v2 signature without the chain's genesis does not verify
+        let mut args = vec!["verify-message", v["address"].as_str().unwrap(), &msg, v["signature"].as_str().unwrap()];
+        args.extend(no_node);
+        if hex_in {
+            args.push("--hex");
+        }
+        let (code, out, _) = cli(&args, "", &[]);
+        let j: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!((code, j["valid"].as_bool().unwrap()), (10, false), "{}", s(v, "message"));
+    }
+    // sign-message always produces v2: no genesis is a usage error
+    let seed = d["vectors"][0]["seed"].as_str().unwrap();
+    let (code, _, _) = cli(&["sign-message", seed, "hello zoobc", "--genesis", "v1"], "", &[]);
+    assert_eq!(code, 2);
+    let (code, _, _) = cli(&["sign-message", seed, "hello zoobc", "--api", "http://127.0.0.1:9", "--timeout", "2"], "", &[]);
+    assert_eq!(code, 3);
+    // v1 signatures verify (on any chain, or with no genesis) until the sunset
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+    for v in d["legacy_v1"].as_array().unwrap() {
+        let hex_in = v["hex_input"].as_bool().unwrap();
+        let msg = if hex_in { s(v, "message_hex") } else { s(v, "message") };
+        let mut args = vec!["verify-message", v["address"].as_str().unwrap(), &msg, v["signature"].as_str().unwrap(), "--genesis", d["vectors"][0]["genesis_hash"].as_str().unwrap()];
+        if hex_in {
+            args.push("--hex");
+        }
+        let (code, out, _) = cli(&args, "", &[]);
+        let j: Value = serde_json::from_str(&out).unwrap();
+        let expect = if now < V1_SUNSET { (0, true, SCHEME_V1_ACCEPTED) } else { (10, false, SCHEME) };
+        assert_eq!((code, j["valid"].as_bool().unwrap(), j["scheme"].as_str().unwrap()), expect, "{}", s(v, "message"));
+        let mut args = vec!["verify-message", v["address"].as_str().unwrap(), &msg, v["signature"].as_str().unwrap()];
+        args.extend(no_node);
+        if hex_in {
+            args.push("--hex");
+        }
+        let (code, _, _) = cli(&args, "", &[]);
+        assert_eq!(code, expect.0, "{}", s(v, "message"));
     }
     for n in d["invalid"].as_array().unwrap() {
-        let (code, _, _) = cli(&["verify-message", n["address"].as_str().unwrap(), n["message"].as_str().unwrap(), n["signature"].as_str().unwrap()], "", &[]);
+        let mut args = vec!["verify-message", n["address"].as_str().unwrap(), n["message"].as_str().unwrap(), n["signature"].as_str().unwrap()];
+        match n["genesis_hash"].as_str() {
+            Some(g) => args.extend(["--genesis", g]),
+            None => args.extend(no_node),
+        }
+        let (code, out, _) = cli(&args, "", &[]);
         assert_eq!(code as i64, n["exit_code"].as_i64().unwrap(), "{}", s(n, "case"));
+        if let Some(class) = n["error_class"].as_str() {
+            let j: Value = serde_json::from_str(&out).unwrap();
+            assert_eq!(j["error_class"], class, "{}", s(n, "case"));
+        }
     }
 }
 

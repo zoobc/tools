@@ -13,7 +13,7 @@ use crate::encoding::is_hex;
 use crate::encryption::{is_sealed, open_sealed, seal};
 use crate::errors::*;
 use crate::keys::KeyPair;
-use crate::message::{message_digest, public_key_of_address, sign_message, verify_message, SCHEME};
+use crate::message::{public_key_of_address, sign_message, verify_message_at};
 use crate::spec::{command, commands, ParamDef, TxDef};
 use crate::transaction::{sign_transaction, transaction_id, Escrow, SigningContext, Unsigned};
 use serde_json::{json, Map, Value};
@@ -41,9 +41,9 @@ fn category(cmd: &str) -> &'static str {
 fn message_commands() -> Vec<(&'static str, &'static str, Vec<ParamDef>)> {
     let p = |name: &str, kind: &str, help: &str| ParamDef { name: name.into(), kind: kind.into(), required: true, default: None, help: help.into(), min: None, max: None };
     vec![
-        ("sign-message", "Sign a message with a private key (ZBC-MSG-v1, off-chain, no node needed)",
+        ("sign-message", "Sign a message with a private key (ZBC-MSG-v2: bound to one chain, needs --genesis <hex> or a node)",
          vec![p("sender_privkey", "privkey", "Sender private key (64 hex)"), p("message", "string", "text to sign (hex bytes with --hex)")]),
-        ("verify-message", "Verify a ZBC-MSG-v1 message signature against a ZBC_ address (off-chain)",
+        ("verify-message", "Verify a message signature against a ZBC_ address (ZBC-MSG-v2 with the chain genesis; v1 accepted until 2026-12-01)",
          vec![p("address", "string", "signer's ZBC_ address (or 64-hex public key)"), p("message", "string", "the signed text (hex bytes with --hex)"),
               p("signature", "string", "64-byte Ed25519 signature, 128 hex")]),
         ("decrypt-message", "Decrypt a transaction message sealed with --encrypt, with the recipient's private key (off-chain)",
@@ -414,7 +414,13 @@ fn message_bytes(text: &str, hex_in: bool) -> Result<Vec<u8>, ToolError> {
 
 fn run_sign_message(v: &Params, o: &Options, io: &mut Io) -> Result<i32, ToolError> {
     let kp = KeyPair::from_hex(&v["sender_privkey"]).map_err(|_| usage("Private key must be 64 hex characters (32 bytes)"))?;
-    let s = sign_message(&kp, &message_bytes(&v["message"], o.hex)?);
+    let msg = message_bytes(&v["message"], o.hex)?;
+    // ZBC-MSG-v2 binds the signature to one chain: the genesis comes from --genesis or the node.
+    let ctx = signing_context(o, &Client::new(&o.api, o.timeout), io)?;
+    if ctx.genesis_hash.len() != 32 {
+        return Err(usage("ZBC-MSG-v2 binds the signature to one chain: it needs the chain's genesis (a node, or --genesis <hex>)"));
+    }
+    let s = sign_message(&kp, &msg, &ctx.genesis_hash);
     if o.verbose {
         let _ = write!(io.stdout, "Address:   {}\nDigest:    {}\nSignature: {}\n", s.address, s.digest, s.signature);
         return Ok(0);
@@ -422,6 +428,7 @@ fn run_sign_message(v: &Params, o: &Options, io: &mut Io) -> Result<i32, ToolErr
     let mut m = Map::new();
     m.insert("success".into(), json!(true));
     m.insert("scheme".into(), json!(s.scheme));
+    m.insert("genesis_hash".into(), json!(s.genesis_hash));
     m.insert("address".into(), json!(s.address));
     m.insert("public_key".into(), json!(s.public_key));
     m.insert("message_hex".into(), json!(s.message_hex));
@@ -443,15 +450,28 @@ fn run_verify_message(v: &Params, o: &Options, io: &mut Io) -> Result<i32, ToolE
     if v["signature"].len() != 128 {
         return Err(usage("signature must be 64 bytes (128 hex characters)"));
     }
-    let valid = verify_message(&v["address"], &msg, &hex::decode(&v["signature"]).unwrap());
+    // v2 first (needs the chain genesis: --genesis or a node, silently absent otherwise); v1 only until its sunset.
+    let genesis = signing_context(o, &Client::new(&o.api, o.timeout), io).ok().map(|c| c.genesis_hash).filter(|g| g.len() == 32);
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(i64::MAX);
+    let r = verify_message_at(&v["address"], &msg, &hex::decode(&v["signature"]).unwrap(), genesis.as_deref(), now);
     let address = encode_zbc_address(&pub_key, "ZBC").unwrap();
-    let code = if valid { OK } else { VERIFY_FAILED };
+    let code = if r.valid { OK } else { VERIFY_FAILED };
     if o.verbose {
-        let _ = writeln!(io.stdout, "{} signature for {address}", if valid { "VALID" } else { "INVALID" });
+        let _ = writeln!(io.stdout, "{} signature for {address}", if r.valid { "VALID" } else { "INVALID" });
         return Ok(code);
     }
-    out(io, &json!({"success": true, "valid": valid, "scheme": SCHEME, "address": address, "digest": hex::encode(message_digest(&msg)),
-                    "exit_code": code, "error_class": error_class(code)}));
+    let mut m = Map::new();
+    m.insert("success".into(), json!(true));
+    m.insert("valid".into(), json!(r.valid));
+    m.insert("scheme".into(), json!(r.scheme));
+    if let Some(g) = &genesis {
+        m.insert("genesis_hash".into(), json!(hex::encode(g)));
+    }
+    m.insert("address".into(), json!(address));
+    m.insert("digest".into(), json!(hex::encode(r.digest)));
+    m.insert("exit_code".into(), json!(code));
+    m.insert("error_class".into(), json!(error_class(code)));
+    out(io, &Value::Object(m));
     Ok(code)
 }
 

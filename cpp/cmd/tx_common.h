@@ -167,7 +167,7 @@ inline const char* MESSAGE_SIGNING_SCHEME = "ZBC-MSG-v1";
 // v1 signatures verify until MESSAGE_SIGNING_V1_SUNSET (2026-12-01T00:00:00Z) and are refused after.
 inline const char* MESSAGE_SIGNING_TAG_V2 = "ZBC-MSG-v2";
 inline const char* MESSAGE_SIGNING_SCHEME_V2 = "ZBC-MSG-v2";
-inline const int64_t MESSAGE_SIGNING_V1_SUNSET = 1764547200;
+inline const int64_t MESSAGE_SIGNING_V1_SUNSET = 1796083200;
 inline zoobc::Result<std::vector<uint8_t>> message_signing_digest_v2(const std::vector<uint8_t>& message,
                                                                      const std::vector<uint8_t>& genesis_hash) {
     std::vector<uint8_t> buf(MESSAGE_SIGNING_TAG_V2, MESSAGE_SIGNING_TAG_V2 + std::strlen(MESSAGE_SIGNING_TAG_V2));

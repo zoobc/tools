@@ -16,7 +16,7 @@ from .custom import compute_fields, custom_body
 from .errors import INTERNAL, NODE_UNREACHABLE, OK, TIMEOUT, USAGE, VERIFY_FAILED, ToolError, classify_node_error, usage
 from .encryption import is_sealed, open_sealed, seal
 from .keys import key_pair
-from .message import SCHEME, message_digest, public_key_of_address, sign_message, verify_message
+from .message import SCHEME, message_digest, message_digest_v1, public_key_of_address, sign_message, verify_message_scheme
 from .transaction import Escrow, SigningContext, sign_transaction, transaction_id
 
 DEFAULT_FEE = 5000000
@@ -33,10 +33,10 @@ CATEGORY = {
     "sign-message": "keys", "verify-message": "keys", "decrypt-message": "keys",
 }
 MESSAGE_COMMANDS = {
-    "sign-message": ("Sign a message with a private key (ZBC-MSG-v1, off-chain, no node needed)", [
+    "sign-message": ("Sign a message with a private key (ZBC-MSG-v2: bound to one chain, needs --genesis <hex> or a node)", [
         {"name": "sender_privkey", "kind": "privkey", "required": True, "help": "Sender private key (64 hex)"},
         {"name": "message", "kind": "string", "required": True, "help": "text to sign (hex bytes with --hex)"}]),
-    "verify-message": ("Verify a ZBC-MSG-v1 message signature against a ZBC_ address (off-chain)", [
+    "verify-message": ("Verify a message signature against a ZBC_ address (ZBC-MSG-v2 with the chain genesis; v1 accepted until 2026-12-01)", [
         {"name": "address", "kind": "string", "required": True, "help": "signer's ZBC_ address (or 64-hex public key)"},
         {"name": "message", "kind": "string", "required": True, "help": "the signed text (hex bytes with --hex)"},
         {"name": "signature", "kind": "string", "required": True, "help": "64-byte Ed25519 signature, 128 hex"}]),
@@ -319,7 +319,7 @@ USAGE_TEXT = """Options:
   --chain <name>        Read the recipient as this chain: zbc, btc, eth, sol, dot, ada, xrp, trx, xtz
   --message <text>      Optional transaction message
   --encrypt             Encrypt --message to the recipient (ZBC only)
-  --genesis <hex|v1>    Sign for this chain (its genesis block hash) without asking the node; 'v1' = legacy unbound digest. Default: ask --api.
+  --genesis <hex|v1>    Sign for this chain (its genesis block hash) without asking the node; 'v1' = legacy unbound digest (transactions only: sign-message needs the hash). Default: ask --api.
   --escrow-approver <addr>   Escrow approver address
   --escrow-commission <n>    Escrow commission (atomic units)
   --escrow-timeout <n>       Escrow timeout as a FUTURE Unix timestamp (seconds)
@@ -360,7 +360,12 @@ def _message_bytes(text: str, hex_input: bool) -> bytes:
 def run_sign_message(v: Dict[str, str], o: Options) -> int:
     if not is_hex(v["sender_privkey"], 64):
         raise usage("Private key must be 64 hex characters (32 bytes)")
-    s = sign_message(v["sender_privkey"], _message_bytes(v["message"], o.hex))
+    msg = _message_bytes(v["message"], o.hex)
+    # ZBC-MSG-v2 binds the signature to one chain: the genesis comes from a node or --genesis, as for transactions.
+    ctx = _signing_context(o, Client(o.api, o.timeout))
+    if len(ctx.genesis_hash) != 32:
+        raise usage("ZBC-MSG-v2 binds the signature to one chain: it needs the chain's genesis (a node, or --genesis <hex>)")
+    s = sign_message(v["sender_privkey"], msg, ctx.genesis_hash)
     if o.verbose:
         sys.stdout.write("Address:   %s\nDigest:    %s\nSignature: %s\n" % (s["address"], s["digest"], s["signature"]))
     else:
@@ -380,13 +385,24 @@ def run_verify_message(v: Dict[str, str], o: Options) -> int:
         raise usage("signature must be hex")
     if len(v["signature"]) != 128:
         raise usage("signature must be 64 bytes (128 hex characters)")
-    valid = verify_message(v["address"], msg, v["signature"])
+    # v2 first (needs the chain genesis: a node, or --genesis <hex>); v1 only until its sunset.
+    genesis = b""
+    try:
+        genesis = _signing_context(o, Client(o.api, o.timeout)).genesis_hash
+    except ToolError:
+        pass  # no genesis known: only the v1 fallback can verify
+    scheme = verify_message_scheme(v["address"], msg, v["signature"], genesis or None)
+    valid = scheme is not None
+    if scheme == SCHEME or (scheme is None and len(genesis) == 32):
+        digest = message_digest(msg, genesis)
+    else:
+        digest = message_digest_v1(msg)
     address = parse_address(pub.hex()).display
     code = OK if valid else VERIFY_FAILED
     if o.verbose:
         sys.stdout.write("%s signature for %s\n" % ("VALID" if valid else "INVALID", address))
     else:
-        _out({"success": True, "valid": valid, "scheme": SCHEME, "address": address, "digest": message_digest(msg).hex(),
+        _out({"success": True, "valid": valid, "scheme": scheme or SCHEME, "address": address, "digest": digest.hex(),
               "exit_code": code, "error_class": "ok" if valid else "verify_failed"})
     return code
 

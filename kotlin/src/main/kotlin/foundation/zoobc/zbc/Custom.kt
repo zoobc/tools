@@ -12,10 +12,14 @@ object Custom {
 
     class Input(val def: TxDef, val params: Map<String, String>, val sender: KeyPair, val ctx: SigningContext, val timestamp: Long, val block: ReferenceBlock? = null)
 
-    /** owner (36) || block hash (32) || height u32le, then the owner's signature over those bytes. */
-    @JvmStatic fun proofOfOwnership(owner: KeyPair, block: ReferenceBlock): ByteArray {
+    /**
+     * owner (36) || block hash (32) || height u32le, then the NODE key's signature over those bytes: the node
+     * consents to being owned by that account, and the chain verifies with the node's public key (signing.md 6,
+     * rule poown_required). Until 2026-10-19 this signed with the owner key.
+     */
+    @JvmStatic fun proofOfOwnership(owner: KeyPair, node: KeyPair, block: ReferenceBlock): ByteArray {
         val msg = owner.accountBytes + block.hash + Bytes.le32(block.height)
-        return msg + owner.sign(msg)
+        return msg + node.sign(msg)
     }
 
     /** Fill ctx.computed for the fields the generic serialiser cannot produce; returns extra output fields. */
@@ -31,8 +35,9 @@ object Custom {
             }
             "register-node", "update-node", "claim-node" -> {
                 val block = input.block ?: throw ToolError.internal("proof of ownership needs the latest block")
-                ctx.computed["proof_of_ownership"] = proofOfOwnership(input.sender, block)
-                extra["node_znk"] = JsonPrimitive(KeyPair.fromHex(p["node_privkey"]!!).nodeAddress)
+                val node = try { KeyPair.fromHex(p["node_privkey"]!!) } catch (e: IllegalArgumentException) { throw ToolError.usage("node_privkey is not a valid key") }
+                ctx.computed["proof_of_ownership"] = proofOfOwnership(input.sender, node, block)
+                extra["node_znk"] = JsonPrimitive(node.nodeAddress)
                 extra["owner_zbc"] = JsonPrimitive(input.sender.address)
             }
             "fee-vote-reveal" -> {

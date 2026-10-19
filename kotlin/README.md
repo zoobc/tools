@@ -23,8 +23,8 @@ build/install/zbc-cli/bin/zbc-cli send-zbc <64 hex key> ZBC_... 100000000 --api 
 build/install/zbc-cli/bin/zbc-cli send-zbc - ZBC_... 100000000 --genesis <64 hex> --timestamp 1700000000 --offline    # no node
 printf '%s' '{"recipient":"ZBC_...","amount":100000000}' | ZBC_KEY=<64 hex> build/install/zbc-cli/bin/zbc-cli send-zbc --json-input
 build/install/zbc-cli/bin/zbc-cli approve-escrow - 0 <escrowed tx hash>
-build/install/zbc-cli/bin/zbc-cli sign-message <64 hex key> "text"
-build/install/zbc-cli/bin/zbc-cli verify-message ZBC_... "text" <signature>       # exit 0 valid, 10 not
+build/install/zbc-cli/bin/zbc-cli sign-message <64 hex key> "text" --genesis <hex>   # ZBC-MSG-v2: bound to one chain (or ask a node via --api)
+build/install/zbc-cli/bin/zbc-cli verify-message ZBC_... "text" <signature> --genesis <hex>   # exit 0 valid, 10 not; v1 accepted until 2026-12-01
 build/install/zbc-cli/bin/zbc-cli help send-zbc                                    # the fields of one command
 build/install/zbc-cli/bin/zbc-cli send-zbc --help                                  # options, environment, exit codes
 ```
@@ -45,8 +45,9 @@ import foundation.zoobc.zbc.*
 val kp = KeyPair.fromHex("<64 hex seed>")                 // kp.address (ZBC_), kp.nodeAddress (ZNK_), kp.accountBytes
 val (acct, path) = Wallet.account("<12 or 24 words>", 0)  // m/44'/883'/0'
 
-val s = Message.sign(kp, "hello".toByteArray())            // ZBC-MSG-v1: address, digest, signature
-Message.verify(kp.address, "hello".toByteArray(), Encoding.hexToBytes(s.signature))   // true
+val genesis = Encoding.hexToBytes("<64-hex genesis block hash>")    // the chain signed for (or client.signingRule().genesisHash)
+val s = Message.sign(kp, "hello".toByteArray(), genesis)   // ZBC-MSG-v2 (chain-bound): address, digest, signature
+Message.verify(kp.address, "hello".toByteArray(), Encoding.hexToBytes(s.signature), genesis)   // true; v1 signatures accepted until 2026-12-01
 
 val client = Client("https://<gateway>", timeoutSeconds = 20)
 val ctx = client.signingRule()                             // SigningContext(2, genesis) from /api/v1/node/info
@@ -59,7 +60,7 @@ client.status(Encoding.bytesToHex(tx.hash))                // staging | mempool 
 client.account(kp.address)                                 // balances
 ```
 
-From Java: `KeyPair.fromHex(...)`, `Message.sign(kp, bytes)`, `Transaction.sign(...)`,
+From Java: `KeyPair.fromHex(...)`, `Message.sign(kp, bytes, genesis)`, `Transaction.sign(...)`,
 `Address.parse(...)`, `new Client(url, 20)` are all static or ordinary methods. Offline signing
 takes `SigningContext.of("<genesis hex>")` (or `"v1"`) instead of asking the node. Every body of
 `../spec/transactions` is available through `Body.build(def, params, ctx)` with
