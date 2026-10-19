@@ -111,6 +111,7 @@ enum class TransactionType : uint32_t {
     UnlinkAccount             = 56,     // the controller removes a member, or a member leaves; it takes nothing
     SetMemberPermissions      = 57,     // controller sets a member's spend flag and per-period ZBC limit
     TransferGroupControl      = 58,     // controller hands the role to a member; both sign
+    QueueAttendance           = 59,     // a QUEUED node proves it is online: body = block_height(4 LE) | block_hash(32) of a block at most 120 blocks old; signed by the node key; fee drained from the node's stake (owner decision 2026-10-19, rule queue_attendance)
     NodeRegistrationUpdate    = 258,    // UpdateNodeRegistrationTransaction [2,1,0,0]
     RemoveAccountDataset      = 259,    // RemoveAccountDatasetTransaction [3,1,0,0]
     LiquidPaymentStop         = 262,    // LiquidPaymentStopTransaction [6,1,0,0]
@@ -154,7 +155,8 @@ enum class TransactionType : uint32_t {
 // account rather than a wallet, so an unfunded node stops attesting rather than failing loudly in
 // someone's UI. Callers use it to log that clearly.
 inline bool IsNodeSignedType(TransactionType t) {
-    return t == TransactionType::SubmitStorageProof || t == TransactionType::SetConsensusParam;
+    return t == TransactionType::SubmitStorageProof || t == TransactionType::SetConsensusParam ||
+           t == TransactionType::QueueAttendance;
 }
 
 // Umbrella categories for the per-account transact policy (SetTransactPolicy). FIXED SET — baked in
@@ -206,6 +208,7 @@ inline TxCategory TransactionCategoryOf(TransactionType t) {
         case TransactionType::ApprovalEscrow: case TransactionType::EscrowRequest:
         case TransactionType::DeclineEscrowRequest: case TransactionType::MultiSignature:
             return TxCategory::EscrowMultisig;
+        case TransactionType::QueueAttendance:
         case TransactionType::NodeRegistration: case TransactionType::NodeRegistrationUpdate:
         case TransactionType::RemoveNodeRegistration: case TransactionType::ClaimNodeRegistration:
         case TransactionType::RegisterGateway: case TransactionType::GatewayHeartbeat:
@@ -331,6 +334,7 @@ inline const char* TransactionTypeToString(TransactionType type) {
         case TransactionType::SettleApp: return "SettleAppTransaction";
         case TransactionType::StoreFile: return "StoreFileTransaction";
         case TransactionType::SubmitStorageProof: return "SubmitStorageProofTransaction";
+        case TransactionType::QueueAttendance: return "QueueAttendanceTransaction";
         case TransactionType::TransferDataset: return "TransferDatasetTransaction";
         case TransactionType::SetDatasetPolicy: return "SetDatasetPolicyTransaction";
         case TransactionType::AcceptDataset: return "AcceptDatasetTransaction";

@@ -371,6 +371,30 @@ constexpr int64_t COINBASE_SMOOTHING_PER_WINNER = ONE_ZBC;            // ~1 winn
 // it holds a coinbase lottery ticket or a longevity-pool share. 14 days at 15-second blocks. A fresh
 // chain may set `coinbase_maturity_blocks` in its genesis config; live chains use this default.
 constexpr uint32_t COINBASE_MATURITY_BLOCKS = 80640;
+// Owner decision 2026-10-19: the maturity scales with the network — 24 of the node's own expected
+// turns, never under 6 hours — so a dead registration (expelled after 4 missed turns, see the
+// liveness constants) never reaches it at any network size, and an honest node is not kept waiting
+// for weeks. COINBASE_MATURITY_BLOCKS above stays as the pre-decision reference value.
+constexpr uint32_t COINBASE_MATURITY_TURNS = 24;
+constexpr uint32_t COINBASE_MATURITY_FLOOR_BLOCKS = 1440;
+// Liveness rule (owner decisions 2026-10-19): consecutive missed turns before a never-produced node
+// is expelled / an established node is suspended; blocks of suspended silence before expulsion
+// (3 days at 15 s); the active-node floor below which nothing is ever expelled.
+constexpr uint32_t LIVENESS_MISS_LIMIT = 4;
+constexpr uint32_t LIVENESS_SUSPENSION_BLOCKS = 17280;
+constexpr size_t   LIVENESS_FLOOR_ACTIVE = 3;
+// Default of the consensus parameter max_recovery_interval_seconds (rule halt_recovery_param).
+constexpr int64_t  MAX_RECOVERY_INTERVAL_SECONDS = 3600;
+// Queue attendance (owner decision 2026-10-19, rule queue_attendance): a queued node signs a block no
+// older than QUEUE_ATTENDANCE_MAX_AGE_BLOCKS once per QUEUE_ATTENDANCE_WINDOW_BLOCKS; it may miss
+// QUEUE_ATTENDANCE_MISSES_ALLOWED windows over its whole wait, the next miss drops it from the queue
+// (stake returned); a missed window resets its waiting time. The fee comes out of the stake.
+constexpr uint32_t QUEUE_ATTENDANCE_WINDOW_BLOCKS  = 5760;
+constexpr uint32_t QUEUE_ATTENDANCE_MAX_AGE_BLOCKS = 120;
+constexpr uint32_t QUEUE_ATTENDANCE_MISSES_ALLOWED = 2;
+// Market creation deposit (forum #398, owner decision 2026-10-19, rule market_deposit_refund): the 50 ZBC is
+// held and returned to the creator at the fill that brings the market to this many trades.
+constexpr int64_t  MARKET_DEPOSIT_REFUND_FILLS = 100;
 
 // PoP Consensus - Network Topology
 // Network topology is reshuffled every ΔΥh blocks to ensure fairness
@@ -577,7 +601,8 @@ constexpr int64_t GATEWAY_REGISTRATION_COST = 10 * ONE_ZBC;  // 10 ZBC locked at
 // when the parameter row is missing (e.g. a chain built before the param existed).
 constexpr int64_t EXCHANGE_TAKER_FEE_BPS = 10;               // 0.1%
 
-// Cost to OPEN a trading pair (CreateMarket). NON-REFUNDABLE by design: a market is permanent
+// Cost to OPEN a trading pair (CreateMarket). Since rule market_deposit_refund (owner decision 2026-10-19)
+// it is a DEPOSIT returned at the 100th fill; before the rule it was non-refundable: a market is permanent
 // state — there is no close or prune path — so it is a creation fee, not a deposit. Free creation
 // would let anyone open a market for every possible pair, forever. Seeded at genesis as
 // `market_creation_cost` and governable; this is the fallback when the row is missing.
@@ -695,6 +720,7 @@ constexpr int32_t EVENT_TYPE_STORED_FILE_RENT       = 69;  // per-period stored-
 // as its own row (negative), with the outer transaction's id. block.total_fee sums only the outer fees,
 // so Blockchain::DistributablePool adds these rows to the reward pool from the rule's height; the
 // inner overpay comes back as an ordinary FEE_REFUND (22), which the pool subtracts as usual.
+constexpr int32_t EVENT_TYPE_MARKET_DEPOSIT_REFUNDED = 71;  // PlaceOrder fill: the market creation deposit returned to the creator once the market has traded (rule market_deposit_refund)
 constexpr int32_t EVENT_TYPE_MULTISIG_INNER_FEE     = 70;
 // Addresses per group, the controller included. A consensus parameter (`account_group_max_members`);
 // this is the default when genesis does not set it (owner decision 2026-09-23: 100). The group pays

@@ -35,7 +35,7 @@ int main(int argc, char* argv[]) {
         int64_t locked_balance = whole_param(params.values, 2);
         if (locked_balance <= 0) { emit_error("Locked balance must be positive"); return 1; }
 
-        auto poown_result = build_proof_of_ownership(owner_kp.Value(), params.api_url);
+        auto poown_result = build_proof_of_ownership(owner_kp.Value(), node_kp.Value(), params.api_url);
         if (!poown_result.IsOk()) { emit_error(poown_result.GetError().ToString()); return 1; }
 
         auto body_bytes = TransactionUtil::GetUpdateNodeRegistrationBodyBytes(

@@ -1,6 +1,6 @@
 {
  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
- "description": "ZBC-MSG-v1 (signing.md 5): digest = SHA3-256('ZBC-MSG' || message), signature = Ed25519(seed, digest). `hex_input` = the message was given as hex bytes. `invalid` lists verify-message outcomes that must fail.",
+ "description": "ZBC-MSG-v1 (signing.md 5): digest = SHA3-256('ZBC-MSG' || message), signature = Ed25519(seed, digest). `hex_input` = the message was given as hex bytes. `invalid` lists verify-message outcomes that must fail. ZBC-MSG-v2 (signing.md 5a): digest = SHA3-256('ZBC-MSG-v2' || genesis_hash || message); entries carry `genesis_hash`. v1 verifies until 2026-12-01T00:00:00Z.",
  "vectors": [
   {
    "seed": "1111111111111111111111111111111111111111111111111111111111111111",
@@ -67,6 +67,18 @@
    "digest": "996fd492a482c0c70b96f7e83828ccc82651b56adb4b7ae2bf9486b02d89bdfd",
    "signature": "a02defa0f79f37ab9c88a54b52e1518adb844706c13b94dbbc97ca525be9eaf15efb28f294eb4b63837a5d51433c48ffa8786d7874495dd94e67ae3945c73a03",
    "scheme": "ZBC-MSG-v1"
+  },
+  {
+   "seed": "1111111111111111111111111111111111111111111111111111111111111111",
+   "message": "hello zoobc",
+   "message_hex": "68656c6c6f207a6f6f6263",
+   "hex_input": false,
+   "genesis_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+   "address": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+   "public_key": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+   "digest": "6d11f2bb5135ac78d20384b55165c9a81803df499bc8d3d3ed305b59c40bc80a",
+   "signature": "f0d86e195d28cd3208b1a037abae5d451deee77e1199a252594758196c742f8977ebc6e4ac95c6f5001b18bf39c62cb7636339f6db9ed661f66a927508f77700",
+   "scheme": "ZBC-MSG-v2"
   }
  ],
  "invalid": [

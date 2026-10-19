@@ -161,6 +161,20 @@ inline int& http_timeout_seconds() { static int t = 20; return t; }
 // 32-byte inputs; here the device computes the digest itself from tag + message).
 inline const char* MESSAGE_SIGNING_TAG = "ZBC-MSG";
 inline const char* MESSAGE_SIGNING_SCHEME = "ZBC-MSG-v1";
+// ZBC-MSG-v2 (owner decision 2026-10-19, forum #392): the digest binds the message to one chain, the
+// way transactions do since signing v2, so a message signed for devnet never verifies on testnet or
+// mainnet:   digest = SHA3-256("ZBC-MSG-v2" ‖ genesis_hash(32) ‖ message_bytes).
+// v1 signatures verify until MESSAGE_SIGNING_V1_SUNSET (2026-12-01T00:00:00Z) and are refused after.
+inline const char* MESSAGE_SIGNING_TAG_V2 = "ZBC-MSG-v2";
+inline const char* MESSAGE_SIGNING_SCHEME_V2 = "ZBC-MSG-v2";
+inline const int64_t MESSAGE_SIGNING_V1_SUNSET = 1764547200;
+inline zoobc::Result<std::vector<uint8_t>> message_signing_digest_v2(const std::vector<uint8_t>& message,
+                                                                     const std::vector<uint8_t>& genesis_hash) {
+    std::vector<uint8_t> buf(MESSAGE_SIGNING_TAG_V2, MESSAGE_SIGNING_TAG_V2 + std::strlen(MESSAGE_SIGNING_TAG_V2));
+    buf.insert(buf.end(), genesis_hash.begin(), genesis_hash.end());
+    buf.insert(buf.end(), message.begin(), message.end());
+    return zoobc::crypto::Hash::SHA3_256(buf);
+}
 inline zoobc::Result<std::vector<uint8_t>> message_signing_digest(const std::vector<uint8_t>& message) {
     std::vector<uint8_t> buf(MESSAGE_SIGNING_TAG, MESSAGE_SIGNING_TAG + std::strlen(MESSAGE_SIGNING_TAG));
     buf.insert(buf.end(), message.begin(), message.end());
@@ -886,9 +900,14 @@ inline std::vector<uint8_t> build_poown_message(
     return message;
 }
 
-// Build full ProofOfOwnership: fetch block, build message, sign
+// Build the full ProofOfOwnership: fetch the latest block, build the message, sign.
+// The NODE key signs (message = owner address ‖ block hash ‖ height): the proof shows the node key
+// holder consents to being owned by that account, and the node verifies it with the node's public
+// key (ValidateProofOfOwnership). Until 2026-10-19 this signed with the OWNER key; the chain never
+// checked the bytes, so it passed. Rule poown_required (node 0.5.6) verifies them.
 inline zoobc::Result<std::vector<uint8_t>> build_proof_of_ownership(
     const zoobc::crypto::KeyPair& owner_keypair,
+    const zoobc::crypto::KeyPair& node_keypair,
     const std::string& api_url) {
 
     auto block_info = fetch_latest_block(api_url);
@@ -901,7 +920,7 @@ inline zoobc::Result<std::vector<uint8_t>> build_proof_of_ownership(
 
     auto poown_msg = build_poown_message(owner_account_address, block_info.hash, block_info.height);
 
-    auto sig_result = Signature::Sign(poown_msg, owner_keypair.private_key);
+    auto sig_result = Signature::Sign(poown_msg, node_keypair.private_key);
     if (!sig_result.IsOk()) {
         return zoobc::Error{sig_result.GetError()};
     }

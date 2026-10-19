@@ -95,16 +95,33 @@ bytes with `--hex`. Verification needs only the signer's `ZBC_` address (the pub
 prefixes differ, a message signature can never be replayed as a transaction signature, a
 proof-of-ownership or a multisig participant signature, and vice versa.
 
+### 5a. `ZBC-MSG-v2` (chain-bound, node 0.5.6, owner decision 2026-10-19)
+
+    digest    = SHA3-256("ZBC-MSG-v2" ‖ genesis_hash (32) ‖ message_bytes)
+    signature = Ed25519(seed, digest)
+
+`"ZBC-MSG-v2"` is the 10 ASCII bytes `5a 42 43 2d 4d 53 47 2d 76 32`; `genesis_hash` is the chain's
+genesis block hash (the same 32 bytes the transaction digest binds, section 4). A message signed for
+devnet therefore never verifies on testnet or mainnet. `sign-message` needs the genesis (`--genesis
+<hex>` or a node); `verify-message` tries v2 first and accepts a v1 signature **only until
+2026-12-01T00:00:00Z** (unix 1764547200); after that v1 is refused. New signatures are always v2.
+Vectors: `vectors/messages.json`, entries with `"scheme": "ZBC-MSG-v2"` carry `genesis_hash`.
+
 ## 6. Proof of ownership (node registration)
 
 `NodeRegistration`, `NodeRegistrationUpdate` and `ClaimNodeRegistration` carry a proof that the
-owner account controls the node: the owner signs, with the **owner's** account key, over the
-plain bytes (no tag, no genesis)
+owner account controls the node: the **node key** signs (the node consents to being owned by that
+account; the chain verifies with the node's public key), over the plain bytes (no tag, no genesis)
 
     message = owner_address (36) ‖ recent_block_hash (32) ‖ recent_block_height (4, uint32 LE)
 
 and the proof is `message ‖ signature` (136 bytes). The reference block is fetched from
 `GET /api/v1/blocks/latest`, so these three commands need a node even with `--genesis`.
+
+**Correction 2026-10-19.** This section used to say the owner key signs, and the C++ tools did sign
+with the owner key; the chain never checked the bytes, so it passed. Node 0.5.6 (rule
+`poown_required`) verifies the signature with the node's public key, so a proof signed by the owner
+key is refused. Every port must sign with the node key.
 
 ## 7. Other signatures inside bodies
 

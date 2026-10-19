@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
         auto owner_kp = derive_zbc_keypair(params.values[1]);
         if (!owner_kp.IsOk()) { emit_error(owner_kp.GetError().ToString()); return 1; }
 
-        auto poown_result = build_proof_of_ownership(owner_kp.Value(), params.api_url);
+        auto poown_result = build_proof_of_ownership(owner_kp.Value(), node_kp.Value(), params.api_url);
         if (!poown_result.IsOk()) { emit_error(poown_result.GetError().ToString()); return 1; }
 
         auto body_bytes = TransactionUtil::GetClaimNodeRegistrationBodyBytes(

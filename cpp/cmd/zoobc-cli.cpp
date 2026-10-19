@@ -97,7 +97,7 @@ static std::string category_of(const std::string& c){
         {"swap-create","exchange"},{"swap-accept","exchange"},{"swap-cancel","exchange"},{"market-create","exchange"},{"order-place","exchange"},{"order-cancel","exchange"},
         {"app-create","apps"},{"app-join","apps"},{"app-move","apps"},{"app-resign","apps"},{"app-claim","apps"},{"app-settle","apps"},
         {"store-file","storage"},{"fund-stored-file","storage"},{"add-prepaid-storage","storage"},{"close-longevity","storage"},
-        {"setup-dataset","account"},{"remove-dataset","account"},{"transfer-dataset","account"},{"accept-dataset","account"},{"delete-dataset","account"},{"set-dataset-policy","account"},{"approve-escrow","account"},{"escrow-request","account"},{"create-trigger","account"},{"cancel-trigger","account"},{"attest-event","account"},{"multisig","account"},{"scheduled-transfer","account"},{"cancel-schedule","account"},{"reassign-schedule","account"},{"fee-vote-commit","account"},{"fee-vote-reveal","account"},
+        {"setup-dataset","account"},{"remove-dataset","account"},{"transfer-dataset","account"},{"accept-dataset","account"},{"delete-dataset","account"},{"set-dataset-policy","account"},{"approve-escrow","account"},{"escrow-request","account"},{"create-trigger","account"},{"cancel-trigger","account"},{"attest-event","account"},{"queue-attendance","node"},{"multisig","account"},{"scheduled-transfer","account"},{"cancel-schedule","account"},{"reassign-schedule","account"},{"fee-vote-commit","account"},{"fee-vote-reveal","account"},
         {"register-node","node"},{"update-node","node"},{"remove-node","node"},{"claim-node","node"},
         {"register-gateway","gateway"},{"unregister-gateway","gateway"},
         {"register-release","governance"},{"revoke-release","governance"},{"release-authority-propose","governance"},{"release-authority-accept","governance"},
@@ -291,6 +291,12 @@ static std::map<std::string, Cmd> registry() {
     m["add-prepaid-storage"] = {"Fund dataset storage rent", (uint32_t)TT::AddPrepaidStorage, false,
         {PK(), P("Amount","amount","atomic ZBC")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t a=N(v,1); u64(body,a); ex={{"amount",a}}; }};
+    m["queue-attendance"] = {"Queued node: prove you are online this window (block height + hash of a block at most 120 blocks old; fee from the stake)", (uint32_t)TT::QueueAttendance, false,
+        {PK(), P("Block height","block_height","height of a recent block (<= 120 blocks old)"), P("Block hash","block_hash","that block's hash (64 hex)")},
+        [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
+            const uint32_t h = (uint32_t)std::stoul(v[1]); auto hash = hx(v[2]);
+            if (hash.size() != 32) throw std::runtime_error("block hash must be 32 bytes (64 hex)");
+            u32(body, h); body.insert(body.end(), hash.begin(), hash.end()); ex={{"block_height",h},{"block_hash",v[2]}}; }};
     m["attest-event"] = {"Attest an external event (oracle node)", (uint32_t)TT::AttestEvent, false,
         {PK(), P("Event id","event_id","external event id"), P("Value","value","attested value")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
@@ -699,7 +705,7 @@ static std::map<std::string, Cmd> registry() {
             auto owner_kp=derive_zbc_keypair(v[0]); if(!owner_kp.IsOk()){ emit_error(owner_kp.GetError().ToString()); return 1; }
             auto node_kp=derive_zbc_keypair(v[1]); if(!node_kp.IsOk()){ emit_error(node_kp.GetError().ToString()); return 1; }
             int64_t locked=N(v,2); if(locked<=0){ emit_error("locked_balance must be positive"); return 1; }
-            auto poown=build_proof_of_ownership(owner_kp.Value(), params.api_url); if(!poown.IsOk()){ emit_error(poown.GetError().ToString()); return 1; }
+            auto poown=build_proof_of_ownership(owner_kp.Value(), node_kp.Value(), params.api_url); if(!poown.IsOk()){ emit_error(poown.GetError().ToString()); return 1; }
             auto owner_addr=TransactionUtil::BuildAccountAddress(TransactionUtil::ACCOUNT_TYPE_ZBC, owner_kp.Value().public_key);
             auto body=TransactionUtil::GetNodeRegistrationBodyBytes(node_kp.Value().public_key, owner_addr, locked, poown.Value());
             json extra={{"node_znk",zoobc::crypto::ZoobcAddress::Encode(node_kp.Value().public_key,"ZNK")},{"owner_zbc",zoobc::crypto::ZoobcAddress::Encode(owner_kp.Value().public_key,"ZBC")}};
@@ -714,7 +720,7 @@ static std::map<std::string, Cmd> registry() {
             auto owner_kp=derive_zbc_keypair(v[0]); if(!owner_kp.IsOk()){ emit_error(owner_kp.GetError().ToString()); return 1; }
             auto node_kp=derive_zbc_keypair(v[1]); if(!node_kp.IsOk()){ emit_error(node_kp.GetError().ToString()); return 1; }
             int64_t locked=N(v,2);
-            auto poown=build_proof_of_ownership(owner_kp.Value(), params.api_url); if(!poown.IsOk()){ emit_error(poown.GetError().ToString()); return 1; }
+            auto poown=build_proof_of_ownership(owner_kp.Value(), node_kp.Value(), params.api_url); if(!poown.IsOk()){ emit_error(poown.GetError().ToString()); return 1; }
             auto body=TransactionUtil::GetUpdateNodeRegistrationBodyBytes(node_kp.Value().public_key, locked, poown.Value());
             json extra={{"node_znk",zoobc::crypto::ZoobcAddress::Encode(node_kp.Value().public_key,"ZNK")}};
             std::vector<uint8_t> er;
@@ -726,7 +732,7 @@ static std::map<std::string, Cmd> registry() {
             auto emit_error = make_emitter(params.json_output);
             auto owner_kp=derive_zbc_keypair(v[0]); if(!owner_kp.IsOk()){ emit_error(owner_kp.GetError().ToString()); return 1; }
             auto node_kp=derive_zbc_keypair(v[1]); if(!node_kp.IsOk()){ emit_error(node_kp.GetError().ToString()); return 1; }
-            auto poown=build_proof_of_ownership(owner_kp.Value(), params.api_url); if(!poown.IsOk()){ emit_error(poown.GetError().ToString()); return 1; }
+            auto poown=build_proof_of_ownership(owner_kp.Value(), node_kp.Value(), params.api_url); if(!poown.IsOk()){ emit_error(poown.GetError().ToString()); return 1; }
             auto body=TransactionUtil::GetClaimNodeRegistrationBodyBytes(node_kp.Value().public_key, poown.Value());
             json extra={{"node_znk",zoobc::crypto::ZoobcAddress::Encode(node_kp.Value().public_key,"ZNK")}};
             std::vector<uint8_t> er;
@@ -786,7 +792,7 @@ static std::map<std::string, Cmd> registry() {
     // Lets an application prove control of a ZBC_ address off-chain ("this payout address is mine")
     // with a signature that can never be mistaken for a transaction, a proof-of-ownership or a
     // multisig participant signature. Verification needs only the address: it IS the public key.
-    m["sign-message"] = {"Sign a message with a private key (ZBC-MSG-v1, off-chain, no node needed)", 0, false,
+    m["sign-message"] = {"Sign a message with a private key (ZBC-MSG-v2: bound to one chain, needs --genesis <hex> or a node)", 0, false,
         {PK(), P("Message","message","text to sign (hex bytes with --hex)")},
         nullptr,
         [](std::vector<std::string>& v, ParsedParams& params) -> int {
@@ -795,12 +801,15 @@ static std::map<std::string, Cmd> registry() {
             std::vector<uint8_t> msg;
             if(params.hex_input){ try { msg=hexb(v[1]); } catch(const std::exception& e){ return fail(emit_error, exit_code::USAGE, std::string("--hex message is not valid hex: ")+e.what()); } }
             else msg.assign(v[1].begin(), v[1].end());
-            auto dg=message_signing_digest(msg); if(dg.IsErr()) { emit_error("digest failed: "+dg.GetError().ToString()); return exit_code::INTERNAL; }
+            // ZBC-MSG-v2 binds the signature to one chain (forum #392): the genesis comes from a node or --genesis.
+            if(!ensure_signing_context(params.api_url, params.genesis_hex, emit_error)) return last_exit_code();
+            if(signing_context().genesis_hash.size()!=32) return fail(emit_error, exit_code::USAGE, "ZBC-MSG-v2 binds the signature to one chain: it needs the chain's genesis (a node, or --genesis <hex>)");
+            auto dg=message_signing_digest_v2(msg, signing_context().genesis_hash); if(dg.IsErr()) { emit_error("digest failed: "+dg.GetError().ToString()); return exit_code::INTERNAL; }
             auto sig=zoobc::crypto::Signature::Sign(dg.Value(), kp.Value().private_key);
             if(sig.IsErr()) { emit_error("sign failed: "+sig.GetError().ToString()); return exit_code::INTERNAL; }
             std::string addr=zoobc::crypto::ZoobcAddress::Encode(kp.Value().public_key,"ZBC");
             if(params.json_output){
-                json out={{"success",true},{"scheme",MESSAGE_SIGNING_SCHEME},{"address",addr},{"public_key",to_hex(kp.Value().public_key)},
+                json out={{"success",true},{"scheme",MESSAGE_SIGNING_SCHEME_V2},{"genesis_hash",to_hex(signing_context().genesis_hash)},{"address",addr},{"public_key",to_hex(kp.Value().public_key)},
                           {"message_hex",to_hex(msg)},{"digest",to_hex(dg.Value())},{"signature",to_hex(sig.Value())}};
                 if(!params.hex_input) out["message"]=v[1];
                 std::cout<<out.dump(2)<<std::endl;
@@ -836,7 +845,7 @@ static std::map<std::string, Cmd> registry() {
             if(res->status==403) return exit_code::VERIFY_FAILED;
             if(res->status>=500) return exit_code::NODE_BUSY;
             return exit_code::REJECTED; }};
-    m["verify-message"] = {"Verify a ZBC-MSG-v1 message signature against a ZBC_ address (off-chain)", 0, false,
+    m["verify-message"] = {"Verify a message signature against a ZBC_ address (ZBC-MSG-v2 with the chain genesis; v1 accepted until 2026-12-01)", 0, false,
         {P("Address","address","signer's ZBC_ address (or 64-hex public key)"),
          P("Message","message","the signed text (hex bytes with --hex)"),
          P("Signature","signature","64-byte Ed25519 signature, 128 hex")},
@@ -852,12 +861,21 @@ static std::map<std::string, Cmd> registry() {
             else msg.assign(v[1].begin(), v[1].end());
             try { sig=hexb(v[2]); } catch(const std::exception&){ return fail(emit_error, exit_code::USAGE, "signature must be hex"); }
             if(sig.size()!=64) return fail(emit_error, exit_code::USAGE, "signature must be 64 bytes (128 hex characters)");
-            auto dg=message_signing_digest(msg); if(dg.IsErr()) { emit_error("digest failed: "+dg.GetError().ToString()); return exit_code::INTERNAL; }
-            auto ok=zoobc::crypto::Signature::Verify(dg.Value(), sig, pub);
-            const bool valid = ok.IsOk() && ok.Value();
+            // v2 first (needs the chain genesis: a node, or --genesis <hex>); v1 only until its sunset.
+            bool valid=false; std::string scheme=MESSAGE_SIGNING_SCHEME_V2; std::vector<uint8_t> digest;
+            if(ensure_signing_context(params.api_url, params.genesis_hex, [](const std::string&){}) && signing_context().genesis_hash.size()==32){
+                auto dg2=message_signing_digest_v2(msg, signing_context().genesis_hash);
+                if(dg2.IsOk()){ auto ok2=zoobc::crypto::Signature::Verify(dg2.Value(), sig, pub); valid = ok2.IsOk() && ok2.Value(); digest=dg2.Value(); }
+            }
+            const int64_t now_s = static_cast<int64_t>(std::time(nullptr));
+            if(!valid && now_s < MESSAGE_SIGNING_V1_SUNSET){
+                auto dg1=message_signing_digest(msg);
+                if(dg1.IsOk()){ auto ok1=zoobc::crypto::Signature::Verify(dg1.Value(), sig, pub); if(ok1.IsOk() && ok1.Value()){ valid=true; scheme=std::string(MESSAGE_SIGNING_SCHEME)+" (accepted until 2026-12-01)"; digest=dg1.Value(); } }
+            }
+            if(!valid && digest.empty()){ auto dg1=message_signing_digest(msg); if(dg1.IsOk()) digest=dg1.Value(); }
             std::string addr=zoobc::crypto::ZoobcAddress::Encode(pub,"ZBC");
             if(params.json_output){
-                json out={{"success",true},{"valid",valid},{"scheme",MESSAGE_SIGNING_SCHEME},{"address",addr},{"digest",to_hex(dg.Value())},
+                json out={{"success",true},{"valid",valid},{"scheme",scheme},{"address",addr},{"digest",to_hex(digest)},
                           {"exit_code",valid?exit_code::OK:exit_code::VERIFY_FAILED},{"error_class",exit_code::name(valid?exit_code::OK:exit_code::VERIFY_FAILED)}};
                 std::cout<<out.dump(2)<<std::endl;
             } else {
@@ -930,7 +948,8 @@ int main(int argc, char* argv[]) {
         caps.push_back("exit_codes");        // distinct usage/network/chain exit codes, 0-10
         caps.push_back("timeout");           // --timeout / ZBC_TIMEOUT / timeout_seconds
         caps.push_back("env_key");           // ZBC_KEY, and '-' / '@env' as the key placeholder
-        caps.push_back("message_signing");   // sign-message / verify-message (ZBC-MSG-v1)
+        caps.push_back("message_signing");   // sign-message / verify-message
+        caps.push_back("message_signing_v2"); // ZBC-MSG-v2: chain-bound digest; v1 verifies until 2026-12-01
         caps.push_back("json_input");        // --json-input, JSON on stdin
         caps.push_back("offline");           // --offline + --genesis, unsigned/signed bytes, no node
         caps.push_back("escrow_string_ints");// escrow.commission / escrow.timeout accept strings
