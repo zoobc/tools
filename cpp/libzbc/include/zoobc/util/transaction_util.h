@@ -145,6 +145,14 @@ public:
     // Serialize the transaction unsigned and return its signing digest (process-wide identity).
     static Result<std::vector<uint8_t>> SigningDigestOf(const model::Transaction& tx);
 
+    // Forum #399: the sender of a PENDING transaction may ask a node to drop it. It proves it is
+    // the sender by signing SHA3-256("ZBC-CANCEL" ‖ genesis_hash ‖ transaction_hash) with the key
+    // of the transaction's sender account. Chain-bound like every other signature.
+    static constexpr const char* CANCEL_SIGNING_TAG = "ZBC-CANCEL";
+    static Result<std::vector<uint8_t>> CancelPendingDigest(const std::vector<uint8_t>& transaction_hash,
+                                                           const std::vector<uint8_t>& genesis_hash);
+    static Result<std::vector<uint8_t>> CancelPendingDigest(const std::vector<uint8_t>& transaction_hash);
+
     // Build account address bytes with type prefix
     // Returns: [4 bytes account_type (little-endian)] + [32 bytes public_key]
     static std::vector<uint8_t> BuildAccountAddress(

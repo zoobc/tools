@@ -636,6 +636,25 @@ Result<std::vector<uint8_t>> TransactionUtil::SigningDigest(
     return SigningDigest(unsigned_tx_bytes, chain::Identity::GenesisHash());
 }
 
+Result<std::vector<uint8_t>> TransactionUtil::CancelPendingDigest(
+    const std::vector<uint8_t>& transaction_hash, const std::vector<uint8_t>& genesis_hash) {
+    if (genesis_hash.size() != BLOCK_HASH_SIZE)
+        return Error{ErrorCode::InvalidArgument, "Cancel digest needs a 32-byte genesis hash, got " + std::to_string(genesis_hash.size())};
+    if (transaction_hash.size() != 32)
+        return Error{ErrorCode::InvalidArgument, "Cancel digest needs a 32-byte transaction hash, got " + std::to_string(transaction_hash.size())};
+    const size_t tag_len = std::strlen(CANCEL_SIGNING_TAG);
+    std::vector<uint8_t> preimage;
+    preimage.reserve(tag_len + genesis_hash.size() + transaction_hash.size());
+    preimage.insert(preimage.end(), CANCEL_SIGNING_TAG, CANCEL_SIGNING_TAG + tag_len);
+    preimage.insert(preimage.end(), genesis_hash.begin(), genesis_hash.end());
+    preimage.insert(preimage.end(), transaction_hash.begin(), transaction_hash.end());
+    return crypto::Hash::SHA3_256(preimage);
+}
+Result<std::vector<uint8_t>> TransactionUtil::CancelPendingDigest(const std::vector<uint8_t>& transaction_hash) {
+    if (!chain::Identity::IsSet())
+        return Error{ErrorCode::Internal, "Chain identity not initialised: genesis hash unknown, cannot compute the cancel digest"};
+    return CancelPendingDigest(transaction_hash, chain::Identity::GenesisHash());
+}
 Result<std::vector<uint8_t>> TransactionUtil::SigningDigestOf(const model::Transaction& tx) {
     auto unsigned_bytes = GetTransactionBytes(tx, false);
     if (unsigned_bytes.IsErr()) return Error{unsigned_bytes.GetError()};

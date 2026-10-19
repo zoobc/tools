@@ -101,7 +101,7 @@ static std::string category_of(const std::string& c){
         {"register-node","node"},{"update-node","node"},{"remove-node","node"},{"claim-node","node"},
         {"register-gateway","gateway"},{"unregister-gateway","gateway"},
         {"register-release","governance"},{"revoke-release","governance"},{"release-authority-propose","governance"},{"release-authority-accept","governance"},
-        {"sign-message","keys"},{"verify-message","keys"},{"decrypt-message","keys"},
+        {"sign-message","keys"},{"verify-message","keys"},{"decrypt-message","keys"},{"cancel-pending","account"},
         {"set-transact-policy","account"},{"set-split-policy","account"},{"decline-escrow-request","account"},
         {"link-account","groups"},{"unlink-account","groups"},{"set-member-permissions","groups"},{"transfer-group-control","groups"},
     };
@@ -808,6 +808,34 @@ static std::map<std::string, Cmd> registry() {
                 std::cout<<"Address:   "<<addr<<"\nDigest:    "<<to_hex(dg.Value())<<"\nSignature: "<<to_hex(sig.Value())<<"\n";
             }
             return exit_code::OK; }};
+    m["cancel-pending"] = {"Ask the node to drop YOUR pending transaction (signed; local to that node)", 0, false,
+        {PK(), P("Transaction hash","transaction_hash","hash of your pending transaction (64 hex)")},
+        nullptr,
+        [](std::vector<std::string>& v, ParsedParams& params) -> int {
+            auto emit_error = make_emitter(params.json_output);
+            auto kp=derive_zbc_keypair(v[0]); if(!kp.IsOk()) return fail(emit_error, exit_code::USAGE, kp.GetError().ToString());
+            std::vector<uint8_t> h; try { h=hexb(v[1]); } catch(const std::exception& e){ return fail(emit_error, exit_code::USAGE, std::string("transaction hash is not valid hex: ")+e.what()); }
+            if(h.size()!=32) return fail(emit_error, exit_code::USAGE, "transaction hash must be 64 hex characters");
+            if(!ensure_signing_context(params.api_url, params.genesis_hex, emit_error)) return last_exit_code();
+            if(signing_context().genesis_hash.size()!=32) return fail(emit_error, exit_code::USAGE, "the cancel request is bound to one chain: it needs the chain's genesis (a node, or --genesis <hex>)");
+            auto dg=zoobc::util::TransactionUtil::CancelPendingDigest(h, signing_context().genesis_hash);
+            if(dg.IsErr()) { emit_error("digest failed: "+dg.GetError().ToString()); return exit_code::INTERNAL; }
+            auto sig=zoobc::crypto::Signature::Sign(dg.Value(), kp.Value().private_key);
+            if(sig.IsErr()) { emit_error("sign failed: "+sig.GetError().ToString()); return exit_code::INTERNAL; }
+            const ApiTarget t = parse_api_url(params.api_url);
+            json body={{"signature",to_hex(sig.Value())}};
+            httplib::Result res;
+            try { res = with_api_client(t, [&](auto& c){ return c.Delete((t.path_prefix+"/api/v1/transactions/pending/"+to_hex(h)).c_str(), body.dump(), "application/json"); }); }
+            catch(const std::exception& e){ return fail(emit_error, exit_code::UNREACHABLE, e.what()); }
+            if(!res) return fail(emit_error, classify_transport_error(res.error()), httplib::to_string(res.error()));
+            json out = json::parse(res->body, nullptr, false);
+            if(params.json_output){ if(out.is_discarded()) out={{"raw",res->body}}; out["http_code"]=res->status; std::cout<<out.dump(2)<<std::endl; }
+            else std::cout<<res->body<<std::endl;
+            if(res->status==200) return exit_code::OK;
+            if(res->status==404) return exit_code::NOT_FOUND;
+            if(res->status==403) return exit_code::VERIFY_FAILED;
+            if(res->status>=500) return exit_code::NODE_BUSY;
+            return exit_code::REJECTED; }};
     m["verify-message"] = {"Verify a ZBC-MSG-v1 message signature against a ZBC_ address (off-chain)", 0, false,
         {P("Address","address","signer's ZBC_ address (or 64-hex public key)"),
          P("Message","message","the signed text (hex bytes with --hex)"),
