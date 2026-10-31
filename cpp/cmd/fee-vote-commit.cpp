@@ -8,10 +8,10 @@ using namespace txc;
 int main(int argc, char* argv[]) {
     ToolConfig config;
     config.name = "ZooBC Fee Vote Commitment Tool";
-    config.description = "Submit a hashed fee vote during the commit phase.";
+    config.description = "Commit a hashed transfer-fee vote in the first half of the snapshot cycle (a registered node's duty, fee 0).";
     config.tx_type = static_cast<uint32_t>(zoobc::TransactionType::FeeVoteCommitment);
     config.params = {
-        {"Voter private key", "voter_privkey", "Voter's private key (64 hex chars)",       "", true, nullptr},
+        {"Voter private key", "voter_privkey", "The registered node's private key (64 hex chars)", "", true, nullptr},
         {"Vote hash",         "vote_hash",     "SHA3-256 hash of FeeVoteInfo (64 hex chars)", "", true, nullptr},
     };
 

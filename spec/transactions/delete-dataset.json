@@ -4,7 +4,7 @@
   "type": 45,
   "command": "delete-dataset",
   "binary": null,
-  "description": "Delete a dataset object and refund its deposit.",
+  "description": "Vote to delete a dataset (its owner, or a funder with money left on it); it goes when the votes hold more than half of that money, its deposit to the longevity pool.",
   "sender_key": "sender_privkey",
   "recipient": "none",
   "options": [

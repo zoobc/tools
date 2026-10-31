@@ -3,19 +3,20 @@
 
 // Cast a governance vote on an economic consensus parameter (SetConsensusParam, tx type 51).
 //
-// A vote is NOT a yes/no ballot: each registered node DECLARES the value it wants, and a value takes
-// effect once 2/3 of the active registry has declared that same value. Internally every vote is an
-// attestation of the event id "ZBCGOV1:<parameter>:<value>", so agreeing on the parameter and
-// agreeing on the value are the same fact — two nodes naming different values simply count toward
-// two different totals.
+// A vote is NOT a yes/no ballot: each registered node DECLARES the value it wants. Once per snapshot
+// cycle, at the cycle's last block, every votable price moves to the AVERAGE over the counted seats
+// (registered and not suspended): a seat's latest vote of the cycle counts, first limited to +20 % up,
+// half down and the price's bounds, and a seat that did not vote counts as today's value (owner decision
+// FP3, 2026-10-26). So a vote moves a price by at most its 1/n share of the step, nobody voting changes
+// nothing, and a vote counts only in the cycle it is cast in. Internally every vote is an attestation of
+// the event id "ZBCGOV1:<parameter>:<value>".
 //
 // Signed by the NODE's private key, not the owner's: the sender must be the node attester account
 // (00000000 + node_public_key), which is exactly what the ZBC key path already produces. The vote is
 // FEE-EXEMPT (the node account holds no balance and never needs one), so the fee defaults to 0.
 //
-// Reaching quorum is not the last word — at resolution the value is re-checked against what is in
-// force then, including the per-vote rate limit, so a vote can be refused if another change landed
-// first. Check GET /api/v1/governance/proposals for progress and any blocked_reason.
+// GET /api/v1/governance/params shows each price's range a vote counts within, the votes of the cycle so
+// far and the value the count would give now; /api/v1/governance/proposals lists every counted seat's vote.
 #include "tx_common.h"
 using namespace txc;
 
@@ -25,7 +26,7 @@ static void putU64(std::vector<uint8_t>& b, int64_t v){ for(int i=0;i<8;i++){ b.
 int main(int argc, char* argv[]) {
     ToolConfig config;
     config.name = "ZooBC Governance — Vote on a consensus parameter";
-    config.description = "Declare the value this node wants for a governable parameter (2/3 of the registry must agree).";
+    config.description = "Declare the value this node wants for a governable parameter (counted at the snapshot cycle's end: the average over the counted seats, each vote within +20 % / half of today's value).";
     config.tx_type = static_cast<uint32_t>(zoobc::TransactionType::SetConsensusParam);
     config.has_recipient = false;
     config.params = {

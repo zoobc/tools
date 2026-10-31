@@ -14,6 +14,11 @@
 
 namespace zbctool {
 
+// The exit codes every tool shares (tools/tx_common.h exit_code, tools/README.md "Exit codes"): 0 ok, 1 internal,
+// 2 usage (a missing or malformed argument, an unknown option or command), 3-10 the outcomes of a node or a check.
+constexpr int kExitInternal = 1;
+constexpr int kExitUsage = 2;
+
 struct Mode {
     bool verbose = false;  // human-readable output (else JSON)
     bool help = false;     // --help / -h was given

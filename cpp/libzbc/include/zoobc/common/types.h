@@ -111,6 +111,12 @@ enum class TransactionType : uint32_t {
     UnlinkAccount             = 56,     // the controller removes a member, or a member leaves; it takes nothing
     SetMemberPermissions      = 57,     // controller sets a member's spend flag and per-period ZBC limit
     TransferGroupControl      = 58,     // controller hands the role to a member; both sign
+    EquivocationReport        = 60,     // 11 F6 (c): two signed headers by one producer over one parent; fee-free duty, charges the producer a miss (rule equivocation_miss)
+    // The pre-genesis roll call (owner decision 2026-10-27, j51; consensus/roll_call.h): a GENESIS seat's node answers
+    // that it runs this chain's genesis. Fee-free duty signed by the node key, empty body; valid only in blocks
+    // 1 .. roll_call_blocks, once per seat. A seat that has not answered is not drawn from block 2 and leaves the
+    // registry at the window's last block (never below three seats).
+    RollCall                  = 61,
     QueueAttendance           = 59,     // a QUEUED node proves it is online: body = block_height(4 LE) | block_hash(32) of a block at most 120 blocks old; signed by the node key; fee drained from the node's stake (owner decision 2026-10-19, rule queue_attendance)
     NodeRegistrationUpdate    = 258,    // UpdateNodeRegistrationTransaction [2,1,0,0]
     RemoveAccountDataset      = 259,    // RemoveAccountDatasetTransaction [3,1,0,0]
@@ -128,7 +134,25 @@ enum class TransactionType : uint32_t {
     // Pattern: 8 + (subtype * 256)
     DFSCreateFile             = 8,      // DFSCreateFileTransaction - Create a new file
     DFSUpdateFile             = 264,    // DFSUpdateFileTransaction [8,1,0,0] - Update existing file
-    DFSDeleteFile             = 520     // DFSDeleteFileTransaction [8,2,0,0] - Delete a file
+    DFSDeleteFile             = 520,    // DFSDeleteFileTransaction [8,2,0,0] - Delete a file
+
+    // ----- Same-kind batches (owner decisions TX2/TX3, 2026-10-24; transaction/batch_rules.h) -----
+    // One transaction carries several actions of ONE kind, all or nothing: every action is checked
+    // before any applies. Its minimum fee is the sum of the minimum fees the actions would pay as
+    // separate one-action transactions. The envelope recipient is empty: the recipients are in the
+    // body. All integers little endian; `addr` is a typed address (01 §4.1), 24 bytes or more.
+    //   count(u16) is 1 .. the type's maximum (batch_rules.h: kMaxPayments, kMaxTokenTransfers,
+    //   kMaxStorageProofs), and the body ends exactly after the last action.
+    // SendZBCBatch: several ZBC payments from the sender.
+    //   Body: count(u16) | count x [ addr_len(u8) | addr | amount(i64, > 0) ]
+    SendZBCBatch              = 257,    // [1,1,0,0]
+    // TransferTokenBatch: several token transfers from the sender (any tokens), the fee in ZBC.
+    //   Body: count(u16) | count x [ token_id(i64, != 0) | addr_len(u8) | addr | amount(i64, > 0) ]
+    TransferTokenBatch        = 267,    // [11,1,0,0]
+    // SubmitStorageProofBatch: a node's possession proofs for one storage epoch, one batch per node
+    // per epoch; a fee-free duty like SubmitStorageProof (fee exactly 0 under rule duty_fee_free).
+    //   Body: epoch(u64) | count(u16) | count x [ piece_id(32) | proof(32) ], piece ids distinct
+    SubmitStorageProofBatch   = 297     // [41,1,0,0]
 
     // NOTE: Coinbase rewards are NOT transaction types (matching Go implementation)
     // Coinbase is calculated per block and stored in block.total_coinbase field
@@ -154,9 +178,29 @@ enum class TransactionType : uint32_t {
 // The predicate is kept because these types ARE still special in one way: their sender is the node
 // account rather than a wallet, so an unfunded node stops attesting rather than failing loudly in
 // someone's UI. Callers use it to log that clearly.
+// Duty transactions (4 F1 follow-up, the duty lane): a node's proof of life or of possession, fee-free
+// and bounded by their own window rules. The pool admits them when full, never evicts them for fee
+// pressure, and block assembly takes them first (capped), so a flood of floor-fee transactions
+// cannot starve a node's attestation, a queued node's attendance or a storage proof.
+// The node-signed duties that declare a fee of exactly zero under rule duty_fee_free (18 F1, D14).
+inline bool IsFeeFreeDutyType(TransactionType t) {
+    return t == TransactionType::SubmitStorageProof || t == TransactionType::SubmitStorageProofBatch ||
+           t == TransactionType::AttestEvent ||
+           t == TransactionType::SetConsensusParam || t == TransactionType::FeeVoteCommitment ||
+           t == TransactionType::FeeVoteReveal || t == TransactionType::EquivocationReport ||
+           t == TransactionType::RollCall;
+}
+// The duty lane (TransactionPool): one pending per duty object per node, one per node per block,
+// admitted over capacity, never evicted. The liveness attestation and the five fee-free duties.
+inline bool IsDutyType(TransactionType t) {
+    return t == TransactionType::QueueAttendance || IsFeeFreeDutyType(t);
+}
+
 inline bool IsNodeSignedType(TransactionType t) {
-    return t == TransactionType::SubmitStorageProof || t == TransactionType::SetConsensusParam ||
-           t == TransactionType::QueueAttendance;
+    return t == TransactionType::SubmitStorageProof || t == TransactionType::SubmitStorageProofBatch ||
+           t == TransactionType::SetConsensusParam ||
+           t == TransactionType::QueueAttendance || t == TransactionType::EquivocationReport ||
+           t == TransactionType::RollCall;
 }
 
 // Umbrella categories for the per-account transact policy (SetTransactPolicy). FIXED SET — baked in
@@ -181,7 +225,7 @@ constexpr int kTxCategoryCount = 9;   // Payments..Governance
 // so a policy can never accidentally block a critical or unknown tx. Has a default → no -Werror=switch.
 inline TxCategory TransactionCategoryOf(TransactionType t) {
     switch (t) {
-        case TransactionType::SendZBC: case TransactionType::LiquidPayment:
+        case TransactionType::SendZBC: case TransactionType::SendZBCBatch: case TransactionType::LiquidPayment:
         case TransactionType::LiquidPaymentStop: case TransactionType::CreateTrigger:
         case TransactionType::CancelTrigger: case TransactionType::ScheduledTransfer:
         case TransactionType::CancelSchedule: case TransactionType::ReassignSchedule:
@@ -190,7 +234,7 @@ inline TxCategory TransactionCategoryOf(TransactionType t) {
         case TransactionType::AppMove: case TransactionType::ResignApp:
         case TransactionType::ClaimAppTimeout: case TransactionType::SettleApp:
             return TxCategory::Apps;
-        case TransactionType::IssueToken: case TransactionType::TransferToken:
+        case TransactionType::IssueToken: case TransactionType::TransferToken: case TransactionType::TransferTokenBatch:
         case TransactionType::MintToken: case TransactionType::BurnToken:
         case TransactionType::FinanceToken:
             return TxCategory::Tokens;
@@ -200,7 +244,8 @@ inline TxCategory TransactionCategoryOf(TransactionType t) {
             return TxCategory::Exchange;
         case TransactionType::SetupAccountDataset: case TransactionType::RemoveAccountDataset:
         case TransactionType::AddPrepaidStorage: case TransactionType::StoreFile: case TransactionType::FundStoredFile:
-        case TransactionType::SubmitStorageProof: case TransactionType::TransferDataset:
+        case TransactionType::SubmitStorageProof: case TransactionType::SubmitStorageProofBatch:
+        case TransactionType::TransferDataset:
         case TransactionType::SetDatasetPolicy: case TransactionType::AcceptDataset:
         case TransactionType::DeleteDataset: case TransactionType::DFSCreateFile:
         case TransactionType::DFSUpdateFile: case TransactionType::DFSDeleteFile:
@@ -208,7 +253,7 @@ inline TxCategory TransactionCategoryOf(TransactionType t) {
         case TransactionType::ApprovalEscrow: case TransactionType::EscrowRequest:
         case TransactionType::DeclineEscrowRequest: case TransactionType::MultiSignature:
             return TxCategory::EscrowMultisig;
-        case TransactionType::QueueAttendance:
+        case TransactionType::QueueAttendance: case TransactionType::EquivocationReport: case TransactionType::RollCall:
         case TransactionType::NodeRegistration: case TransactionType::NodeRegistrationUpdate:
         case TransactionType::RemoveNodeRegistration: case TransactionType::ClaimNodeRegistration:
         case TransactionType::RegisterGateway: case TransactionType::GatewayHeartbeat:
@@ -335,6 +380,8 @@ inline const char* TransactionTypeToString(TransactionType type) {
         case TransactionType::StoreFile: return "StoreFileTransaction";
         case TransactionType::SubmitStorageProof: return "SubmitStorageProofTransaction";
         case TransactionType::QueueAttendance: return "QueueAttendanceTransaction";
+        case TransactionType::EquivocationReport: return "EquivocationReportTransaction";
+        case TransactionType::RollCall: return "RollCallTransaction";
         case TransactionType::TransferDataset: return "TransferDatasetTransaction";
         case TransactionType::SetDatasetPolicy: return "SetDatasetPolicyTransaction";
         case TransactionType::AcceptDataset: return "AcceptDatasetTransaction";
@@ -365,6 +412,9 @@ inline const char* TransactionTypeToString(TransactionType type) {
         case TransactionType::DFSCreateFile: return "DFSCreateFileTransaction";
         case TransactionType::DFSUpdateFile: return "DFSUpdateFileTransaction";
         case TransactionType::DFSDeleteFile: return "DFSDeleteFileTransaction";
+        case TransactionType::SendZBCBatch: return "SendZBCBatchTransaction";
+        case TransactionType::TransferTokenBatch: return "TransferTokenBatchTransaction";
+        case TransactionType::SubmitStorageProofBatch: return "SubmitStorageProofBatchTransaction";
     }
     return "Unknown";
 }

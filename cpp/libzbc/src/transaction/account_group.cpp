@@ -265,10 +265,7 @@ Result<void> VerifyConsent(const std::vector<uint8_t>& digest, const ConsentProo
 }
 
 bool IsNonSigningType(const std::vector<uint8_t>& address) {
-    if (address.size() == 32) return false;   // legacy ZBC key
-    if (address.size() < 4) return true;
-    const int32_t t = util::TransactionUtil::ExtractAccountType(address);
-    return t == 2 || t == 3 || t == 8 || t == 10;
+    return util::TransactionUtil::IsNonSigningAccountAddress(address);   // owner decision 8 (2026-10-30): one list
 }
 
 bool IsGroupManagementType(TransactionType t) {

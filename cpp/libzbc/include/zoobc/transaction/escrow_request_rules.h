@@ -42,9 +42,10 @@ Result<std::vector<uint8_t>> CoSignerSigningDigest(const model::Transaction& tx)
 // request link is only valid on SendZBC. No-op (Ok) for a transaction without multi_party.
 Result<void> ValidateMultiPartyEscrow(const model::Transaction& tx);
 
-// The latest version of an escrow request, if it exists.
+// The latest version of an escrow request, if it exists. j70: a read that fails sets `*fault` (when given) and
+// returns nothing; the executor's callers pass one and fail the block, never read the fault as "no request".
 std::optional<model::EscrowRequest> LoadEscrowRequest(const std::shared_ptr<database::Database>& db,
-                                                      int64_t request_id);
+                                                      int64_t request_id, std::optional<Error>* fault = nullptr);
 
 // Empty when `tx` may fund the request it links to at `block_height`; otherwise why not. The
 // request must exist, be Pending and not expired, and the escrow must match its terms: the payer
@@ -56,7 +57,7 @@ std::optional<model::EscrowRequest> LoadEscrowRequest(const std::shared_ptr<data
 // (AccountState::SameAccount, docs/ACCOUNT_GROUPS.md: authority named on a member address).
 std::string EscrowRequestFundingProblem(const std::shared_ptr<database::Database>& db,
                                         const model::Transaction& tx, uint32_t block_height,
-                                        const AccountState* accounts = nullptr);
+                                        const AccountState* accounts = nullptr, std::optional<Error>* fault = nullptr);
 
 // Record that the request was funded by `escrow_tx_id` at `block_height` (a new version, status
 // Approved). Versioned like every other state table, so a rollback reverts it.
@@ -93,7 +94,7 @@ Result<DeclineEscrowRequestBody> ParseDeclineEscrowRequestBody(const std::vector
 // and at execution; the executor turns a non-empty answer into a paid no-op.
 std::string EscrowRequestDeclineProblem(const std::shared_ptr<database::Database>& db,
                                         const model::Transaction& tx, uint32_t block_height,
-                                        const AccountState* accounts = nullptr);
+                                        const AccountState* accounts = nullptr, std::optional<Error>* fault = nullptr);
 
 // Empty when `tx` (a DeclineEscrowRequest with target Escrow) may refuse the escrow it names at
 // `block_height`; otherwise why not. The escrow must exist and still be Pending (not approved, rejected,
@@ -104,7 +105,7 @@ std::string EscrowRequestDeclineProblem(const std::shared_ptr<database::Database
 // cancelling unilaterally). Same answer at admission and at execution.
 std::string EscrowDeclineProblem(const std::shared_ptr<database::Database>& db,
                                  const model::Transaction& tx, uint32_t block_height,
-                                 const AccountState* accounts = nullptr);
+                                 const AccountState* accounts = nullptr, std::optional<Error>* fault = nullptr);
 
 // Record the decline (a new version, status Declined, the reason stored). Rolled back with its block;
 // carried in snapshots by the generic StateTables section.

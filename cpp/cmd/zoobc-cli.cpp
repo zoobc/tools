@@ -188,10 +188,16 @@ static std::map<std::string, Cmd> registry() {
     // ---- exchange: swap offers ----
     m["swap-create"] = {"Create an atomic swap offer", (uint32_t)TT::CreateSwapOffer, false,
         {PK(), P("Give token","give_token","token to give (0=ZBC)"), P("Give amount","give_amount","atomic"),
-         P("Want token","want_token","token to want (0=ZBC)"), P("Want amount","want_amount","atomic"), P("Expiry","expiry","unix secs (0=GTC)","0",false)},
+         P("Want token","want_token","token to want (0=ZBC)"), P("Want amount","want_amount","atomic"), P("Expiry","expiry","unix secs (0=GTC)","0",false),
+         P("Counterparty","counterparty","the only account that may take the offer, any address form that can sign (empty = open offer)","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
             int64_t gt=parse_id_i64(v[1],"give_token"),ga=N(v,2),wt=parse_id_i64(v[3],"want_token"),wa=N(v,4),e=(v.size()>5&&!v[5].empty())?N(v,5):0;
-            u64(body,gt);u64(body,ga);u64(body,wt);u64(body,wa);u64(body,e); ex={{"give_token",gt},{"want_token",wt}}; }};
+            u64(body,gt);u64(body,ga);u64(body,wt);u64(body,wa);u64(body,e); ex={{"give_token",gt},{"want_token",wt}};
+            if(v.size()>6 && !v[6].empty()){   // 0.6.0: u32 LE length + the typed account (any kind that signs)
+                auto cp=parse_address(v[6], chain_hint()); if(!cp.IsOk()) throw std::runtime_error("invalid counterparty address");
+                const auto& a=cp.Value().address; uint32_t n=(uint32_t)a.size();
+                for(int i=0;i<4;i++) body.push_back((uint8_t)((n>>(8*i))&0xff));
+                body.insert(body.end(),a.begin(),a.end()); ex["counterparty"]=v[6]; } }};
     m["swap-accept"] = {"Accept (fill) a swap offer", (uint32_t)TT::AcceptSwapOffer, false,
         {PK(), P("Offer id","offer_id","the swap offer id")},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){ int64_t o=parse_id_i64(v[1],"offer_id"); u64(body,o); ex={{"offer_id",o}}; }};
@@ -309,7 +315,7 @@ static std::map<std::string, Cmd> registry() {
             auto h=hx(v[1]); if(h.size()!=32) throw std::runtime_error("vote_hash must be 32 bytes (64 hex)");
             body=TransactionUtil::GetFeeVoteCommitBodyBytes(h); ex={{"vote_hash",v[1]}}; }};
     m["setup-dataset"] = {"Set an account-dataset property", (uint32_t)TT::SetupAccountDataset, true,
-        {PK(), P("Subject","recipient","dataset subject address (ZBC_), or `self` for the signer's own account"), P("Property","property","key"), P("Value","value","value","",false), P("Value (base64)","value_b64","value as base64, for bytes a JSON string cannot carry","",false)},
+        {PK(), P("Subject","recipient","dataset subject address (ZBC_), a dataset's ZBS_ address to write a record into it, or `self` for the signer's own account"), P("Property","property","key"), P("Value","value","value","",false), P("Value (base64)","value_b64","value as base64, for bytes a JSON string cannot carry","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
             auto kp=derive_zbc_keypair(v[0]); if(!kp.IsOk()) throw std::runtime_error("bad key");
             auto setter=TransactionUtil::BuildAccountAddress(TransactionUtil::ACCOUNT_TYPE_ZBC, kp.Value().public_key);
@@ -323,7 +329,7 @@ static std::map<std::string, Cmd> registry() {
             if(dsval.empty()) throw std::runtime_error("give value or value_b64");
             body=TransactionUtil::GetSetupAccountDatasetBodyBytes(v[2], dsval, setter, rec); ex={{"property",v[2]},{"value_bytes",(int)dsval.size()}}; }};
     m["remove-dataset"] = {"Remove an account-dataset property", (uint32_t)TT::RemoveAccountDataset, true,
-        {PK(), P("Subject","recipient","dataset subject address (ZBC_), or `self` for the signer's own account"), P("Property","property","key"), P("Value","value","value","",false), P("Value (base64)","value_b64","value as base64, for bytes a JSON string cannot carry","",false)},
+        {PK(), P("Subject","recipient","dataset subject address (ZBC_), or `self` for the signer's own account"), P("Property","property","key"), P("Value","value","not needed: the node removes the property whatever value is sent (accepted for older scripts)","",false), P("Value (base64)","value_b64","not needed, as value","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
             auto kp=derive_zbc_keypair(v[0]); if(!kp.IsOk()) throw std::runtime_error("bad key");
             auto setter=TransactionUtil::BuildAccountAddress(TransactionUtil::ACCOUNT_TYPE_ZBC, kp.Value().public_key);
@@ -334,7 +340,6 @@ static std::map<std::string, Cmd> registry() {
             else { auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid subject address (a ZBC_ address, or `self`)"); rec=r.Value().address; }
             std::string dsval=v[3];
             if(v.size()>4 && !v[4].empty()){ try { dsval=b64d(v[4]); } catch(const std::exception& e){ throw std::runtime_error(std::string("value_b64 is not valid base64: ")+e.what()); } }
-            if(dsval.empty()) throw std::runtime_error("give value or value_b64");
             body=TransactionUtil::GetRemoveAccountDatasetBodyBytes(v[2], dsval, setter, rec); ex={{"property",v[2]},{"value_bytes",(int)dsval.size()}}; }};
     // ---- dataset objects: transfer / accept / policy / delete ----
     m["transfer-dataset"] = {"Propose transfer of a dataset object", (uint32_t)TT::TransferDataset, false,
@@ -349,27 +354,18 @@ static std::map<std::string, Cmd> registry() {
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
             (void)rec; auto oid=hexb(v[1]); if(oid.size()!=32) throw std::runtime_error("object_id must be 64 hex");
             body=oid; ex={{"object_id",v[1]}}; }};
-    m["delete-dataset"] = {"Delete a dataset object (refunds its deposit)", (uint32_t)TT::DeleteDataset, false,
+    m["delete-dataset"] = {"Vote to delete a dataset (owner or a funder with money left on it; it goes when the votes hold more than half of that money, its deposit to the longevity pool)", (uint32_t)TT::DeleteDataset, false,
         {PK(), P("Object id","object_id","dataset object id (64 hex)")},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
             (void)rec; auto oid=hexb(v[1]); if(oid.size()!=32) throw std::runtime_error("object_id must be 64 hex");
             body=oid; ex={{"object_id",v[1]}}; }};
-    m["set-dataset-policy"] = {"Set a dataset object's manage policy", (uint32_t)TT::SetDatasetPolicy, false,
-        {PK(), P("Object id","object_id","64 hex"), P("Mode","mode","0 owner-only, 1 whitelist, 2 blacklist, 3 open"),
-         P("Add accounts","add","comma-separated ZBC_ addresses (optional)","",false),
-         P("Remove accounts","remove","comma-separated ZBC_ addresses (optional)","",false)},
+    m["set-dataset-policy"] = {"Set a dataset's mode: 0 private (only the owner writes), 1 open (anyone writes, each in its own keys), 2 public (anyone writes, one shared key space)", (uint32_t)TT::SetDatasetPolicy, false,
+        {PK(), P("Object id","object_id","64 hex"), P("Mode","mode","0 private, 1 open, 2 public")},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
             (void)rec; auto oid=hexb(v[1]); if(oid.size()!=32) throw std::runtime_error("object_id must be 64 hex");
-            int mode=NI(v,2); if(mode<0||mode>3) throw std::runtime_error("mode must be 0-3");
-            auto parse_list=[&](const std::string& s){ std::vector<std::vector<uint8_t>> out; std::string cur;
-                auto flush=[&]{ if(cur.empty())return; auto a=parse_address(cur); if(!a.IsOk()) throw std::runtime_error("invalid acl address: "+cur); out.push_back(a.Value().address); cur.clear(); };
-                for(char c:s){ if(c==','){flush();} else if(!isspace((unsigned char)c)) cur+=c; } flush(); return out; };
-            auto adds=parse_list(v.size()>3?v[3]:""); auto rems=parse_list(v.size()>4?v[4]:"");
-            if(adds.size()>255||rems.size()>255) throw std::runtime_error("max 255 acl entries per tx");
+            int mode=NI(v,2); if(mode<0||mode>2) throw std::runtime_error("mode must be 0 (private), 1 (open) or 2 (public)");
             body=oid; body.push_back((uint8_t)mode);
-            body.push_back((uint8_t)adds.size()); for(auto&a:adds) body.insert(body.end(),a.begin(),a.end());
-            body.push_back((uint8_t)rems.size()); for(auto&a:rems) body.insert(body.end(),a.begin(),a.end());
-            ex={{"object_id",v[1]},{"mode",mode},{"add",adds.size()},{"remove",rems.size()}}; }};
+            ex={{"object_id",v[1]},{"mode",mode}}; }};
     // ---- value / tokens ----
     m["transfer-token"] = {"Transfer a held token to a recipient", (uint32_t)TT::TransferToken, true,
         {PK(), P("Recipient","recipient","recipient address (ZBC_/hex/eth)"),

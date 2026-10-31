@@ -65,7 +65,6 @@ constexpr int64_t SCALAR_RECEIPT_SCORE = 1;  // Simplified - no need for ONE_ZBC
 // MaxParticipationScore = 10 trillion (matches genesis-builder.cpp)
 constexpr int64_t MAX_PARTICIPATION_SCORE     = 10000000000000LL;  // 10^13 = 10 trillion
 constexpr int64_t DEFAULT_PARTICIPATION_SCORE = 2000000000000LL;   // 2 trillion (20% of max)
-constexpr int64_t GENESIS_PARTICIPATION_SCORE = MAX_PARTICIPATION_SCORE;  // 100% of max for genesis nodes
 constexpr int64_t MIN_PARTICIPATION_SCORE     = 0;
 
 // Receipt score constants (matching Go: LinkedReceiptScore = 1, UnlinkedReceiptScore = 1)
@@ -105,22 +104,16 @@ constexpr uint32_t BLOCKS_PER_WEEK   = BLOCKS_PER_PERIOD;
 constexpr uint32_t BLOCKS_PER_DAY    = BLOCKS_PER_PERIOD / 7;
 constexpr uint32_t BLOCKS_PER_HOUR   = BLOCKS_PER_DAY / 24;
 constexpr uint32_t BLOCKS_PER_MINUTE = BLOCKS_PER_HOUR / 60;
+// The nominal week in blocks for a block cadence (SECONDS_PER_WEEK / block_time_interval): the one
+// derivation the startup loader and the score road's receipt drift both use. 15 s -> 40,320.
+constexpr int64_t BlocksPerWeekFor(int64_t block_time_interval) {
+    return SECONDS_PER_WEEK / (block_time_interval > 0 ? block_time_interval : 15);
+}
 
-// Score dynamics constants (matching Go exactly)
-constexpr int INCREASE_SCORE_DIVIDER = 12;  // 12 weeks to reach max from zero
-constexpr int DECREASE_SCORE_DIVIDER = 2;   // 2 weeks to drop from max to zero
-
-// Score change units (matching genesis-builder proportions)
-// MaxScoreChange = proportional to MAX_PARTICIPATION_SCORE (roughly 0.1% of max per block penalty)
-constexpr int64_t MAX_SCORE_CHANGE = MAX_PARTICIPATION_SCORE / 10000;  // 1 billion
-// ParticipationScorePunishAmount = -MaxScoreChange / 2
-constexpr int64_t PARTICIPATION_SCORE_PUNISH_AMOUNT = -1 * MAX_SCORE_CHANGE / 2;
-// ScoreChangeUnit = MaxParticipationScore / BlocksPerPeriod
-constexpr int64_t SCORE_CHANGE_UNIT = MAX_PARTICIPATION_SCORE / BLOCKS_PER_PERIOD;
-// IncreaseScoreUnit = ScoreChangeUnit / IncreaseScoreDivider
-constexpr int64_t INCREASE_SCORE_UNIT = SCORE_CHANGE_UNIT / INCREASE_SCORE_DIVIDER;
-// DecreaseScoreUnit = ScoreChangeUnit / DecreaseScoreDivider
-constexpr int64_t DECREASE_SCORE_UNIT = SCORE_CHANGE_UNIT / DECREASE_SCORE_DIVIDER;
+// Score dynamics: the score road (LV1; include/zoobc/consensus/score_road.h). A missing node loses
+// score_loss_per_unit_bps per unit, own blocks climb score_climb_ratio times slower, a producer whose
+// blocks carry too few receipts drifts down decrease_score_divider weeks from 100 % to 0 (call 2);
+// every number is a genesis parameter (call 3). There is no per-skip charge any more.
 
 // Block constants - PoP specification
 // DO NOT "FIX" THIS TO 15. Blocks land 15 seconds apart, so this looks wrong and has been changed
@@ -163,9 +156,17 @@ constexpr int MAX_NUMBER_OF_TRANSACTIONS_IN_BLOCK = 500;
 constexpr int MIN_TRANSACTION_SIZE_IN_BLOCK = 176;
 constexpr int MAX_PAYLOAD_LENGTH_IN_BLOCK = MIN_TRANSACTION_SIZE_IN_BLOCK * MAX_NUMBER_OF_TRANSACTIONS_IN_BLOCK;
 constexpr int64_t TRANSACTION_EXPIRATION_OFFSET = 3600;  // 3600 seconds
+// 12 F3 (rule tx_expiry_field): a version-3 transaction states its own expiry window in seconds
+// (0 = the hour above), capped here; the snapshot's replay floor spans the cap so a fast-synced
+// node still refuses every re-broadcast of a still-valid transaction.
+constexpr int64_t TRANSACTION_EXPIRY_CAP = 86400;        // one day
 // How far ahead of its block (consensus, rule tx_timestamp_bound) or of the node's clock (admission) a
 // transaction's timestamp may be. Without a bound a transaction dated years ahead never expires.
 constexpr int64_t TRANSACTION_FUTURE_TOLERANCE = 3600;
+// TX5 (owner decision, 2026-10-26): the longest a transaction stays valid after the block that first
+// carried it: its stated expiry (at most a day after its timestamp) plus the hour its timestamp may lead
+// that block. 25 hours: every node keeps transaction ids, the replay guard, at least this long.
+constexpr int64_t TRANSACTION_REPLAY_WINDOW_SECONDS = TRANSACTION_EXPIRY_CAP + TRANSACTION_FUTURE_TOLERANCE;
 constexpr int64_t ONE_FEE_PER_BYTE_TRANSACTION = 10000;  // Used for fee per byte accuracy
 constexpr int COMPLETE_MINUTES_UNIT = 60;  // 60 seconds
 
@@ -174,14 +175,11 @@ constexpr int COMPLETE_MINUTES_UNIT = 60;  // 60 seconds
 constexpr int64_t SEND_ZBC_FEE_CONSTANT = ONE_ZBC / 100;
 // InitialFeeScale = OneZBC / 100 = 1,000,000
 constexpr int64_t INITIAL_FEE_SCALE = ONE_ZBC / 100;
-constexpr double FEE_SCALE_LOWER_CONSTRAINTS = 0.5;
-constexpr double FEE_SCALE_UPPER_CONSTRAINTS = 2.0;
 constexpr double FEE_PER_CHARACTER_MULTIPLIER = 0.1;  // 1000 char = 1 ZBC with initial fee
 constexpr int ESCROW_LIFETIME_DIVIDER = 24;  // 24 hours
 
 // Node registration constants
 constexpr int64_t MIN_NODE_REGISTRATION_BALANCE = 100000000;  // 1 ZBC
-constexpr uint32_t NODE_REGISTRATION_PERIOD     = BLOCKS_PER_WEEK * 52;  // 1 year
 
 // Database constants
 constexpr int DATABASE_SCHEMA_VERSION = 1;
@@ -270,7 +268,11 @@ constexpr uint32_t SNAPSHOT_CHUNK_SIZE_BYTES = 100 * 1024;  // Deprecated: use G
 // objects and ACLs, release governance, stored files, longevity, storage proofs, app settlements,
 // escrow requests, the topology cache, bridge coins). A node refuses any other format: format 1 is
 // missing state, and a node built from it forks.
-constexpr uint32_t SNAPSHOT_FORMAT_VERSION = 2;
+// 3 (0.5.8, SP11): a FundedBlocks section carries the header of every block that holds a funded
+// transaction, so a node that joins from the snapshot can place each one in its block, as the nodes
+// that ran the chain do. Every snapshot the decentralised storage keeps from block 0 of a relaunched
+// chain is format 3: a later format must keep reading 3 on the archive's read path.
+constexpr uint32_t SNAPSHOT_FORMAT_VERSION = 3;
 constexpr int64_t SNAPSHOT_GENERATION_TIMEOUT_SECONDS = 10 * 60;  // Deprecated
 
 // Lifetime of a snapshot manifest (how long peers advertise it as a valid fast-sync
@@ -347,6 +349,21 @@ constexpr int64_t ONE_YEAR = 365 * ONE_DAY;  // seconds per year
 // Seed prefix for blocksmith RNG selection (matching Go: common/constant/smith.go)
 // Used to deterministically select blocksmiths from the node registry
 constexpr const char* BLOCKSMITH_SELECTION_SEED_PREFIX = "zbc-blocksmith";
+// One prefix per purpose (10 F5): every consumer of a block seed hashes it under its own tag, so no
+// two consensus samples share a stream. The receipt datum sampler reused "zbc-blocksmith" with a
+// different generator (domain separation by accident); under rule receipt_datum_prefix it is this.
+// The receipt-peer draw uses "zbc-receipt", the topology scramble "zbc-topology-v2", the coinbase
+// lottery COINBASE_SELECTION_SEED_PREFIX below, the apps APPS_SEED_PREFIX under rule apps_seed_prefix
+// (10 F1-5; before it the apps hashed SHA3(seed || app id) with no prefix).
+constexpr const char* RECEIPT_DATUM_SEED_PREFIX = "zbc-receipt-datum";
+constexpr const char* APPS_SEED_PREFIX = "zbc-apps";
+
+// 16 F2-3: the readiness gate's window (ROLLING-UPGRADE.md §7.3): a bundle switches on at the first
+// height where two thirds of the registered producers signalled it inside the last W blocks.
+constexpr uint32_t SIGNAL_WINDOW_BLOCKS = 720;   // three hours at 15 s
+// 16 F2-4: a bundle activates no earlier than the release registry's height for its release plus
+// this (ROLLING-UPGRADE.md §7.4): the time the self-updater needs to reach the fleet.
+constexpr uint32_t ACTIVATION_FLOOR_BLOCKS = 5760;   // one day at 15 s
 
 // Salt for turn-based randomness derivation
 // Tr0 = hash(block_seed || BLOCKSMITH_TURN_SALT)
@@ -367,22 +384,22 @@ constexpr int64_t COINBASE_MAX_NUMBER_REWARDS_PER_BLOCK = 600;         // Max re
 // (bounded by the 600 cap and the active node count). 0 disables. Stateless and
 // deterministic — depends only on the pool size + active count, so all nodes agree.
 constexpr int64_t COINBASE_SMOOTHING_PER_WINNER = ONE_ZBC;            // ~1 winner per 1 ZBC of pool
-// Rule coinbase_maturity: blocks a registered node must wait after its registration transaction before
-// it holds a coinbase lottery ticket or a longevity-pool share. 14 days at 15-second blocks. A fresh
-// chain may set `coinbase_maturity_blocks` in its genesis config; live chains use this default.
-constexpr uint32_t COINBASE_MATURITY_BLOCKS = 80640;
-// Owner decision 2026-10-19: the maturity scales with the network — 24 of the node's own expected
-// turns, never under 6 hours — so a dead registration (expelled after 4 missed turns, see the
-// liveness constants) never reaches it at any network size, and an honest node is not kept waiting
-// for weeks. COINBASE_MATURITY_BLOCKS above stays as the pre-decision reference value.
-constexpr uint32_t COINBASE_MATURITY_TURNS = 24;
-constexpr uint32_t COINBASE_MATURITY_FLOOR_BLOCKS = 1440;
-// Liveness rule (owner decisions 2026-10-19): consecutive missed turns before a never-produced node
-// is expelled / an established node is suspended; blocks of suspended silence before expulsion
-// (3 days at 15 s); the active-node floor below which nothing is ever expelled.
-constexpr uint32_t LIVENESS_MISS_LIMIT = 4;
-constexpr uint32_t LIVENESS_SUSPENSION_BLOCKS = 17280;
+// LV4 (owner decision 2026-10-25): a newcomer earns once it has produced a block and maturity_units
+// units have passed since its admission (score_road.h, consensus::Mature); no block count here.
+// Liveness (owner decisions 2026-10-19; the 0.5.8 score road): the miss limit is the genesis parameter
+// liveness_miss_limit (score_road.h). A node is suspended only once this many blocks have passed since its
+// last OWN block (call 4: five minutes at 15 s), misses permitting; the miss clock alone scales with N.
+constexpr uint32_t LIVENESS_SUSPENSION_FLOOR_BLOCKS = 20;
+// Rule equivocation_miss (11 F6 (c) T2): an EquivocationReport's parent block must be within this many
+// blocks of the including block (the rollback bound); older evidence is refused.
+constexpr uint32_t EQUIVOCATION_EVIDENCE_MAX_AGE_BLOCKS = 720;
+// The active-node floor below which nothing is ever expelled (LV1: never below 3 active nodes).
 constexpr size_t   LIVENESS_FLOOR_ACTIVE = 3;
+// Rule miss_by_rounds (1 F2 (b) + 3 F2): a block that comes more than this many rounds after the
+// previous one is a resume after a STALL; it charges no miss and no skip penalty to anyone (the
+// network stalled, not a node). Ten rounds is 150 s on the 15 s family, far beyond any single
+// node's window and far below the recovery limit (3600 s) that gates the resume block itself.
+constexpr int      LIVENESS_STALL_ROUNDS = 10;
 // Default of the consensus parameter max_recovery_interval_seconds (rule halt_recovery_param).
 constexpr int64_t  MAX_RECOVERY_INTERVAL_SECONDS = 3600;
 // Queue attendance (owner decision 2026-10-19, rule queue_attendance): a queued node signs a block no
@@ -391,10 +408,48 @@ constexpr int64_t  MAX_RECOVERY_INTERVAL_SECONDS = 3600;
 // (stake returned); a missed window resets its waiting time. The fee comes out of the stake.
 constexpr uint32_t QUEUE_ATTENDANCE_WINDOW_BLOCKS  = 5760;
 constexpr uint32_t QUEUE_ATTENDANCE_MAX_AGE_BLOCKS = 120;
-constexpr uint32_t QUEUE_ATTENDANCE_MISSES_ALLOWED = 2;
+constexpr uint32_t QUEUE_ATTENDANCE_MISSES_ALLOWED = 2;   // the floor; rule attendance_any_sign (8 F3) raises it to one admission cycle's windows
+// j73: the oldest block a transaction may cite (a ProofOfOwnership's block, an equivocation report's parent, a queue
+// attendance's block), counted back from the including block. Block validation refuses a citation of a block the node
+// does not hold, so a snapshot carries the block headers this far below its height (GoSnapshotService), or a node
+// restored from it refuses blocks the others accept. Each citing rule asserts it stays within this reach.
+constexpr uint32_t SNAPSHOT_BLOCK_REFERENCE_REACH = 720;
+static_assert(EQUIVOCATION_EVIDENCE_MAX_AGE_BLOCKS <= SNAPSHOT_BLOCK_REFERENCE_REACH, "the snapshot must carry the blocks an equivocation report may cite");
+static_assert(QUEUE_ATTENDANCE_MAX_AGE_BLOCKS <= SNAPSHOT_BLOCK_REFERENCE_REACH, "the snapshot must carry the blocks a queue attendance may cite");
+// LV8 (owner decisions 2026-10-25 and 2026-10-27, j52; consensus/node_exit.h): a voluntary exit returns the
+// lock after a cool-down, not at once. A registered seat stays in the registry and the draw for the hold and
+// leaves at its end with all of its lock, or less the genesis parameter node_lock_at_risk_bps (score_road.h,
+// 10 %, to the longevity pool, NB2) when it missed a turn, was suspended, or was missing at the exit; a
+// queued node's held amount sits in lock_release until release_height (LV12). The hold is the genesis
+// parameter exit_cooldown_blocks; this is its compiled default.
+constexpr uint32_t EXIT_COOLDOWN_BLOCKS = 40320;   // 7 days at 15 s
+// Rule admission_small_registry_cap (8 F5 / 19 F4): the admission delay's ceiling while the active
+// registry is below the genesis min_registry_size. A chain at the floor must admit faster, not slower.
+constexpr int64_t ADMISSION_SMALL_REGISTRY_MAX_DELAY_SECONDS = 604800;
+// Rule claim_two_step (9 F3): blocks between a node-key claim's announcement and its execution, one
+// admission cycle on the preset (7 days at 15 s), during which the owner may remove the node.
+constexpr uint32_t NODE_CLAIM_DELAY_BLOCKS = 40320;
+// CF6 (owner decision 2026-10-26, b2; call 15): blocks between the block that includes a seat change (a
+// node-key rotation today; the transfer-seat transaction later) and the block where it takes effect, 30
+// minutes at 15 s. Until then the seat keeps its key everywhere a key is read (consensus/seat_change.h).
+constexpr uint32_t SEAT_CHANGE_DELAY_BLOCKS = 120;
+// The pre-genesis roll call (owner decision 2026-10-27, j51; consensus/roll_call.h): the compiled default of the
+// genesis parameter roll_call_blocks, the blocks 1 .. N in which a genesis seat's RollCall counts (about five minutes
+// at 15 s), and its smallest value (block 1 is drawn over every seat, so a window needs a block after it).
+constexpr uint32_t ROLL_CALL_BLOCKS_DEFAULT = 20;
+constexpr uint32_t ROLL_CALL_BLOCKS_MIN = 2;
+// Rule liveness_attestation (4 F1 / 6 F2 / 9 F2): an ACTIVE node sends the same transaction as a
+// proof of life, fee-free (D14), at most once per LIVENESS_ATTESTATION_WINDOW_BLOCKS; the windows
+// live in queue_attendance under their own key space (base + ref_height / 120) so they never collide
+// with the queue's 5,760-block windows.
+constexpr uint32_t LIVENESS_ATTESTATION_WINDOW_BLOCKS = 120;
+constexpr uint32_t LIVENESS_ATTESTATION_WINDOW_BASE   = 1u << 30;
 // Market creation deposit (forum #398, owner decision 2026-10-19, rule market_deposit_refund): the 50 ZBC is
 // held and returned to the creator at the fill that brings the market to this many trades.
 constexpr int64_t  MARKET_DEPOSIT_REFUND_FILLS = 100;
+// 18 F3 (rule permanent_state_priced): an order's quote notional (amount x price / 1e8) must be at least this
+// many units of the quote token, 0.025 (the base action fee's figure), so a fill is worth at least a fee.
+constexpr int64_t  ORDER_MIN_NOTIONAL_UNITS = ONE_ZBC / 40;
 
 // PoP Consensus - Network Topology
 // Network topology is reshuffled every ΔΥh blocks to ensure fairness
@@ -415,8 +470,6 @@ constexpr int64_t NODE_ADMISSION_BASE_DELAY = ONE_HOUR;  // Go: NodeAdmissionBas
 constexpr int64_t NODE_ADMISSION_MIN_DELAY = 60;      // Go: NodeAdmissionMinDelay = 60 seconds
 constexpr int64_t NODE_ADMISSION_MAX_DELAY = 72 * ONE_HOUR;  // Go: NodeAdmissionMaxDelay = 72 hours
 
-// Queue expiry: nodes in queue > 30 days are removed
-constexpr int64_t NODE_QUEUE_EXPIRY_SECONDS = 30 * ONE_DAY;
 
 // Legacy admission rate constants (deprecated - use time-based admission instead)
 constexpr uint32_t BASE_ADMISSION_RATE = 1;
@@ -447,7 +500,8 @@ constexpr uint32_t DATASET_BILLING_GRACE_PERIOD_BLOCKS = 4 * 60 * 24 * 7;
 // Event type for dataset billing ledger entries
 constexpr int32_t EVENT_TYPE_DATASET_STORAGE_FEE = 17;  // New event type for storage fees
 constexpr int32_t EVENT_TYPE_DATASET_PRUNED = 18;       // Dataset pruned: owner could not pay storage rent
-constexpr int32_t EVENT_TYPE_DATASET_RENT_REWARD = 19;  // Storage rent credited to the block producer
+constexpr int32_t EVENT_TYPE_DATASET_RENT_REWARD = 19;  // Collected rent credited to the longevity pool (14 F6, D11); also a node's storage-proof reward
+constexpr int32_t EVENT_TYPE_RENT_TO_POOL = EVENT_TYPE_DATASET_RENT_REWARD;   // the same event, named for where it goes now (dataset and account rent)
 constexpr int32_t EVENT_TYPE_DATASET_DEPOSIT_REFUND = 32; // unused ZBS_ deposit returned to owner on prune/delete
 constexpr int32_t EVENT_TYPE_DATASET_TRANSFERRED = 33;    // dataset object ownership transfer accepted
 // (20, 21 reserved for token survival-financing events on epsilon-survival-financing)
@@ -594,6 +648,10 @@ constexpr int64_t SCHEDULE_MAX_SECONDS = 100LL * 365 * 24 * 3600;
 // These are the defaults; Task B.4 seeds them into the consensus_parameters table so
 // governance can tune them. Until then the code reads these constants directly.
 constexpr int64_t GATEWAY_REGISTRATION_COST = 10 * ONE_ZBC;  // 10 ZBC locked at registration
+// j87: the compiled values of the two storage prices (the charges, the vote count and the API read these; a chain
+// states its own in genesis): the base rate per MiB per billing period, and the oracle multiplier (1.0x).
+constexpr int64_t DATASET_STORAGE_COST_PER_MIB = ONE_ZBC;
+constexpr int64_t STORAGE_ORACLE_MULTIPLIER_PPM = 1000000;
 
 // Exchange (docs/EXCHANGE_DESIGN.md). Taker fee in basis points, charged on the asset the taker
 // RECEIVES and paid to the block producer; makers pay nothing. Seeded into consensus_parameters at
@@ -619,7 +677,7 @@ constexpr uint32_t STORE_FILE_MAX_PIECES = 100000;          // bound the manifes
 // storage pool; a holder whose proof disagrees with the quorum loses STORAGE_PROOF_SCORE_PENALTY
 // participation score (→ fewer blocks). Dev values; genesis-tunable later.
 constexpr uint32_t STORAGE_PROOF_EPOCH_BLOCKS = 240;        // proof/tally cadence (~1h @15s)
-constexpr int64_t  STORAGE_PROOF_REWARD = ONE_ZBC / 1000;  // per honest (piece,epoch) proof, from the pool
+constexpr int64_t  STORAGE_PROOF_REWARD = ONE_ZBC / 1000;  // per honest (piece,epoch) proof, from the pool; below rule duty_fee_free only (from it the reward is derived from rent, consensus/duty_economics.h)
 constexpr int64_t  STORAGE_PROOF_SCORE_PENALTY = 100000000; // participation-score decrement for a lying holder
 constexpr uint32_t GATEWAY_HEARTBEAT_INTERVAL = 5760;        // ~24h at 15s blocks: expected beat cadence.
 // A heartbeat answers "is this service still real?", which does not change minute to minute. Beating
@@ -713,15 +771,57 @@ constexpr int32_t EVENT_TYPE_GATEWAY_STAKE_LOCKED   = 64;  // RegisterGateway: t
 constexpr int32_t EVENT_TYPE_GATEWAY_STAKE_RETURNED = 65;  // UnregisterGateway: the stake returned (positive)
 constexpr int32_t EVENT_TYPE_APP_STAKE              = 66;  // CreateApp / JoinApp: a player's stake (negative; a solo bet's + on the apps pool)
 constexpr int32_t EVENT_TYPE_APP_RAKE               = 67;  // an app's rake credited to the apps pool (positive)
+// 18 F6 (rule apps_payout_cap): a block pays solo wins only up to the pool's inflow of this many blocks (the
+// solo stakes bet in the window, per token); a win beyond the remaining cap waits for the next block.
+constexpr uint32_t APPS_PAYOUT_INFLOW_WINDOW_BLOCKS = 4 * 60 * 24;   // a day at 15 s
+// j49 (owner decision 2026-10-27): a multiplayer app nobody started closes itself this many blocks after its
+// creation ("a bit less than a month": 28 days at 15 s, under the 172,800-block snapshot cycle), and each seated
+// player gets its stake back less this share, which goes to the longevity pool. Genesis parameters
+// (app_open_timeout_blocks, app_unused_share_bps); these are the compiled defaults.
+constexpr int64_t APP_OPEN_TIMEOUT_BLOCKS_DEFAULT = 28 * 4 * 60 * 24;   // 161,280
+constexpr int64_t APP_UNUSED_SHARE_BPS_DEFAULT    = 1000;                // 10 %
 constexpr int32_t EVENT_TYPE_PREPAID_STORAGE_FUNDED = 68;  // AddPrepaidStorage: moved into the prepaid storage balance (negative)
 constexpr int32_t EVENT_TYPE_STORED_FILE_RENT       = 69;  // per-period stored-file rent accrued in the storage pool (positive, on the pool)
-// Rule `multisig_inner_fee_path` (docs/FEE_RULES.md "Multisig inner transactions"): the fee of a
-// multisig INNER transaction, debited from the account that pays it (the multisig account, or its group)
-// as its own row (negative), with the outer transaction's id. block.total_fee sums only the outer fees,
-// so Blockchain::DistributablePool adds these rows to the reward pool from the rule's height; the
-// inner overpay comes back as an ordinary FEE_REFUND (22), which the pool subtracts as usual.
+// docs/FEE_RULES.md "Multisig inner transactions": the fee of a multisig INNER transaction, debited from
+// the account that pays it (the multisig account, or its group) as its own row (negative), with the outer
+// transaction's id. block.total_fee sums only the outer fees, so Blockchain::DistributablePool adds these
+// rows to the reward pool; the inner overpay comes back as an ordinary FEE_REFUND (22), which the pool
+// subtracts as usual.
 constexpr int32_t EVENT_TYPE_MARKET_DEPOSIT_REFUNDED = 71;  // PlaceOrder fill: the market creation deposit returned to the creator once the market has traded (rule market_deposit_refund)
 constexpr int32_t EVENT_TYPE_MULTISIG_INNER_FEE     = 70;
+constexpr int32_t EVENT_TYPE_MARKET_RENT_FED        = 72;  // PlaceOrder/CancelOrder: the sender's share of its fee fed into the market's rent deposit (negative) (rule market_rent)
+constexpr int32_t EVENT_TYPE_MARKET_PRUNED          = 73;
+// 8 F2 display (burn accounting, dzoobc-de on ac67c99f): every ZBC burn wrote one ledger row on the
+// burn address (AccountState::BurnAddress, a key nobody holds) with the burned amount as a positive
+// change, so supply = genesis + emission - sum(event 74) can be checked from the chain alone. The
+// address never has a balance row: the rows are the tally, not a movement into an account. NB2 (ZBC is
+// never burned): the lock shares that wrote it go to the longevity pool (event 76); nothing writes it.
+constexpr int32_t EVENT_TYPE_BURN                   = 74;
+// Owner call 1 (2026-10-26): the lottery carry (AccountState::LotteryCarryAddress). One row per movement
+// on the carry: + what a block's lottery could pay to nobody, - what the next block's lottery takes in.
+constexpr int32_t EVENT_TYPE_LOTTERY_CARRY          = 75;
+// NB2 (owner principle 2026-10-25: ZBC is never burned): the at-risk share of a node's lock lost on an
+// expulsion for cause (LV9) or an exit while missing (LV8), credited to the longevity pool. One row on the
+// pool, the amount positive, transaction_id = the exit's transaction or the expelled node's id.
+constexpr int32_t EVENT_TYPE_LOCK_SHARE_TO_POOL     = 76;
+// SP12 (the archive): the storage-epoch reward of the honest holders of the sampled snapshot chunks,
+// snapshot_reward_share_ppm of the longevity pool: the pool's side negative, each owner's positive,
+// transaction id 0 (BlockService::ProcessSnapshotArchive).
+constexpr int32_t EVENT_TYPE_ARCHIVE_REWARD         = 77;
+// NB2 / call 18 (ZBC is never burned): a fee a node pays out of its lock instead of its owner's balance (a
+// queued node's attendance; the fee of an exit or a claim whose lock is held, netted out of the lock),
+// credited to the longevity pool. One row on the pool, the amount positive, transaction_id = the
+// transaction that paid it. The payer's own rows say the fee was not collected from its balance (22, 47).
+constexpr int32_t EVENT_TYPE_LOCK_FEE_TO_POOL       = 80;
+// j48 (owner decision 2026-10-27): a rent the account pays itself (its account rent, its share of a dataset's
+// storage rent) comes out of its prepaid storage first, its balance for the rest. The rent row (24, 17) carries the
+// whole rent; this row (positive, on the account) carries what the prepaid storage paid, moved out of it toward
+// the rent, so the account's rows still sum to its balance's movement (the reverse of 68).
+constexpr int32_t EVENT_TYPE_PREPAID_STORAGE_SPENT  = 83;
+// j49 (owner decision 2026-10-27): a multiplayer app nobody started closed itself; the share kept from its
+// players' stakes (app_unused_share_bps), credited to the longevity pool. One row on the pool, positive,
+// transaction_id = the app (its CreateApp). Each player's refund is an app payout (100).
+constexpr int32_t EVENT_TYPE_APP_UNUSED_TO_POOL     = 84;
 // Addresses per group, the controller included. A consensus parameter (`account_group_max_members`);
 // this is the default when genesis does not set it (owner decision 2026-09-23: 100). The group pays
 // storage rent on its record's weight, which grows with every member (ACCOUNT_GROUP_MEMBER_ENTRY_BYTES

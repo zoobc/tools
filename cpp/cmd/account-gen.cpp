@@ -110,7 +110,7 @@ int main(int argc, char* argv[]) {
     std::vector<uint8_t> seed;
     if (!from_priv.empty()) {
         seed = from_hex(from_priv);
-        if (seed.size() != 32) { std::cerr << "Error: --from-privkey must be 64 hex chars (32 bytes)\n"; return 1; }
+        if (seed.size() != 32) { std::cerr << "Error: --from-privkey must be 64 hex chars (32 bytes)\n"; return zbctool::kExitUsage; }
     } else {
         seed.resize(32);
         randombytes_buf(seed.data(), seed.size());
@@ -153,7 +153,7 @@ int main(int argc, char* argv[]) {
         }
         if (chain != "all" && !matched) {
             std::cerr << "Error: unknown chain '" << chain << "'. Run with --help for the list.\n";
-            return 1;
+            return zbctool::kExitUsage;
         }
     }
 

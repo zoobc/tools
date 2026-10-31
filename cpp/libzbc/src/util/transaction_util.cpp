@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
 
+#include <algorithm>
+#include "zoobc/common/constants.h"
 #include "zoobc/util/transaction_util.h"
 #include "zoobc/crypto/hash.h"
+#include "zoobc/crypto/address_decode.h"
 #include "zoobc/common/chain_identity.h"
 #include <cstring>
 #include <cctype>
 #include <string>
 #include <unordered_set>
+#include "nlohmann/json.hpp"
 
 namespace zoobc {
 namespace util {
@@ -107,6 +111,40 @@ bool TransactionUtil::IsEmptyAccountAddress(
     return ExtractAccountType(account_address) == ACCOUNT_TYPE_EMPTY;
 }
 
+namespace {
+// SAX listener for InvoiceValueShape: records whether the document is an object at the top and
+// whether any number in it is negative. Builds nothing, recurses nowhere.
+struct InvoiceShapeSax : nlohmann::json_sax<nlohmann::json> {
+    bool first = true;
+    bool top_object = false;
+    bool negative = false;
+    bool seen(bool is_object) { if (first) { first = false; top_object = is_object; } return true; }
+    bool null() override { return seen(false); }
+    bool boolean(bool) override { return seen(false); }
+    bool number_integer(number_integer_t v) override { seen(false); if (v < 0) negative = true; return true; }
+    bool number_unsigned(number_unsigned_t) override { return seen(false); }
+    bool number_float(number_float_t v, const string_t&) override { seen(false); if (v < 0) negative = true; return true; }
+    bool string(string_t&) override { return seen(false); }
+    bool binary(binary_t&) override { return seen(false); }
+    bool start_object(std::size_t) override { return seen(true); }
+    bool key(string_t&) override { return true; }
+    bool end_object() override { return true; }
+    bool start_array(std::size_t) override { return seen(false); }
+    bool end_array() override { return true; }
+    bool parse_error(std::size_t, const std::string&, const nlohmann::detail::exception&) override { return false; }
+};
+}  // namespace
+
+bool TransactionUtil::InvoiceValueShape(const std::string& value, std::string& out_why) {
+    InvoiceShapeSax sax;
+    bool parsed = false;
+    try { parsed = nlohmann::json::sax_parse(value, &sax); } catch (...) { parsed = false; }
+    if (!parsed) { out_why = "not JSON"; return false; }
+    if (!sax.top_object) { out_why = "not a JSON object"; return false; }
+    if (sax.negative) { out_why = "a negative number"; return false; }
+    return true;
+}
+
 bool TransactionUtil::TokenIconMediaType(const std::string& v, std::string& out_media) {
     const size_t n = v.size();
     if (n < 16 || n > 4096) return false;
@@ -196,7 +234,7 @@ bool TransactionUtil::HasValidTokenSymbolCharset(const std::string& symbol) {
     return true;
 }
 
-bool TransactionUtil::HasValidTokenNameShape(const std::string& name, std::string* why) {
+bool TransactionUtil::HasValidTokenNameShape(const std::string& name, std::string* why, bool refuse_address) {
     auto fail = [&](const char* r) { if (why) *why = r; return false; };
     if (name.empty()) return fail("name is empty");
     if (name.size() > kMaxTokenNameBytes) return fail("name is longer than 64 bytes");
@@ -232,6 +270,15 @@ bool TransactionUtil::HasValidTokenNameShape(const std::string& name, std::strin
         const bool other_space = cp == 0xA0 || cp == 0x1680 || (cp >= 0x2000 && cp <= 0x200A)
             || cp == 0x202F || cp == 0x205F || cp == 0x3000;
         if (other_space) return fail("name contains a space other than U+0020");
+    }
+    if (refuse_address) {
+        // Rule token_name_not_address (owner decision 11, D21): the node's own parser decides, not a pattern.
+        if (crypto::DecodeAddress(name).IsOk()) return fail("name is an account address");
+        std::string h = name;
+        if (h.size() > 2 && h[0] == '0' && (h[1] == 'x' || h[1] == 'X')) h = h.substr(2);
+        bool typed_hex = h.size() == 72;
+        for (char c : h) if (!std::isxdigit(static_cast<unsigned char>(c))) { typed_hex = false; break; }
+        if (typed_hex) return fail("name is an account address");
     }
     return true;
 }
@@ -297,7 +344,7 @@ Result<std::vector<uint8_t>> TransactionUtil::GetTransactionBytes(
     // - 32 bytes: legacy ZBC pubkey (add type prefix)
     // - 24+ bytes with type prefix: ETH (24), BTC (24 or 37), ZBC (36), etc.
     // Go: buffer.Write(transaction.SenderAccountAddress)
-    if (tx.sender_account_address.size() == PUBLIC_KEY_SIZE) {
+    if (IsBareLegacyKey(tx.sender_account_address)) {   // decision 4: a Cardano account (32 bytes, type 13) is not a bare key
         // If just public key (32 bytes), add ZBC account type prefix
         WriteInt32LE(buffer, ACCOUNT_TYPE_ZBC);
         buffer.insert(buffer.end(),
@@ -319,7 +366,7 @@ Result<std::vector<uint8_t>> TransactionUtil::GetTransactionBytes(
         IsEmptyAccountAddress(tx.recipient_account_address)) {
         // Write empty account type (4 bytes)
         WriteInt32LE(buffer, ACCOUNT_TYPE_EMPTY);
-    } else if (tx.recipient_account_address.size() == PUBLIC_KEY_SIZE) {
+    } else if (IsBareLegacyKey(tx.recipient_account_address)) {   // decision 4
         // If just public key (32 bytes), add ZBC account type prefix
         WriteInt32LE(buffer, ACCOUNT_TYPE_ZBC);
         buffer.insert(buffer.end(),
@@ -344,6 +391,10 @@ Result<std::vector<uint8_t>> TransactionUtil::GetTransactionBytes(
     // (and every signature and hash made over them) are exactly what they always were.
     if ((tx.version & 0xFF) >= TX_VERSION_SURVIVAL) {
         WriteUint64LE(buffer, static_cast<uint64_t>(tx.survival));
+    }
+    // 6c. Expiry (4 bytes LE) — version 3 only (rule `tx_expiry_field`); written from the version byte.
+    if ((tx.version & 0xFF) >= TX_VERSION_EXPIRY) {
+        WriteUint32LE(buffer, tx.expiry);
     }
 
     // 7. Transaction Body Length (4 bytes, little-endian)
@@ -490,6 +541,15 @@ Result<model::Transaction> TransactionUtil::ParseTransactionBytes(
         }
         tx.survival = ReadInt64LE(tx_bytes.data() + offset);
         offset += SURVIVAL_SIZE;
+    }
+    // 6c. Expiry (version 3 only). Earlier versions carry none: 0 (the default hour).
+    tx.expiry = 0;
+    if (tx.version >= TX_VERSION_EXPIRY) {
+        if (offset + EXPIRY_SIZE > tx_bytes.size()) {
+            return Error{ErrorCode::ValidationError, "Unexpected end of bytes (expiry)"};
+        }
+        tx.expiry = ReadUint32LE(tx_bytes.data() + offset);
+        offset += EXPIRY_SIZE;
     }
 
     // 7. Body Length (4 bytes)
@@ -864,10 +924,11 @@ Result<model::NodeRegistrationTransactionBody> TransactionUtil::ParseNodeRegistr
 std::vector<uint8_t> TransactionUtil::GetUpdateNodeRegistrationBodyBytes(
     const std::vector<uint8_t>& node_public_key,
     int64_t locked_balance,
-    const std::vector<uint8_t>& proof_of_ownership) {
+    const std::vector<uint8_t>& proof_of_ownership,
+    const std::vector<uint8_t>& new_node_public_key) {
 
     std::vector<uint8_t> buffer;
-    buffer.reserve(node_public_key.size() + BALANCE_SIZE + proof_of_ownership.size());
+    buffer.reserve(node_public_key.size() + BALANCE_SIZE + proof_of_ownership.size() + new_node_public_key.size());
 
     // 1. NodePublicKey (32 bytes)
     buffer.insert(buffer.end(), node_public_key.begin(), node_public_key.end());
@@ -878,7 +939,39 @@ std::vector<uint8_t> TransactionUtil::GetUpdateNodeRegistrationBodyBytes(
     // 3. ProofOfOwnership (message + signature)
     buffer.insert(buffer.end(), proof_of_ownership.begin(), proof_of_ownership.end());
 
+    // 4. Rule node_key_rotation (20 F4): the new node key, when the owner rotates it.
+    buffer.insert(buffer.end(), new_node_public_key.begin(), new_node_public_key.end());
+
     return buffer;
+}
+
+// EquivocationReport (type 60): len1 | header1 | sig1(64) | len2 | header2 | sig2(64).
+std::vector<uint8_t> TransactionUtil::GetEquivocationReportBodyBytes(const std::vector<uint8_t>& header1, const std::vector<uint8_t>& signature1,
+                                                                     const std::vector<uint8_t>& header2, const std::vector<uint8_t>& signature2) {
+    std::vector<uint8_t> b;
+    for (const auto* pr : {&header1, &header2}) {
+        const auto& sig = pr == &header1 ? signature1 : signature2;
+        WriteUint32LE(b, static_cast<uint32_t>(pr->size()));
+        b.insert(b.end(), pr->begin(), pr->end());
+        b.insert(b.end(), sig.begin(), sig.end());
+    }
+    return b;
+}
+
+Result<model::EquivocationReportTransactionBody> TransactionUtil::ParseEquivocationReportBodyBytes(const std::vector<uint8_t>& body_bytes) {
+    model::EquivocationReportTransactionBody body;
+    size_t off = 0;
+    for (int i = 0; i < 2; ++i) {
+        if (body_bytes.size() < off + 4) return Error{ErrorCode::ValidationError, "EquivocationReport body too short"};
+        const uint32_t len = ReadUint32LE(body_bytes.data() + off); off += 4;
+        if (len == 0 || len > 4096 || body_bytes.size() < off + len + 64) return Error{ErrorCode::ValidationError, "EquivocationReport header length out of range"};
+        auto& h = i == 0 ? body.header1 : body.header2;
+        auto& s = i == 0 ? body.signature1 : body.signature2;
+        h.assign(body_bytes.begin() + off, body_bytes.begin() + off + len); off += len;
+        s.assign(body_bytes.begin() + off, body_bytes.begin() + off + 64); off += 64;
+    }
+    if (off != body_bytes.size()) return Error{ErrorCode::ValidationError, "EquivocationReport: trailing bytes"};
+    return body;
 }
 
 // Go: common/transaction/nodeRegistrationUpdate.go - ParseBodyBytes
@@ -902,10 +995,23 @@ Result<model::UpdateNodeRegistrationTransactionBody> TransactionUtil::ParseUpdat
     body.locked_balance = static_cast<int64_t>(ReadUint64LE(body_bytes.data() + offset));
     offset += BALANCE_SIZE;
 
-    // 3. Parse ProofOfOwnership (remaining bytes)
-    // Need to determine account type from POOWN bytes to get correct size
+    // 3. Parse ProofOfOwnership, then (rule node_key_rotation, 20 F4) an optional new node key of 32
+    // bytes after it. The proof's length is fixed by the account type at its head, so the split is
+    // unambiguous; a trailing length that is neither 0 nor 32 is refused.
     if (body_bytes.size() > offset) {
-        body.proof_of_ownership.assign(body_bytes.begin() + offset, body_bytes.end());
+        const size_t rest = body_bytes.size() - offset;
+        size_t poown_len = rest;
+        if (rest >= ACCOUNT_TYPE_SIZE + 64) {
+            const int32_t account_type = ReadInt32LE(body_bytes.data() + offset);
+            if (GetAccountPublicKeyLength(account_type) > 0) {
+                const size_t full = GetProofOfOwnershipMessageSize(account_type) + 64;
+                if (rest == full + NODE_PUBLIC_KEY_SIZE) poown_len = full;
+                else if (rest > full)
+                    return Error{ErrorCode::ValidationError, "UpdateNodeRegistration: trailing bytes after the proof are not a 32-byte node key"};
+            }
+        }
+        body.proof_of_ownership.assign(body_bytes.begin() + offset, body_bytes.begin() + offset + poown_len);
+        if (poown_len < rest) body.new_node_public_key.assign(body_bytes.begin() + offset + poown_len, body_bytes.end());
     }
 
     return body;
@@ -1599,3 +1705,9 @@ Result<model::FeeVoteRevealTransactionBody> TransactionUtil::ParseFeeVoteRevealB
 
 }  // namespace util
 }  // namespace zoobc
+
+int64_t zoobc::util::TransactionUtil::ExpiryWindow(const zoobc::model::Transaction& tx) {
+    if (tx.version >= TX_VERSION_EXPIRY && tx.expiry > 0)
+        return std::min<int64_t>(static_cast<int64_t>(tx.expiry), zoobc::constants::TRANSACTION_EXPIRY_CAP);
+    return zoobc::constants::TRANSACTION_EXPIRATION_OFFSET;
+}

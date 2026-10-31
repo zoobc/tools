@@ -1045,7 +1045,7 @@ let commandsJSON = ####"""
     ],
     "command" : "delete-dataset",
     "custom" : null,
-    "description" : "Delete a dataset object and refund its deposit.",
+    "description" : "Vote to delete a dataset (its owner, or a funder with money left on it); it goes when the votes hold more than half of that money, its deposit to the longevity pool.",
     "example" : {
       "object_id" : "1111111111111111111111111111111111111111111111111111111111111111"
     },
@@ -2715,7 +2715,7 @@ let commandsJSON = ####"""
     ],
     "command" : "remove-dataset",
     "custom" : null,
-    "description" : "Deactivate a key-value property; same body layout as setup-dataset.",
+    "description" : "Remove a key-value property (or your record of a dataset at its ZBS_ address); same body layout as setup-dataset.",
     "example" : {
       "property" : "role",
       "recipient" : "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
@@ -2724,7 +2724,7 @@ let commandsJSON = ####"""
     "name" : "RemoveAccountDataset",
     "needs_node" : false,
     "notes" : [
-
+      "The node reads property only (the value is not compared); the setter and recipient accounts at the end are written by the reference and not read."
     ],
     "options" : [
       "message",
@@ -3053,26 +3053,14 @@ let commandsJSON = ####"""
         "encoding" : "u8",
         "from" : "mode",
         "name" : "mode"
-      },
-      {
-        "encoding" : "address_list8",
-        "from" : "add",
-        "name" : "add"
-      },
-      {
-        "encoding" : "address_list8",
-        "from" : "remove",
-        "name" : "remove"
       }
     ],
     "command" : "set-dataset-policy",
     "custom" : null,
-    "description" : "Set a dataset object's manage policy and edit its access lists.",
+    "description" : "Set a dataset's mode (owner only): 0 private (only the owner writes), 1 open (anyone writes, each in its own keys), 2 public (anyone writes, one shared key space).",
     "example" : {
-      "add" : "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
       "mode" : "1",
-      "object_id" : "1111111111111111111111111111111111111111111111111111111111111111",
-      "remove" : ""
+      "object_id" : "1111111111111111111111111111111111111111111111111111111111111111"
     },
     "name" : "SetDatasetPolicy",
     "needs_node" : false,
@@ -3097,26 +3085,12 @@ let commandsJSON = ####"""
         "required" : true
       },
       {
-        "help" : "0 owner-only, 1 whitelist, 2 blacklist, 3 open",
+        "help" : "0 private, 1 open, 2 public",
         "kind" : "uint8",
-        "max" : 3,
+        "max" : 2,
         "min" : 0,
         "name" : "mode",
         "required" : true
-      },
-      {
-        "default" : "",
-        "help" : "comma-separated addresses to add (max 255)",
-        "kind" : "address_list",
-        "name" : "add",
-        "required" : false
-      },
-      {
-        "default" : "",
-        "help" : "comma-separated addresses to remove (max 255)",
-        "kind" : "address_list",
-        "name" : "remove",
-        "required" : false
       }
     ],
     "recipient" : "none",
@@ -3284,7 +3258,7 @@ let commandsJSON = ####"""
     ],
     "command" : "setup-dataset",
     "custom" : null,
-    "description" : "Set a key-value property on an account (the recipient is the subject).",
+    "description" : "Set a key-value property on an account (the recipient is the subject); with a dataset's ZBS_ address as the recipient, write a record into that dataset.",
     "example" : {
       "property" : "role",
       "recipient" : "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
@@ -3293,7 +3267,7 @@ let commandsJSON = ####"""
     "name" : "SetupAccountDataset",
     "needs_node" : false,
     "notes" : [
-
+      "The node reads property and value only; the setter and recipient accounts after them are written by the reference and not read."
     ],
     "options" : [
       "message",
@@ -3552,7 +3526,7 @@ let commandsJSON = ####"""
     "name" : "CreateSwapOffer",
     "needs_node" : false,
     "notes" : [
-
+      "An offer only one account may take (node 0.6.0): the body continues after expiry with a u32 LE length and that account's typed address (its 4-byte type first; any kind that can sign). Without it the body is these 40 bytes and the offer is open. zbc-cli swap-create takes it as an optional seventh parameter, counterparty; this description and the ports do not have it yet."
     ],
     "options" : [
       "message",

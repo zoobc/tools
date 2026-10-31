@@ -8,7 +8,7 @@ namespace zoobc {
 namespace transaction {
 
 std::vector<uint8_t> AccountState::CanonicalAccountKey(const std::vector<uint8_t>& account_address) {
-    if (account_address.size() == util::TransactionUtil::PUBLIC_KEY_SIZE) {
+    if (util::TransactionUtil::IsBareLegacyKey(account_address)) {   // decision 4: a Cardano account keeps its own type
         std::vector<uint8_t> typed;
         typed.reserve(util::TransactionUtil::ACCOUNT_TYPE_SIZE + util::TransactionUtil::PUBLIC_KEY_SIZE);
         util::TransactionUtil::WriteInt32LE(typed, util::TransactionUtil::ACCOUNT_TYPE_ZBC);

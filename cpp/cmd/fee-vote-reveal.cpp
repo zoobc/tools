@@ -8,13 +8,13 @@ using namespace txc;
 int main(int argc, char* argv[]) {
     ToolConfig config;
     config.name = "ZooBC Fee Vote Reveal Tool";
-    config.description = "Reveal the actual fee vote during the reveal phase.";
+    config.description = "Reveal the transfer-fee vote in the second half of the snapshot cycle (a registered node's duty, fee 0).";
     config.tx_type = static_cast<uint32_t>(zoobc::TransactionType::FeeVoteReveal);
     config.params = {
-        {"Voter private key",    "voter_privkey",       "Voter's private key (64 hex chars)",    "", true, nullptr},
+        {"Voter private key",    "voter_privkey",       "The registered node's private key (64 hex chars)", "", true, nullptr},
         {"Recent block hash",    "recent_block_hash",   "Reference block hash (64 hex chars)",   "", true, nullptr},
         {"Recent block height",  "recent_block_height", "Reference block height",                "", true, nullptr},
-        {"Fee vote",             "fee_vote",            "Proposed fee multiplier (int64)",        "", true, nullptr},
+        {"Fee vote",             "fee_vote",            "The proposed transfer fee, atomic units (1..100000000; 1000000 = 0.01 ZBC)", "", true, nullptr},
     };
 
     ParsedParams params;

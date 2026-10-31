@@ -95,12 +95,12 @@ int main(int argc, char* argv[]) {
         std::string arg = argv[a];
         if (zbctool::is_mode_flag(arg)) continue;
         if (arg == "--from-privkey" || arg == "-k") {
-            if (a + 1 >= argc) { std::cerr << "Error: " << arg << " needs a 64-hex private key\n"; return 1; }
+            if (a + 1 >= argc) { std::cerr << "Error: " << arg << " needs a 64-hex private key\n"; return zbctool::kExitUsage; }
             from_priv = argv[++a]; continue;
         }
         int n = std::atoi(arg.c_str());
         if (n >= 1 && n <= 100) { num_keys = n; }
-        else { std::cerr << "Error: count must be between 1 and 100\n"; return 1; }
+        else { std::cerr << "Error: count must be between 1 and 100\n"; return zbctool::kExitUsage; }
     }
 
     if (sodium_init() < 0) { std::cerr << "Error: libsodium init failed\n"; return 1; }
@@ -109,7 +109,7 @@ int main(int argc, char* argv[]) {
     std::vector<RoleKeys> keys;
     if (!from_priv.empty()) {
         auto seed = hex_to_bytes(from_priv);
-        if (seed.size() != 32) { std::cerr << "Error: --from-privkey must be 32 bytes (64 hex chars)\n"; return 1; }
+        if (seed.size() != 32) { std::cerr << "Error: --from-privkey must be 32 bytes (64 hex chars)\n"; return zbctool::kExitUsage; }
         auto k = build_from_seed(seed);
         if (!k.ok) { std::cerr << "Error: could not derive addresses from the given key\n"; return 1; }
         keys.push_back(k);

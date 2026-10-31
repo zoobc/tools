@@ -4,7 +4,7 @@
 #pragma once
 // Names for every event type the node writes into account_ledger.event_type (gap 4 of wallet prompt
 // 12). The numbers come from two places: model::EventType (1-16, 100: the Go-era transaction events)
-// and the EVENT_TYPE_* constants in common/constants.h (17-70). The DFS executors write their
+// and the EVENT_TYPE_* constants in common/constants.h (17-75). The DFS executors write their
 // transaction type as the event (8, 264, 520); 8 therefore also names a DFSCreateFile row, which is
 // told apart from a block reward by its non-zero transaction_id. ledger_events_test pins that every
 // constant has a name here, so a new event cannot reach the API unnamed.
@@ -40,8 +40,8 @@ inline const char* EventName(int64_t ev) {
         case 23:  return "trigger_fired";
         case 24:  return "account_rent_paid";
         case 25:  return "account_pruned";
-        case 26:  return "oracle_resolved";
-        case 27:  return "bridge_mint";
+        case 26:  return "oracle_resolved";             // j28: not written (the fact is the oracle_result row)
+        case 27:  return "bridge_mint";                 // j28: not written (oracle_result, the supply, the balance)
         case 28:  return "vesting_release";
         case 29:  return "scheduled_payment";
         case 30:  return "scheduled_skipped";
@@ -49,8 +49,8 @@ inline const char* EventName(int64_t ev) {
         case 32:  return "dataset_deposit_refund";
         case 33:  return "dataset_transferred";
         case 34:  return "schedule_cancelled";
-        case 35:  return "consensus_param_changed";
-        case 36:  return "bridge_burn";
+        case 35:  return "consensus_param_changed";     // j28: not written (the parameter's history row)
+        case 36:  return "bridge_burn";                 // j28: not written (oracle_result, the supply, the balance)
         case 37:  return "longevity_funded";            // FundLongevity deposit or a transaction's own survival
         case 38:  return "longevity_rent";
         case 39:  return "longevity_payout";
@@ -84,7 +84,17 @@ inline const char* EventName(int64_t ev) {
         case 67:  return "app_rake";
         case 68:  return "prepaid_storage_funded";
         case 69:  return "stored_file_rent";
-        case 70:  return "multisig_inner_fee";          // rule multisig_inner_fee_path: the inner transaction's fee
+        case 70:  return "multisig_inner_fee";          // a multisig inner transaction's fee (to the block's lottery)
+        case 71:  return "market_deposit_refunded";      // rule market_deposit_refund (retired under market_rent)
+        case 72:  return "market_rent_fed";              // rule market_rent: the sender's share of its order fee into the market's rent
+        case 73:  return "market_pruned";               // j28: not written (the market's status)
+        case 74:  return "burn";                         // 8 F2 display: ZBC burned (the lock shares wrote it before NB2 sent them to the longevity pool; nothing writes it since)
+        case 75:  return "lottery_carry";                // call 1: what a lottery could pay to nobody, carried to the next one (+), or taken in (-)
+        case 76:  return "lock_share_to_pool";           // NB2: a lock's at-risk share (expelled for cause, or an exit while missing) to the longevity pool
+        case 77:  return "snapshot_archive_reward";      // SP12: the decentralised storage's holders of the sampled snapshot chunks, from the longevity pool
+        case 80:  return "lock_fee_to_pool";             // NB2 / call 18: a fee paid out of a node's lock (attendance, a held exit or claim) to the longevity pool
+        case 83:  return "prepaid_storage_spent";        // j48: what the prepaid storage paid of a rent the account pays (its rent row carries the whole)
+        case 84:  return "app_unused_to_pool";           // j49: an app nobody started closed itself; its players' share to the longevity pool
         case 100: return "app_payout";
         case 264: return "dfs_file_updated";
         case 520: return "dfs_file_deleted";

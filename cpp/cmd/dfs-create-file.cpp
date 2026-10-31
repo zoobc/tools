@@ -16,13 +16,15 @@ static void putU32(std::vector<uint8_t>& b, uint32_t v){ for(int i=0;i<4;i++){ b
 int main(int argc, char* argv[]) {
     ToolConfig config;
     config.name = "ZooBC DFS Create File Tool";
-    config.description = "Create an on-chain file. Body = u32 path_len | path | u32 content_len | content.";
+    config.description = "Create an on-chain file. Body = u32 path_len | path | u32 content_len | content.\n"
+                         "The 64 KB limit is the WHOLE body (65,536 bytes): the content may be at most\n"
+                         "65,528 bytes minus the path's length in bytes.";
     config.tx_type = static_cast<uint32_t>(zoobc::TransactionType::DFSCreateFile);
     config.has_recipient = false;
     config.params = {
         {"Sender private key","sender_privkey","Owner's private key (64 hex)","",true,nullptr},
         {"Path","path","Absolute DFS path, e.g. /docs/readme.txt","",true,nullptr},
-        {"Content file","content_file","Local file whose bytes become the content","",true,nullptr},
+        {"Content file","content_file","Local file whose bytes become the content (at most 65,528 bytes minus the path length)","",true,nullptr},
     };
 
     ParsedParams params; auto emit_error=make_emitter(params.json_output);

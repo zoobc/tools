@@ -86,5 +86,7 @@
     "want_amount": "5000",
     "expiry": "0"
   },
-  "notes": []
+  "notes": [
+    "An offer only one account may take (node 0.6.0): the body continues after expiry with a u32 LE length and that account's typed address (its 4-byte type first; any kind that can sign). Without it the body is these 40 bytes and the offer is open. zbc-cli swap-create takes it as an optional seventh parameter, counterparty; this description and the ports do not have it yet."
+  ]
 }

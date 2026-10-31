@@ -4,7 +4,7 @@
   "type": 3,
   "command": "setup-dataset",
   "binary": "zbc-dataset-setup",
-  "description": "Set a key-value property on an account (the recipient is the subject).",
+  "description": "Set a key-value property on an account (the recipient is the subject); with a dataset's ZBS_ address as the recipient, write a record into that dataset.",
   "sender_key": "sender_privkey",
   "recipient": "required",
   "options": [
@@ -67,5 +67,7 @@
     "property": "role",
     "value": "tester"
   },
-  "notes": []
+  "notes": [
+    "The node reads property and value only; the setter and recipient accounts after them are written by the reference and not read."
+  ]
 }

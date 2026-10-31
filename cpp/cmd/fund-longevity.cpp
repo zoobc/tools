@@ -12,9 +12,9 @@ static void putU64(std::vector<uint8_t>& b, int64_t v){ for(int i=0;i<8;i++){ b.
 // one payment per snapshot, sized by the payload's bytes at the price locked when it was funded.
 //
 // Anyone may sponsor anyone's transaction — it costs the target nothing and reveals nothing that was
-// not already public. A second deposit on the same target TOPS UP rather than replacing, and the
-// FIRST sponsor keeps the right to cancel, so a stranger cannot add dust and then cancel someone
-// else's funding.
+// not already public. A second deposit on the same target TOPS UP rather than replacing. Nothing paid
+// in comes back: rent uses the oldest money first, the payers with money left close the record by vote
+// (CloseLongevity), and a top-up withdraws the payer's own vote (owner decision FP11).
 int main(int argc, char* argv[]) {
     ToolConfig config;
     config.name = "ZooBC Fund Longevity Tool";

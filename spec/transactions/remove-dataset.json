@@ -4,7 +4,7 @@
   "type": 259,
   "command": "remove-dataset",
   "binary": "zbc-dataset-remove",
-  "description": "Deactivate a key-value property; same body layout as setup-dataset.",
+  "description": "Remove a key-value property (or your record of a dataset at its ZBS_ address); same body layout as setup-dataset.",
   "sender_key": "sender_privkey",
   "recipient": "required",
   "options": [
@@ -67,5 +67,7 @@
     "property": "role",
     "value": "tester"
   },
-  "notes": []
+  "notes": [
+    "The node reads property only (the value is not compared); the setter and recipient accounts at the end are written by the reference and not read."
+  ]
 }

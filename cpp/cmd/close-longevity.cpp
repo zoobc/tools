@@ -5,21 +5,24 @@
 using namespace txc;
 static void putU64(std::vector<uint8_t>& b, int64_t v){ for(int i=0;i<8;i++){ b.push_back((uint8_t)(v&0xff)); v>>=8; } }
 
-// Close a transaction's longevity record (CloseLongevity, type 309, rule survival_field).
+// Vote to close a transaction's longevity record (CloseLongevity, type 309, rule survival_field).
 //
-// Only the transaction's OWNER may close it: the account that sent it (for a group member, any member
-// of that group). The record ends now and the transaction rejoins ordinary pruning. Whatever deposit is
-// left — the owner's own survival and every stranger's top-up alike — goes to the longevity node pool.
-// Nothing comes back to the owner or to any funder: top-ups cannot be taken back.
+// A record lives while anyone pays for it (owner decision FP11). Every account whose money on the record
+// is not used up yet (rent uses the oldest money first) votes to close it with this transaction; for a
+// group member, the vote is its group's. The record closes in the block that brings the last missing
+// vote, and whatever deposit is left goes to the longevity node pool: nothing comes back to anyone. A
+// payer that tops the record up again withdraws its vote; GET /api/v1/accounts/<a>/survival shows the
+// payers, their unused money and the votes.
 int main(int argc, char* argv[]) {
     ToolConfig config;
     config.name = "ZooBC Close Longevity Tool";
-    config.description = "Close the longevity record of a transaction you sent. The remaining deposit "
-                         "goes to the longevity node pool. Body = 8-byte target transaction id.";
+    config.description = "Vote to close a longevity record you paid into. It closes when every payer with "
+                         "money left has voted; the remaining deposit goes to the longevity node pool. "
+                         "Body = 8-byte target transaction id.";
     config.tx_type = static_cast<uint32_t>(zoobc::TransactionType::CloseLongevity);
     config.has_recipient = false;
     config.params = {
-        {"Sender private key","sender_privkey","The private key of the account that sent the target (64 hex)","",true,nullptr},
+        {"Sender private key","sender_privkey","The private key of an account with money left on the record (64 hex)","",true,nullptr},
         {"Target transaction id","target_tx_id","The transaction whose record to close (signed int64)","",true,nullptr},
     };
 
@@ -32,9 +35,10 @@ int main(int argc, char* argv[]) {
         if(target==0){emit_error("target transaction id must not be 0");return 1;}
         std::vector<uint8_t> body; putU64(body,target);
         std::string sender_addr=zoobc::crypto::ZoobcAddress::Encode(kp.Value().public_key,"ZBC");
-        json extra={{"owner_address",sender_addr},{"target_tx_id",std::to_string(target)},
+        json extra={{"voter_address",sender_addr},{"target_tx_id",std::to_string(target)},
+                    {"closes_when","every payer with money left has voted"},
                     {"leftover_goes_to","longevity node pool"}};
         return run_transaction(params,config.tx_type,kp.Value().public_key,std::vector<uint8_t>{},body,
-                               kp.Value(),KeyType::ZBC,extra,emit_error,"SUCCESS: longevity record closed, remainder paid to the node pool!");
+                               kp.Value(),KeyType::ZBC,extra,emit_error,"SUCCESS: vote to close submitted (the record closes when every payer with money left has voted)");
     } catch(const std::exception& e){ const int c=last_exit_code(); emit_error(e.what()); return c; }
 }

@@ -53,15 +53,15 @@ int main(int argc, char* argv[]) {
         else if (arg == "--count" && i + 1 < argc) count = std::atoi(argv[++i]);
         else if (arg == "--node") is_node = true;
         else if (arg == "--random") use_random = true;
-        else { std::cerr << "Unknown option: " << arg << "\n"; print_usage(argv[0]); return 1; }
+        else { std::cerr << "Unknown option: " << arg << "\n"; print_usage(argv[0]); return zbctool::kExitUsage; }
     }
     if (mode.help) { print_usage(argv[0]); return 0; }
 
-    if (mnemonic.empty() && !use_random) { std::cerr << "Error: provide --mnemonic or --random\n"; return 1; }
+    if (mnemonic.empty() && !use_random) { std::cerr << "Error: provide --mnemonic or --random\n"; return zbctool::kExitUsage; }
     if (!use_random && !BIP39::ValidateMnemonic(mnemonic)) {
-        std::cerr << "Error: invalid mnemonic (must be 12, 15, 18, 21, or 24 words)\n"; return 1;
+        std::cerr << "Error: invalid mnemonic (must be 12, 15, 18, 21, or 24 words)\n"; return zbctool::kExitUsage;
     }
-    if (count < 1 || count > 100) { std::cerr << "Error: count must be between 1 and 100\n"; return 1; }
+    if (count < 1 || count > 100) { std::cerr << "Error: count must be between 1 and 100\n"; return zbctool::kExitUsage; }
 
     if (use_random) {
         auto m = BIP39::GenerateMnemonic(24);

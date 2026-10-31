@@ -41,10 +41,10 @@ int main(int argc, char* argv[]) {
         if (zbctool::is_mode_flag(a)) continue;
         if (!a.empty() && a[0] != '-') privkey_hex = a;
     }
-    if (privkey_hex.empty()) { std::cerr << "Error: node private key required (run with --help)\n"; return 1; }
+    if (privkey_hex.empty()) { std::cerr << "Error: node private key required (run with --help)\n"; return zbctool::kExitUsage; }
 
     auto pk = hex_to_bytes(privkey_hex);
-    if (pk.size() != 32) { std::cerr << "Error: private key must be 32 bytes (64 hex chars)\n"; return 1; }
+    if (pk.size() != 32) { std::cerr << "Error: private key must be 32 bytes (64 hex chars)\n"; return zbctool::kExitUsage; }
     if (sodium_init() < 0) { std::cerr << "Error: libsodium init failed\n"; return 1; }
 
     std::vector<uint8_t> public_key(crypto_sign_ed25519_PUBLICKEYBYTES), secret(crypto_sign_ed25519_SECRETKEYBYTES);

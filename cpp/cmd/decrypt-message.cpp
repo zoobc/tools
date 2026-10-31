@@ -57,18 +57,18 @@ int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) { std::string a = argv[i]; if (!zbctool::is_mode_flag(a)) pos.push_back(a); }
     if (pos.size() != 2) {
         std::fprintf(stderr, "Usage: %s <recipient_privkey_hex> <message_hex> [-v] [--json]\n", argv[0]);
-        return 1;
+        return zbctool::kExitUsage;
     }
 
     std::vector<uint8_t> seed = hex_to_bytes(pos[0]);
     std::vector<uint8_t> message = hex_to_bytes(pos[1]);
 
     if (!zoobc::crypto::MessageEncryption::IsEncrypted(message)) {
-        std::fprintf(stderr, "Message is not encrypted (missing magic prefix)\n"); return 1;
+        std::fprintf(stderr, "Message is not encrypted (missing magic prefix)\n"); return zbctool::kExitUsage;   // as zbc-cli decrypt-message
     }
     auto result = zoobc::crypto::MessageEncryption::Decrypt(message, seed);
     if (!result.IsOk()) {
-        std::fprintf(stderr, "Decrypt failed: %s\n", result.GetError().ToString().c_str()); return 1;
+        std::fprintf(stderr, "Decrypt failed: %s\n", result.GetError().ToString().c_str()); return 10;   // the key does not open it (zbc-cli: verify_failed)
     }
     const auto& plaintext = result.Value();
 

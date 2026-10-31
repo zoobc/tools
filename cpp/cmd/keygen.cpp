@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
         if (zbctool::is_mode_flag(a)) continue;
         int n = std::atoi(a.c_str());
         if (n >= 1 && n <= 100) num_keys = n;
-        else { std::cerr << "Error: count must be between 1 and 100\n"; return 1; }
+        else { std::cerr << "Error: count must be between 1 and 100\n"; return zbctool::kExitUsage; }
     }
 
     auto to_hex = [](const std::vector<uint8_t>& d) -> std::string {

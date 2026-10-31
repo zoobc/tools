@@ -34,7 +34,14 @@ public:
     // like every other field. Nothing else differs. Version 1 stays valid at every height.
     static constexpr uint32_t TX_VERSION_LEGACY = 1;
     static constexpr uint32_t TX_VERSION_SURVIVAL = 2;
+    // Version 3 (rule `tx_expiry_field`, 12 F3) adds one more field after survival: expiry, u32 LE
+    // seconds (0 = the default hour, at most TRANSACTION_EXPIRY_CAP). Versions 1 and 2 stay valid.
+    static constexpr uint32_t TX_VERSION_EXPIRY = 3;
     static constexpr uint32_t SURVIVAL_SIZE = 8;
+    static constexpr uint32_t EXPIRY_SIZE = 4;
+    // The seconds after tx.timestamp within which a block may carry the transaction: the stated
+    // expiry for a version-3 transaction (capped), the hour for every other.
+    static int64_t ExpiryWindow(const model::Transaction& tx);
     static constexpr uint32_t BODY_LENGTH_SIZE = 4;
     static constexpr uint32_t SIGNATURE_SIZE = 64;           // NodeSignature / ZBCSignatureLength
     static constexpr uint32_t MESSAGE_LENGTH_SIZE = 4;
@@ -171,6 +178,50 @@ public:
         const std::vector<uint8_t>& account_address);
 
     // Check if account address is empty type
+    // Owner decision 4 (2026-10-30): a 32-byte address is a bare legacy ZBC key UNLESS its first four bytes are the
+    // Cardano type (13): a Cardano account is 4-byte type + 28-byte blake2b-224 key hash, also 32 bytes. Every site that
+    // used to judge "32 bytes = bare key" asks this instead, so a Cardano account is never re-typed as ZBC.
+    static bool IsBareLegacyKey(const std::vector<uint8_t>& a) {
+        return a.size() == 32 && !(a[0] == 13 && a[1] == 0 && a[2] == 0 && a[3] == 0);
+    }
+    // ONE LIST (owner decisions 1, 2, 3, 7, 8 of 2026-10-30): the account types that can sign a transaction. Everything
+    // the node verifies is here, P2SH (6) included (the BIP49 single-key form). Not here, so never a recipient of value,
+    // an escrow approver, a node owner or a group member: Empty (2), Estonia eID (3, no verifier), BTC P2WSH (8, a
+    // script hash), DataSet (10, a ZBS_ deposit address; ZBC may still finance it, see IsUnspendableRecipientType).
+    // CreateSwapOffer's counterparty (0.6.0, ADDRESS-TYPES item 5): the body is give_token(8) give_amount(8)
+    // want_token(8) want_amount(8) expiry(8), then nothing (an open offer) or u32 LE length + that many bytes of a
+    // typed account (its 4-byte type first, so any kind fits: a 24-byte Ethereum address, a 32-byte Cardano one).
+    // Before, the counterparty was a fixed 36 bytes at offset 40 and a shorter address silently made the offer open.
+    // Returns false when the body has another shape; `counterparty` is empty for an open offer.
+    static bool ParseSwapCounterparty(const std::vector<uint8_t>& body, std::vector<uint8_t>& counterparty) {
+        counterparty.clear();
+        if (body.size() == 40) return true;
+        if (body.size() < 44) return false;
+        const uint32_t n = static_cast<uint32_t>(body[40]) | (static_cast<uint32_t>(body[41]) << 8) |
+                           (static_cast<uint32_t>(body[42]) << 16) | (static_cast<uint32_t>(body[43]) << 24);
+        if (n < 4 || body.size() != 44 + static_cast<size_t>(n)) return false;
+        counterparty.assign(body.begin() + 44, body.end());
+        return true;
+    }
+
+    static bool IsSigningAccountType(int32_t t) {
+        switch (t) {
+            case ACCOUNT_TYPE_ZBC: case ACCOUNT_TYPE_BTC: case ACCOUNT_TYPE_ETH: case ACCOUNT_TYPE_BTC_P2PKH:
+            case ACCOUNT_TYPE_BTC_P2SH: case ACCOUNT_TYPE_BTC_P2WPKH: case ACCOUNT_TYPE_BTC_P2TR:
+            case ACCOUNT_TYPE_SOLANA: case ACCOUNT_TYPE_POLKADOT: case ACCOUNT_TYPE_CARDANO:
+            case ACCOUNT_TYPE_RIPPLE: case ACCOUNT_TYPE_TRON: case ACCOUNT_TYPE_TEZOS:
+                return true;
+            default:
+                return false;
+        }
+    }
+    // The address form of the same question. A bare legacy key is a ZBC key (signs); anything shorter than a type is
+    // nothing; otherwise the type decides.
+    static bool IsNonSigningAccountAddress(const std::vector<uint8_t>& a) {
+        if (IsBareLegacyKey(a)) return false;
+        if (a.size() < ACCOUNT_TYPE_SIZE) return true;
+        return !IsSigningAccountType(ReadInt32LE(a.data()));
+    }
     static bool IsEmptyAccountAddress(
         const std::vector<uint8_t>& account_address);
 
@@ -207,7 +258,15 @@ public:
     //   - no leading or trailing space
     // Byte-level rules on a tiny decoder, on purpose: no normalisation, no Unicode tables, nothing
     // two implementations could disagree about. `why` receives the first rule violated.
-    static bool HasValidTokenNameShape(const std::string& name, std::string* why = nullptr);
+    //
+    // `refuse_address` (rule token_name_not_address, owner decision 11 of 2026-10-30, devnet test D21): a
+    // name that the node's own address parser reads as an address of ANY account kind is refused too:
+    // crypto::DecodeAddress (the decoder behind the API's address parameters and the tools: ZBC_/ZBS_ text
+    // with any separators or none, any case; Ethereum 0x; every Bitcoin form; Solana; Polkadot; Cardano;
+    // Ripple; Tron; Tezos; a bare 64-hex key) or the raw typed account in hex (72 hex digits, 0x optional,
+    // the 36-byte form the API also takes). A wallet that parses a token name could otherwise read it as an
+    // address. Callers pass RuleClock::Active("token_name_not_address", height).
+    static bool HasValidTokenNameShape(const std::string& name, std::string* why = nullptr, bool refuse_address = false);
     static constexpr size_t kMaxTokenNameBytes = 64;
 
     /**
@@ -233,6 +292,15 @@ public:
      * that what is storable and what is servable can never drift apart.
      */
     static bool TokenIconMediaType(const std::string& value, std::string& out_media);
+
+    /**
+     * Invoice shape for the reserved `inv:` dataset namespace (forum #413, rule invoice_namespace_shape).
+     * An invoice is a JSON object a payer's wallet does arithmetic on. The node knows no schema and
+     * wants none: it refuses what no invoice may carry — a value that is not a JSON object, and any
+     * negative number anywhere in it. A SAX walk over the bytes, no tree, so the only consensus
+     * surface is the JSON grammar itself. On refusal out_why says which of the three it was.
+     */
+    static bool InvoiceValueShape(const std::string& value, std::string& out_why);
 
     /**
      * Registry URL shape: must begin "https://" (or "http://" when allow_http, which a devnet
@@ -280,7 +348,12 @@ public:
     static std::vector<uint8_t> GetUpdateNodeRegistrationBodyBytes(
         const std::vector<uint8_t>& node_public_key,
         int64_t locked_balance,
-        const std::vector<uint8_t>& proof_of_ownership);
+        const std::vector<uint8_t>& proof_of_ownership,
+        const std::vector<uint8_t>& new_node_public_key = {});   // rule node_key_rotation (20 F4)
+    // EquivocationReport (type 60, 11 F6 (c) T2)
+    static std::vector<uint8_t> GetEquivocationReportBodyBytes(const std::vector<uint8_t>& header1, const std::vector<uint8_t>& signature1,
+                                                               const std::vector<uint8_t>& header2, const std::vector<uint8_t>& signature2);
+    static Result<model::EquivocationReportTransactionBody> ParseEquivocationReportBodyBytes(const std::vector<uint8_t>& body_bytes);
     static Result<model::UpdateNodeRegistrationTransactionBody> ParseUpdateNodeRegistrationBodyBytes(
         const std::vector<uint8_t>& body_bytes);
 

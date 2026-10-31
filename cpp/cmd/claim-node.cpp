@@ -8,12 +8,12 @@ using namespace txc;
 int main(int argc, char* argv[]) {
     ToolConfig config;
     config.name = "ZooBC Claim Node Registration Tool";
-    config.description = "Claim back locked balance from an expired or deleted node registration.";
+    config.description = "Claim a node's lock: the owner's own claim is an exit (as remove-node); another account's claim, proved by the node key, executes 40,320 blocks later unless the owner removes the node first (a claim on a leaving node is void).";
     config.tx_type = static_cast<uint32_t>(zoobc::TransactionType::ClaimNodeRegistration);
     config.needs_poown = true;
     config.params = {
         {"Node private key",  "node_privkey",  "Node's private key (64 hex chars)",  "", true, nullptr},
-        {"Owner private key", "owner_privkey", "Owner's private key (64 hex chars)", "", true, nullptr},
+        {"Claimer private key", "owner_privkey", "The owner's or the claiming account's private key (64 hex chars)", "", true, nullptr},
     };
 
     ParsedParams params;

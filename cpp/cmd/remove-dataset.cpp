@@ -15,7 +15,7 @@ int main(int argc, char* argv[]) {
         {"Setter private key",  "setter_privkey", "Setter's private key (64 hex chars)", "", true, nullptr},
         {"Recipient address",   "recipient",      "Account to remove property from",     "", true, nullptr},
         {"Property name",       "property",       "Property name/key to remove",         "", true, nullptr},
-        {"Property value",      "value",          "Property value (for verification)",   "", true, nullptr},
+        {"Property value",      "value",          "Not needed: the node removes the property whatever value is sent", "", false, nullptr},
     };
 
     ParsedParams params;

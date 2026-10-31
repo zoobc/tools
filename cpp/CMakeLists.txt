@@ -63,7 +63,9 @@ target_include_directories(zbc
     PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/libzbc/include"
         ${SECP256K1_INCLUDE_DIR}
-        ${sodium_INCLUDE_DIRS})
+        ${sodium_INCLUDE_DIRS}
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party")   # transaction_util.cpp parses inv: dataset JSON (nlohmann)
 target_link_libraries(zbc PUBLIC sodium OpenSSL::Crypto ${SECP256K1_LIBRARY})
 target_compile_features(zbc PUBLIC cxx_std_17)
 

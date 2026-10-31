@@ -5212,7 +5212,7 @@ var ZBC = (() => {
       "type": 45,
       "command": "delete-dataset",
       "binary": null,
-      "description": "Delete a dataset object and refund its deposit.",
+      "description": "Vote to delete a dataset (its owner, or a funder with money left on it); it goes when the votes hold more than half of that money, its deposit to the longevity pool.",
       "sender_key": "sender_privkey",
       "recipient": "none",
       "options": [
@@ -6831,7 +6831,7 @@ var ZBC = (() => {
       "type": 259,
       "command": "remove-dataset",
       "binary": "zbc-dataset-remove",
-      "description": "Deactivate a key-value property; same body layout as setup-dataset.",
+      "description": "Remove a key-value property (or your record of a dataset at its ZBS_ address); same body layout as setup-dataset.",
       "sender_key": "sender_privkey",
       "recipient": "required",
       "options": [
@@ -6894,7 +6894,9 @@ var ZBC = (() => {
         "property": "role",
         "value": "tester"
       },
-      "notes": []
+      "notes": [
+        "The node reads property only (the value is not compared); the setter and recipient accounts at the end are written by the reference and not read."
+      ]
     },
     {
       "name": "RemoveNodeRegistration",
@@ -7177,7 +7179,7 @@ var ZBC = (() => {
       "type": 43,
       "command": "set-dataset-policy",
       "binary": null,
-      "description": "Set a dataset object's manage policy and edit its access lists.",
+      "description": "Set a dataset's mode (owner only): 0 private (only the owner writes), 1 open (anyone writes, each in its own keys), 2 public (anyone writes, one shared key space).",
       "sender_key": "sender_privkey",
       "recipient": "none",
       "options": [
@@ -7203,23 +7205,9 @@ var ZBC = (() => {
           "name": "mode",
           "kind": "uint8",
           "required": true,
-          "help": "0 owner-only, 1 whitelist, 2 blacklist, 3 open",
+          "help": "0 private, 1 open, 2 public",
           "min": 0,
-          "max": 3
-        },
-        {
-          "name": "add",
-          "kind": "address_list",
-          "required": false,
-          "help": "comma-separated addresses to add (max 255)",
-          "default": ""
-        },
-        {
-          "name": "remove",
-          "kind": "address_list",
-          "required": false,
-          "help": "comma-separated addresses to remove (max 255)",
-          "default": ""
+          "max": 2
         }
       ],
       "body": [
@@ -7233,23 +7221,11 @@ var ZBC = (() => {
           "name": "mode",
           "encoding": "u8",
           "from": "mode"
-        },
-        {
-          "name": "add",
-          "encoding": "address_list8",
-          "from": "add"
-        },
-        {
-          "name": "remove",
-          "encoding": "address_list8",
-          "from": "remove"
         }
       ],
       "example": {
         "object_id": "1111111111111111111111111111111111111111111111111111111111111111",
-        "mode": "1",
-        "add": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
-        "remove": ""
+        "mode": "1"
       },
       "notes": []
     },
@@ -7392,7 +7368,7 @@ var ZBC = (() => {
       "type": 3,
       "command": "setup-dataset",
       "binary": "zbc-dataset-setup",
-      "description": "Set a key-value property on an account (the recipient is the subject).",
+      "description": "Set a key-value property on an account (the recipient is the subject); with a dataset's ZBS_ address as the recipient, write a record into that dataset.",
       "sender_key": "sender_privkey",
       "recipient": "required",
       "options": [
@@ -7455,7 +7431,9 @@ var ZBC = (() => {
         "property": "role",
         "value": "tester"
       },
-      "notes": []
+      "notes": [
+        "The node reads property and value only; the setter and recipient accounts after them are written by the reference and not read."
+      ]
     },
     {
       "name": "StoreFile",
@@ -7719,7 +7697,9 @@ var ZBC = (() => {
         "want_amount": "5000",
         "expiry": "0"
       },
-      "notes": []
+      "notes": [
+        "An offer only one account may take (node 0.6.0): the body continues after expiry with a u32 LE length and that account's typed address (its 4-byte type first; any kind that can sign). Without it the body is these 40 bytes and the offer is open. zbc-cli swap-create takes it as an optional seventh parameter, counterparty; this description and the ports do not have it yet."
+      ]
     },
     {
       "name": "TransferDataset",

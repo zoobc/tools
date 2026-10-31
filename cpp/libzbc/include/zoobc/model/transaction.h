@@ -102,6 +102,10 @@ struct Transaction {
     // fee. Serialised as u64 LE right after `fee`, and only in version 2; version 1 carries none and
     // must hold 0 here. docs/FEE_RULES.md "Survival in the transaction".
     int64_t survival;
+    // Expiry (rule `tx_expiry_field`, transaction version 3): the window in seconds after the
+    // timestamp within which a block may carry this transaction; 0 = TRANSACTION_EXPIRATION_OFFSET,
+    // at most TRANSACTION_EXPIRY_CAP. u32 LE after survival, signed like every other field.
+    uint32_t expiry;
 
     Transaction()
         : version(1),
@@ -114,7 +118,8 @@ struct Transaction {
           transaction_body_length(0),
           transaction_index(0),
           multisig_child(false),
-          survival(0) {}
+          survival(0),
+          expiry(0) {}
 };
 
 // Send ZBC transaction body
@@ -179,10 +184,11 @@ struct CancelOrderTransactionBody { int64_t order_id; CancelOrderTransactionBody
 
 struct Market {  // versioned table 'market', keyed (id, block_height)
     int64_t id; int64_t base_token_id; int64_t quote_token_id;
-    std::vector<uint8_t> creator_address; int64_t deposit;
+    std::vector<uint8_t> creator_address; int64_t deposit;   // under rule market_rent: the rent balance
     MarketStatus status; uint32_t block_height; bool latest;
+    uint32_t paid_through_height;   // rule market_rent: rent is paid up to here (column paid_through_height)
     Market() : id(0), base_token_id(0), quote_token_id(0), deposit(0),
-               status(MarketStatus::Active), block_height(0), latest(false) {}
+               status(MarketStatus::Active), block_height(0), latest(false), paid_through_height(0) {}
 };
 struct Order {   // versioned table 'order_book', keyed (id, block_height)
     int64_t id; int64_t market_id; std::vector<uint8_t> maker_address;
@@ -239,11 +245,19 @@ struct App {   // versioned table 'app', keyed (id, block_height)
     std::vector<uint8_t> winner_address;     // set when finished (empty = draw/none)
     uint32_t persist_height;                 // pay-to-survive horizon
     uint8_t channel;                         // 0 = on-chain per-move; 1 = state channel (off-chain play, on-chain SettleApp)
+    // Rule apps_seed_after_bet (10 F3 (b)): a dice move waiting for the NEXT block's seed, [tx id 8 LE][move
+    // bytes]; empty when none. Applied by that block's resolver, so the including producer never sees the dice.
+    std::vector<uint8_t> pending_move;
+    // Rule apps_payout_cap (18 F6): a won solo bet's payout still owed by the pool (paid from later blocks' caps, in id order).
+    int64_t owed_payout;
+    // What the pool has paid this solo bet's winner so far (every tranche, owed ones included). Rule
+    // apps_payout_cap_net reads it to count the window's payouts against the window's inflow.
+    int64_t paid_payout;
     uint32_t block_height; bool latest;
     App() : id(0), app_type(0), status(AppStatus::Open), seats(2),
              stake_token_id(0), stake_amount(0), pot(0), turn(0),
              created_height(0), last_move_height(0), deadline_height(0), resolve_height(0),
-             persist_height(0), channel(0), block_height(0), latest(false) {}
+             persist_height(0), channel(0), owed_payout(0), paid_payout(0), block_height(0), latest(false) {}
 };
 
 // A state-channel settlement claim (Track B), versioned table 'app_settlement' keyed (app_id,
@@ -294,6 +308,8 @@ struct UpdateNodeRegistrationTransactionBody {
     int64_t locked_balance;                 // New locked balance (must be >= current)
     std::vector<uint8_t> proof_of_ownership; // Raw POOWN bytes (for parsing)
     std::optional<ProofOfOwnership> poown;  // Parsed proof of ownership (message + signature)
+    std::vector<uint8_t> new_node_public_key; // Rule node_key_rotation (20 F4): optional 32 bytes after the proof;
+                                            // the proof is then signed by THIS key and the node moves to it
 
     UpdateNodeRegistrationTransactionBody() : locked_balance(0) {}
 };
@@ -315,6 +331,14 @@ struct ClaimNodeRegistrationTransactionBody {
     std::optional<ProofOfOwnership> poown;  // Parsed proof of ownership (message + signature)
 
     ClaimNodeRegistrationTransactionBody() = default;
+};
+
+// Equivocation report transaction body (type 60, rule equivocation_miss, 11 F6 (c) T2)
+// Two different signed header byte strings (GetBlockBytesForSignature, 204 bytes each) by one
+// producer key over one previous block hash, each with its 64-byte signature.
+// Wire: len1(u32 LE) | header1 | sig1(64) | len2(u32 LE) | header2 | sig2(64)
+struct EquivocationReportTransactionBody {
+    std::vector<uint8_t> header1, signature1, header2, signature2;
 };
 
 // Approval escrow transaction body (type 4)

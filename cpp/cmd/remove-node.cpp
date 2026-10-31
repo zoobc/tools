@@ -8,7 +8,7 @@ using namespace txc;
 int main(int argc, char* argv[]) {
     ToolConfig config;
     config.name = "ZooBC Remove Node Registration Tool";
-    config.description = "Remove a node from the registry and return locked balance to owner.";
+    config.description = "The owner's exit. A registered node stays in the registry and keeps producing for the chain's exit hold (exit_cooldown_blocks: 40,320 blocks, seven days, on mainnet and testnet), then leaves with its lock less the exit's fee (paid from the lock to the longevity pool); 10 % less if it missed a turn or was suspended during the hold, or was missing at the exit. A queued node pays 10 % at once and gets the rest after the hold.";
     config.tx_type = static_cast<uint32_t>(zoobc::TransactionType::RemoveNodeRegistration);
     config.params = {
         {"Node private key",  "node_privkey",  "Node's private key (64 hex chars)",  "", true, nullptr},
