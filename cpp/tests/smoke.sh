@@ -49,6 +49,24 @@ set -e
 grep -Eq '"error_class": ?"node_unreachable"' <<<"$out" || fail "unreachable node JSON: $out"
 pass "unreachable node exits 3 with error_class node_unreachable"
 
+# Air-gap signing: an UNSIGNED file built without the key, signed by sign-tx, is the transaction --offline signs
+# with the key; a file whose summary was changed is refused with exit 10 and nothing is signed.
+AG=$(mktemp -d)
+"$B/zbc-cli" send-zbc "$ADDR" 100000000 --unsigned --from "$ADDR" --genesis "$ZERO32" --timestamp 1790000000 > "$AG/u.json"
+grep -Eq '"format": ?"zbc-unsigned-v1"' "$AG/u.json" || fail "--unsigned: $(head -c 300 "$AG/u.json")"
+! grep -q "$K" "$AG/u.json" || fail "--unsigned: the key is in the file"
+ZBC_KEY=$K "$B/zbc-cli" sign-tx "$AG/u.json" --yes > "$AG/s.json" 2>/dev/null || fail "sign-tx refused a good file"
+off=$("$B/zbc-cli" send-zbc "$K" "$ADDR" 100000000 --offline --genesis "$ZERO32" --timestamp 1790000000 --expiry 86400)
+want=$(grep -Eo '"transaction_bytes": ?"[0-9a-f]+"' <<<"$off" | grep -Eo '[0-9a-f]{64,}')
+grep -Eq "\"transaction_bytes\": ?\"$want\"" "$AG/s.json" || fail "sign-tx: not the transaction --offline signs"
+pass "--unsigned + sign-tx gives the transaction --offline signs with the key"
+sed 's/"1.00000000 ZBC"/"9.00000000 ZBC"/' "$AG/u.json" > "$AG/t.json"
+grep -q '9.00000000 ZBC' "$AG/t.json" || fail "the tampered copy was not changed"
+set +e; ZBC_KEY=$K "$B/zbc-cli" sign-tx "$AG/t.json" --yes > "$AG/ts.json" 2>/dev/null; rc=$?; set -e
+[ "$rc" -eq 10 ] && [ ! -s "$AG/ts.json" ] || fail "tampered summary: expected exit 10 and nothing signed, got $rc"
+pass "sign-tx refuses a tampered summary with exit 10"
+rm -rf "$AG"
+
 "$B/zbc-key-gen" | grep -q '"public_key"' || fail "zbc-key-gen"
 pass "zbc-key-gen emits a key"
 

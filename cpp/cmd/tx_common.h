@@ -1141,6 +1141,11 @@ struct ParsedParams {
     // makes it a version-3 transaction: a block may carry it within that many seconds of its
     // timestamp instead of the hour; at most 86400 (a day). For a stall, a lead or a partition.
     uint32_t expiry = 0;
+    // --unsigned (zbc-cli, air-gap signing, tools/airgap.h): build the transaction for the account named by
+    // --from WITHOUT its key, and print it as an UNSIGNED file for `zbc-cli sign-tx` on an offline computer.
+    bool unsigned_tx = false;
+    std::string unsigned_command;   // the zbc-cli command that built it, recorded in the file
+    std::string unsigned_note;      // --note: free text carried in the file (shown by the signer, not checked)
 };
 
 // The timestamp a transaction is built with: --timestamp when given, else now.
@@ -1706,6 +1711,12 @@ inline std::string build_json_payload(
 // Full transaction lifecycle helper
 // ============================================================================
 
+// --unsigned: what run_transaction hands the unsigned bytes to instead of signing them. Set by zbc-cli
+// (tools/airgap.h); a tool that never sets it refuses --unsigned.
+using UnsignedTxHook = std::function<int(const ParsedParams&, const std::vector<uint8_t>& unsigned_tx_bytes,
+                                         const std::function<void(const std::string&)>& emit_error)>;
+inline UnsignedTxHook& unsigned_tx_hook() { static UnsignedTxHook h; return h; }
+
 // Runs the complete tx lifecycle: build body -> build tx_bytes -> sign -> hash -> submit -> output
 // Tool-specific code just needs to provide body_bytes and extra output fields.
 inline int run_transaction(
@@ -1778,6 +1789,12 @@ inline int run_transaction(
 
         // Sign — for the chain the node at --api serves (or the one named by --genesis).
         if (!ensure_signing_context(params.api_url, params.genesis_hex, emit_error)) return last_exit_code();
+        // --unsigned (air-gap signing): the bytes are built for the account named by --from; its key is on
+        // another computer. Hand them over instead of signing.
+        if (params.unsigned_tx) {
+            if (!unsigned_tx_hook()) return fail(emit_error, exit_code::USAGE, "--unsigned is not available in this tool (use zbc-cli)");
+            return unsigned_tx_hook()(params, tx_bytes, emit_error);
+        }
         DerivedKeys dk;
         dk.type = signing_type;
         dk.keypair = signing_keypair;

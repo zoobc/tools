@@ -8,6 +8,7 @@
 //   zbc-cli list                                             # list all commands
 // Reuses tx_common.h (the same framework the individual tools use), so signing/submit/JSON are identical.
 #include "tx_common.h"
+#include "airgap.h"
 #include "zoobc/transaction/multisignature_service.h"
 #include "zoobc/crypto/hash.h"
 #include "zoobc/crypto/signature.h"
@@ -79,6 +80,22 @@ static const std::map<std::string, std::string>& cmd_help(){
          "request (multi-party envelope). The request must be pending. --escrow-* options are not used.\n"},
     };
     return h;
+}
+// --unsigned --from <account> (air-gap signing, airgap.h): main() parks the named sender's public key here, and
+// every place that took the sender from the key argument takes it from here instead. Its private key is empty:
+// run_transaction hands the bytes to airgap::emit_unsigned before anything would sign.
+static std::vector<uint8_t>& unsigned_sender(){ static std::vector<uint8_t> p; return p; }
+static zoobc::Result<zoobc::crypto::KeyPair> sender_keypair(const std::string& key_arg){
+    if(!unsigned_sender().empty()){ zoobc::crypto::KeyPair kp; kp.public_key = unsigned_sender(); return kp; }
+    return derive_zbc_keypair(key_arg);
+}
+// Commands --unsigned cannot prepare: what they sign besides the transaction needs the sender's key itself.
+static const std::map<std::string, std::string>& unsigned_refused(){
+    static const std::map<std::string, std::string> m = {
+        {"fee-vote-reveal", "its body carries a signature by the sender's key"},
+        {"multisig", "its participants sign the inner transaction: use zbc-multisig-offline"},
+    };
+    return m;
 }
 static ParamDef PK(){ return {"Sender private key","sender_privkey","Sender private key (64 hex)","",true,nullptr}; }
 static ParamDef P(const char* n,const char* k,const char* pr,const char* d="",bool req=true){ return {n,k,pr,d,req,nullptr}; }
@@ -158,7 +175,7 @@ static std::string category_of(const std::string& c){
 // a multisig or Ethereum consent needs its own signer.
 static int group_consent_command(bool link, std::vector<std::string>& v, ParsedParams& params) {
     auto emit_error = make_emitter(params.json_output);
-    auto kp = derive_zbc_keypair(v[0]);
+    auto kp = sender_keypair(v[0]);
     if (!kp.IsOk()) return fail(emit_error, exit_code::USAGE, kp.GetError().ToString());
     auto other = derive_zbc_keypair(v[1]);
     if (!other.IsOk()) return fail(emit_error, exit_code::USAGE, std::string(link ? "member" : "new controller") +
@@ -208,7 +225,7 @@ static std::vector<std::string> split_fields(const std::string& line){
 
 static int batch_command(bool tokens, std::vector<std::string>& v, ParsedParams& params){
     auto emit_error = make_emitter(params.json_output);
-    auto kp = derive_zbc_keypair(v[0]);
+    auto kp = sender_keypair(v[0]);
     if (!kp.IsOk()) return fail(emit_error, exit_code::USAGE, kp.GetError().ToString());
     std::ifstream in(v[1]);
     if (!in) return fail(emit_error, exit_code::USAGE, "cannot read the file " + v[1]);
@@ -240,6 +257,10 @@ static int batch_command(bool tokens, std::vector<std::string>& v, ParsedParams&
 
     const size_t per = tokens ? zoobc::transaction::batch::kMaxTokenTransfers : zoobc::transaction::batch::kMaxPayments;
     const uint32_t type = tokens ? (uint32_t)TT::TransferTokenBatch : (uint32_t)TT::SendZBCBatch;
+    // --unsigned writes ONE file: one transaction, so at most one batch's worth of lines.
+    if (params.unsigned_tx && acts.size() > per)
+        return fail(emit_error, exit_code::USAGE, "--unsigned builds one transaction: at most " + std::to_string(per) + " lines (" +
+                    std::to_string(acts.size()) + " given); split the file and export each part");
     json rows = json::array(); int code = exit_code::OK; size_t sent_lines = 0;
     for (size_t start = 0; start < acts.size(); start += per) {
         const size_t end = std::min(acts.size(), start + per);
@@ -262,6 +283,9 @@ static int batch_command(bool tokens, std::vector<std::string>& v, ParsedParams&
         ParsedParams one = params; one.json_output = true;
         one.fee = params.fee * static_cast<int64_t>(end - start);
         row["fee"] = one.fee;
+        if (params.unsigned_tx)   // the UNSIGNED file is the output
+            return run_transaction(one, type, kp.Value().public_key, std::vector<uint8_t>{}, body, kp.Value(), KeyType::ZBC,
+                                   json{{"actions", end - start}}, emit_error);
         std::ostringstream cap; auto* old = std::cout.rdbuf(cap.rdbuf());
         int rc = exit_code::INTERNAL;
         try { rc = run_transaction(one, type, kp.Value().public_key, std::vector<uint8_t>{}, body, kp.Value(), KeyType::ZBC,
@@ -303,7 +327,7 @@ static int batch_command(bool tokens, std::vector<std::string>& v, ParsedParams&
 // ---- fund-escrow-request: the payer's side of a receiver-issued EscrowRequest (type 260) ----
 static int fund_escrow_request_command(std::vector<std::string>& v, ParsedParams& params){
     auto emit_error = make_emitter(params.json_output);
-    auto kp = derive_zbc_keypair(v[0]);
+    auto kp = sender_keypair(v[0]);
     if (!kp.IsOk()) return fail(emit_error, exit_code::USAGE, kp.GetError().ToString());
     const int64_t id = parse_id_i64(v[1], "request_id");
     if (params.escrow.active)
@@ -524,7 +548,7 @@ static std::map<std::string, Cmd> registry() {
     m["setup-dataset"] = {"Set an account-dataset property", (uint32_t)TT::SetupAccountDataset, true,
         {PK(), P("Subject","recipient","dataset subject address (ZBC_), a dataset's ZBS_ address to write a record into it, or `self` for the signer's own account"), P("Property","property","key"), P("Value","value","value","",false), P("Value (base64)","value_b64","value as base64, for bytes a JSON string cannot carry","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
-            auto kp=derive_zbc_keypair(v[0]); if(!kp.IsOk()) throw std::runtime_error("bad key");
+            auto kp=sender_keypair(v[0]); if(!kp.IsOk()) throw std::runtime_error("bad key");
             auto setter=TransactionUtil::BuildAccountAddress(TransactionUtil::ACCOUNT_TYPE_ZBC, kp.Value().public_key);
             // A dataset can be written onto ANY account (setter = the signer, subject = whoever), so the subject
             // is a parameter; `self` saves typing one's own address when the two are the same (the common case,
@@ -538,7 +562,7 @@ static std::map<std::string, Cmd> registry() {
     m["remove-dataset"] = {"Remove an account-dataset property", (uint32_t)TT::RemoveAccountDataset, true,
         {PK(), P("Subject","recipient","dataset subject address (ZBC_), or `self` for the signer's own account"), P("Property","property","key"), P("Value","value","not needed: the node removes the property whatever value is sent (accepted for older scripts)","",false), P("Value (base64)","value_b64","not needed, as value","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
-            auto kp=derive_zbc_keypair(v[0]); if(!kp.IsOk()) throw std::runtime_error("bad key");
+            auto kp=sender_keypair(v[0]); if(!kp.IsOk()) throw std::runtime_error("bad key");
             auto setter=TransactionUtil::BuildAccountAddress(TransactionUtil::ACCOUNT_TYPE_ZBC, kp.Value().public_key);
             // A dataset can be written onto ANY account (setter = the signer, subject = whoever), so the subject
             // is a parameter; `self` saves typing one's own address when the two are the same (the common case,
@@ -926,7 +950,7 @@ static std::map<std::string, Cmd> registry() {
         nullptr,
         [](std::vector<std::string>& v, ParsedParams& params) -> int {
             auto emit_error = make_emitter(params.json_output);
-            auto owner_kp=derive_zbc_keypair(v[0]); if(!owner_kp.IsOk()){ emit_error(owner_kp.GetError().ToString()); return 1; }
+            auto owner_kp=sender_keypair(v[0]); if(!owner_kp.IsOk()){ emit_error(owner_kp.GetError().ToString()); return 1; }
             auto node_kp=derive_zbc_keypair(v[1]); if(!node_kp.IsOk()){ emit_error(node_kp.GetError().ToString()); return 1; }
             int64_t locked=N(v,2); if(locked<=0){ emit_error("locked_balance must be positive"); return 1; }
             auto poown=build_proof_of_ownership(owner_kp.Value(), node_kp.Value(), params.api_url); if(!poown.IsOk()){ emit_error(poown.GetError().ToString()); return 1; }
@@ -941,7 +965,7 @@ static std::map<std::string, Cmd> registry() {
         nullptr,
         [](std::vector<std::string>& v, ParsedParams& params) -> int {
             auto emit_error = make_emitter(params.json_output);
-            auto owner_kp=derive_zbc_keypair(v[0]); if(!owner_kp.IsOk()){ emit_error(owner_kp.GetError().ToString()); return 1; }
+            auto owner_kp=sender_keypair(v[0]); if(!owner_kp.IsOk()){ emit_error(owner_kp.GetError().ToString()); return 1; }
             auto node_kp=derive_zbc_keypair(v[1]); if(!node_kp.IsOk()){ emit_error(node_kp.GetError().ToString()); return 1; }
             int64_t locked=N(v,2);
             auto poown=build_proof_of_ownership(owner_kp.Value(), node_kp.Value(), params.api_url); if(!poown.IsOk()){ emit_error(poown.GetError().ToString()); return 1; }
@@ -954,7 +978,7 @@ static std::map<std::string, Cmd> registry() {
         nullptr,
         [](std::vector<std::string>& v, ParsedParams& params) -> int {
             auto emit_error = make_emitter(params.json_output);
-            auto owner_kp=derive_zbc_keypair(v[0]); if(!owner_kp.IsOk()){ emit_error(owner_kp.GetError().ToString()); return 1; }
+            auto owner_kp=sender_keypair(v[0]); if(!owner_kp.IsOk()){ emit_error(owner_kp.GetError().ToString()); return 1; }
             auto node_kp=derive_zbc_keypair(v[1]); if(!node_kp.IsOk()){ emit_error(node_kp.GetError().ToString()); return 1; }
             auto poown=build_proof_of_ownership(owner_kp.Value(), node_kp.Value(), params.api_url); if(!poown.IsOk()){ emit_error(poown.GetError().ToString()); return 1; }
             auto body=TransactionUtil::GetClaimNodeRegistrationBodyBytes(node_kp.Value().public_key, poown.Value());
@@ -1143,8 +1167,13 @@ int main(int argc, char* argv[]) {
         return exit_code::USAGE;
     }
     std::string cmd = argv[1];
+    // ---- air-gap signing (airgap.h): sign UNSIGNED files offline, send SIGNED files online ----
+    if (cmd == "sign-tx") { if (sodium_init() < 0) return exit_code::INTERNAL; return airgap::sign_tx_command(argc, argv); }
+    if (cmd == "submit") { if (sodium_init() < 0) return exit_code::INTERNAL; return airgap::submit_command(argc, argv); }
     // ---- `help <tx>` : print the JSON field schema for one command (what to send) ----
     if (cmd == "help" && argc >= 3) {
+        if (std::string(argv[2]) == "sign-tx") { airgap::sign_tx_usage(std::cout); return 0; }
+        if (std::string(argv[2]) == "submit") { airgap::submit_usage(std::cout); return 0; }
         auto hit = reg.find(argv[2]);
         if (hit == reg.end()) { std::cerr << "Unknown command: " << argv[2] << " (try `zbc-cli list`)\n"; return exit_code::USAGE; }
         const Cmd& c = hit->second;
@@ -1177,6 +1206,7 @@ int main(int argc, char* argv[]) {
         caps.push_back("json_input");        // --json-input, JSON on stdin
         caps.push_back("offline");           // --offline + --genesis, unsigned/signed bytes, no node
         caps.push_back("escrow_string_ints");// escrow.commission / escrow.timeout accept strings
+        caps.push_back("airgap");            // --unsigned --from, sign-tx, submit (UNSIGNED/SIGNED files, airgap.h)
         json out;
         out["version"] = ZOOBC_VERSION;
         out["commit"] = ZOOBC_GIT_COMMIT;
@@ -1203,6 +1233,10 @@ int main(int argc, char* argv[]) {
             }
             if (header) std::cout << "\n";
         }
+        std::cout << "[air-gap]  (the key stays on an offline computer; docs/AIRGAP-SIGNING.md)\n"
+                  << "  <command> ... --unsigned --from <account>   any transaction command, without the key: an UNSIGNED file\n"
+                  << "  sign-tx <file|folder>...  [--yes]          offline: decode, show, ask, sign; writes SIGNED files\n"
+                  << "  submit <file|folder>...  [--wait]          online: check and send SIGNED files, one per block with --wait\n\n";
         std::cout << "First param is the sender private key (or set ZBC_KEY and omit it / pass '-'); verify-message takes an address.\n"
                   << "`zbc-cli help <cmd>` shows a command's JSON fields; `zbc-cli <cmd> --help` the options, env vars and exit codes.\n";
         return 0;
@@ -1218,14 +1252,30 @@ int main(int argc, char* argv[]) {
     // This command's own options (cmd_flags) come out of argv here; the shared parser refuses any
     // option it does not know, so another command's option still fails as a usage error.
     std::vector<char*> args{argv[1]};
+    // --unsigned --from <account> [--note <text>] (air-gap signing): lifted out here, like cmd_flags.
+    bool unsigned_mode = false, json_input = false; std::string from_arg, note_arg;
+    static char unsigned_placeholder[] = "@unsigned";
     {
         auto fl = cmd_flags().find(cmd);
         for (int i = 2; i < argc; ++i) {
             const std::string a = argv[i];
+            if (a == "--unsigned") { unsigned_mode = true; continue; }
+            if (a == "--from" || a == "--note") {
+                if (i + 1 >= argc) return fail(emit_error, exit_code::USAGE, a + " requires a value");
+                (a == "--from" ? from_arg : note_arg) = argv[++i];
+                continue;
+            }
+            if (a == "--json-input") json_input = true;
             if (a == "--help" || a == "-h") {
                 print_tool_usage(config, argv[1]);
                 if (fl != cmd_flags().end()) { std::cout << "\nOptions of " << cmd << ":\n"; for (const auto& f : fl->second) std::cout << f.help; }
                 auto h = cmd_help().find(cmd); if (h != cmd_help().end()) std::cout << "\n" << h->second;
+                if (c.tx_type != 0 && !unsigned_refused().count(cmd))
+                    std::cout << "\nAir-gap signing (docs/AIRGAP-SIGNING.md):\n"
+                                 "  --unsigned --from <ZBC_ account>  build it WITHOUT the key (leave the key out): an UNSIGNED file on\n"
+                                 "                          stdout, valid for a day, for `zbc-cli sign-tx` on an offline computer;\n"
+                                 "                          needs --genesis <hex> or --api to name the chain\n"
+                                 "  --note <text>           carried in the file, shown by the signer (not checked)\n";
                 return 0;
             }
             const CmdFlag* hit = nullptr;
@@ -1238,9 +1288,54 @@ int main(int argc, char* argv[]) {
             } else cmd_opt()[a] = "1";
         }
     }
+    if (!unsigned_mode && (!from_arg.empty() || !note_arg.empty()))
+        return fail(emit_error, exit_code::USAGE, "--from and --note go with --unsigned (air-gap signing)");
+    if (unsigned_mode) {
+        // The online machine never holds the sender's key: the key argument is left out (a placeholder takes its
+        // place), ZBC_KEY is not read, and the sender is the account --from names.
+        if (c.tx_type == 0) return fail(emit_error, exit_code::USAGE, cmd + " is not a transaction: --unsigned does not apply");
+        if (auto r = unsigned_refused().find(cmd); r != unsigned_refused().end())
+            return fail(emit_error, exit_code::USAGE, cmd + " cannot be prepared --unsigned: " + r->second);
+        if (c.params.empty() || c.params[0].json_key != "sender_privkey")
+            return fail(emit_error, exit_code::USAGE, cmd + " has no sender key argument: --unsigned does not apply");
+        if (from_arg.empty())
+            return fail(emit_error, exit_code::USAGE, "--unsigned needs --from <account>: the ZBC_ address (or 00000000 + 64 hex) that will sign it");
+        std::vector<uint8_t> pub;
+        std::string f = from_arg;
+        if (f.size() == 72 && f.find_first_not_of("0123456789abcdefABCDEF") == std::string::npos) {
+            if (f.compare(0, 8, "00000000") != 0)
+                return fail(emit_error, exit_code::USAGE, "--from: a typed account of another kind; only a ZBC_ account (00000000 + key) signs here");
+            pub = hex_to_bytes(f.substr(8));
+        } else {
+            auto a = parse_address(f);
+            if (!a.IsOk() || a.Value().address.size() != 36 || a.Value().address[0] || a.Value().address[1] ||
+                a.Value().address[2] || a.Value().address[3])
+                return fail(emit_error, exit_code::USAGE, "--from must be a ZBC_ account (its Ed25519 key signs on the offline computer): " + f);
+            pub.assign(a.Value().address.begin() + 4, a.Value().address.end());
+        }
+        unsigned_sender() = pub;
+#ifdef _WIN32
+        _putenv_s("ZBC_KEY", "");
+#else
+        unsetenv("ZBC_KEY");
+#endif
+        if (json_input) config.params[0].default_value = unsigned_placeholder;
+        else args.insert(args.begin() + 1, unsigned_placeholder);
+        params.expiry = airgap::DEFAULT_EXPIRY;   // valid for a day unless --expiry says otherwise
+        unsigned_tx_hook() = airgap::emit_unsigned;
+    }
     // shift argv by 1 so parse_params consumes the subcommand as argv[0]
     int rc = parse_params(config, static_cast<int>(args.size()), args.data(), params, [&](const std::string& mm){ emit_error(mm); });
     if (rc != 0) return rc == -1 ? 0 : rc;
+    if (unsigned_mode) {
+        if (params.offline) return fail(make_emitter(params.json_output), exit_code::USAGE, "--unsigned and --offline exclude each other: --offline signs with the key");
+        if (params.values.empty() || params.values[0] != unsigned_placeholder)
+            return fail(make_emitter(params.json_output), exit_code::USAGE,
+                        "--unsigned: a key was given; leave the key out (the online machine must never hold it)");
+        params.unsigned_tx = true;
+        params.unsigned_command = cmd;
+        params.unsigned_note = note_arg;
+    }
     emit_error = make_emitter(params.json_output);
     if (!init_sodium(emit_error)) return exit_code::INTERNAL;
     chain_hint() = params.chain;
@@ -1253,7 +1348,7 @@ int main(int argc, char* argv[]) {
     cur_params() = &c.params;
     if (c.custom) { try { return c.custom(params.values, params); } catch (const std::exception& e) { return fail(emit_error, exit_code::USAGE, e.what()); } }
     try {
-        auto kp = derive_zbc_keypair(params.values[0]);
+        auto kp = sender_keypair(params.values[0]);
         if (!kp.IsOk()) return fail(emit_error, exit_code::USAGE, kp.GetError().ToString());
         std::vector<uint8_t> recipient, body; json extra;
         cur_params() = &c.params;

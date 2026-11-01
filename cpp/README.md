@@ -60,6 +60,19 @@ build/zbc-cli send-zbc - ZBC_... 100000000 --genesis <64 hex> --timestamp 170000
                                                     build, sign and hash without a node: prints
                                                     unsigned_bytes, digest, signature, transaction_bytes,
                                                     transaction_hash and the payload it would have sent
+
+Air-gap signing: the key stays on a computer that is never online.
+build/zbc-cli send-zbc ZBC_... 100000000 --unsigned --from ZBC_<signer> --api <node> > UNSIGNED.json
+                                                    online, no key: the unsigned bytes, the chain, the
+                                                    digest and a summary (valid for a day)
+zbc-cli sign-tx UNSIGNED.json > SIGNED.json         offline: decodes the bytes itself, refuses a file whose
+                                                    summary, chain or sender does not match them (exit 10),
+                                                    shows it, asks for the key (ZBC_KEY or typed, never an
+                                                    argument) and "sign? [y/N]"; a folder: SIGNED-<name>
+                                                    beside each file
+build/zbc-cli submit SIGNED.json --api <node> --wait
+                                                    online: checks the signature and the chain, sends, and
+                                                    with --wait waits for the block (one per account)
 ```
 
 Every tool prints one JSON object and exits with a meaningful code. The full contract, shared by
@@ -72,7 +85,7 @@ node accepted the transaction into its pool, not that it is in a block.
 
 | Binary | Source | Does |
 |--------|--------|------|
-| `zbc-cli` | `cmd/zoobc-cli.cpp` | All commands below as one binary; also sign-message and verify-message |
+| `zbc-cli` | `cmd/zoobc-cli.cpp` | All commands below as one binary; also sign-message and verify-message, and air-gap signing (`--unsigned`, `sign-tx`, `submit`; `cmd/airgap.h`) |
 
 **Value**
 
