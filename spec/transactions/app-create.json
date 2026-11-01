@@ -53,10 +53,10 @@
       "default": ""
     },
     {
-      "name": "opponent_hex",
-      "kind": "hexbytes",
+      "name": "opponent",
+      "kind": "address",
       "required": false,
-      "help": "36-byte opponent account bytes (open seat if empty); a single byte 01 marks a state-channel app",
+      "help": "the invited opponent, any kind that can sign (an open seat if empty)",
       "default": ""
     }
   ],
@@ -87,10 +87,10 @@
       "from": "params_hex"
     },
     {
-      "name": "opponent_hex",
-      "encoding": "hex",
-      "from": "opponent_hex",
-      "when": "opponent_hex != ''"
+      "name": "opponent",
+      "encoding": "address32",
+      "from": "opponent",
+      "when": "opponent != ''"
     }
   ],
   "example": {
@@ -99,7 +99,7 @@
     "stake_amount": "100000000",
     "seats": "2",
     "params_hex": "",
-    "opponent_hex": ""
+    "opponent": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
   },
   "notes": [
     "zbc-app-create takes (app_type, stake_token, stake_amount, seats, channel) and cannot pass params or an opponent."

@@ -112,10 +112,10 @@ export function signTransaction(tx: UnsignedTransaction, key: KeyPair | Uint8Arr
   const signature = sign(digest, kp.seed);
   const bytes = concat(unsigned, signature);
   const hash = sha3_256(bytes);
-  const recipientForJson = tx.recipient.length === 0 ? "" : (tx.recipient.length === 36 && tx.recipient[0] === 0 && tx.recipient[1] === 0 && tx.recipient[2] === 0 && tx.recipient[3] === 0)
-    ? bytesToHex(tx.recipient.slice(4)) : bytesToHex(tx.recipient);
+  // 0.6.0 (rule typed_accounts_only): sender and recipient go typed, as signed (the node refuses a bare 32-byte key).
+  const recipientForJson = tx.recipient.length === 0 ? "" : bytesToHex(tx.recipient);
   const payload: SubmitPayload = {
-    version: tx.version ?? 1, timestamp: BigInt(tx.timestamp), sender_account_address: bytesToHex(tx.sender.slice(4)),
+    version: tx.version ?? 1, timestamp: BigInt(tx.timestamp), sender_account_address: bytesToHex(tx.sender),
     recipient_account_address: recipientForJson, transaction_type: tx.type, fee: BigInt(tx.fee),
     transaction_body_bytes: bytesToHex(tx.body), signature: bytesToHex(signature),
   };

@@ -186,13 +186,8 @@ pub fn sign_transaction(tx: &Unsigned, kp: &KeyPair, ctx: &SigningContext) -> Re
     let signature = kp.sign(&digest);
     let mut bytes = unsigned.clone();
     bytes.extend_from_slice(&signature);
-    let recipient = if tx.recipient.is_empty() {
-        String::new()
-    } else if tx.recipient.len() == 36 && tx.recipient[..4] == [0, 0, 0, 0] {
-        hex::encode(&tx.recipient[4..])
-    } else {
-        hex::encode(&tx.recipient)
-    };
+    // 0.6.0 (rule typed_accounts_only): sender and recipient go typed, as signed (the node refuses a bare 32-byte key).
+    let recipient = if tx.recipient.is_empty() { String::new() } else { hex::encode(&tx.recipient) };
     let escrow = match &tx.escrow {
         Some(e) => Some(EscrowPayload {
             approver_address: hex::encode(parse_address(&e.approver, "")?.bytes()),
@@ -205,7 +200,7 @@ pub fn sign_transaction(tx: &Unsigned, kp: &KeyPair, ctx: &SigningContext) -> Re
     let payload = Payload {
         version: if tx.version == 0 { 1 } else { tx.version },
         timestamp: tx.timestamp,
-        sender_account_address: hex::encode(&tx.sender[4..]),
+        sender_account_address: hex::encode(&tx.sender),
         recipient_account_address: recipient,
         transaction_type: tx.tx_type,
         fee: tx.fee,

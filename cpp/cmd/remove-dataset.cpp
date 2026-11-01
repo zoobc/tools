@@ -36,11 +36,8 @@ int main(int argc, char* argv[]) {
         std::string property = params.values[2];
         std::string value = params.values[3];
 
-        auto setter_address = TransactionUtil::BuildAccountAddress(
-            TransactionUtil::ACCOUNT_TYPE_ZBC, setter_kp.Value().public_key);
-
         auto body_bytes = TransactionUtil::GetRemoveAccountDatasetBodyBytes(
-            property, value, setter_address, recip_result.Value().address);
+            property, value);
 
         std::string setter_addr = zoobc::crypto::ZoobcAddress::Encode(setter_kp.Value().public_key, "ZBC");
 

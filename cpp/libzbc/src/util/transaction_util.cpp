@@ -4,6 +4,7 @@
 #include <algorithm>
 #include "zoobc/common/constants.h"
 #include "zoobc/util/transaction_util.h"
+#include "zoobc/consensus/rule_activation.h"
 #include "zoobc/crypto/hash.h"
 #include "zoobc/crypto/address_decode.h"
 #include "zoobc/common/chain_identity.h"
@@ -311,6 +312,10 @@ bool TransactionUtil::IsBlockedTokenSymbol(const std::string& symbol) {
     return BlockedTokenSymbols().count(up) > 0;
 }
 
+bool TransactionUtil::BareAccountsRefused() {
+    return consensus::RuleClock::Active("typed_accounts_only", consensus::kHeightUnknown);
+}
+
 Result<std::vector<uint8_t>> TransactionUtil::GetTransactionBytes(
     const model::Transaction& tx, bool include_signature) {
 
@@ -345,7 +350,9 @@ Result<std::vector<uint8_t>> TransactionUtil::GetTransactionBytes(
     // - 24+ bytes with type prefix: ETH (24), BTC (24 or 37), ZBC (36), etc.
     // Go: buffer.Write(transaction.SenderAccountAddress)
     if (IsBareLegacyKey(tx.sender_account_address)) {   // decision 4: a Cardano account (32 bytes, type 13) is not a bare key
-        // If just public key (32 bytes), add ZBC account type prefix
+        // Rule typed_accounts_only: a bare key is not an account; nothing types it any more.
+        if (BareAccountsRefused()) return Error{ErrorCode::ValidationError, kBareAccountRefused};
+        // Below the rule: a bare public key gets the ZBC account type prefix.
         WriteInt32LE(buffer, ACCOUNT_TYPE_ZBC);
         buffer.insert(buffer.end(),
                       tx.sender_account_address.begin(),
@@ -367,7 +374,8 @@ Result<std::vector<uint8_t>> TransactionUtil::GetTransactionBytes(
         // Write empty account type (4 bytes)
         WriteInt32LE(buffer, ACCOUNT_TYPE_EMPTY);
     } else if (IsBareLegacyKey(tx.recipient_account_address)) {   // decision 4
-        // If just public key (32 bytes), add ZBC account type prefix
+        if (BareAccountsRefused()) return Error{ErrorCode::ValidationError, kBareAccountRefused};   // typed_accounts_only
+        // Below the rule: a bare public key gets the ZBC account type prefix.
         WriteInt32LE(buffer, ACCOUNT_TYPE_ZBC);
         buffer.insert(buffer.end(),
                       tx.recipient_account_address.begin(),
@@ -1502,9 +1510,7 @@ Result<model::LiquidPaymentStopTransactionBody> TransactionUtil::ParseLiquidPaym
 
 std::vector<uint8_t> TransactionUtil::GetSetupAccountDatasetBodyBytes(
     const std::string& property,
-    const std::string& value,
-    const std::vector<uint8_t>& setter_address,
-    const std::vector<uint8_t>& recipient_address) {
+    const std::string& value) {
 
     std::vector<uint8_t> buffer;
 
@@ -1518,13 +1524,7 @@ std::vector<uint8_t> TransactionUtil::GetSetupAccountDatasetBodyBytes(
     WriteUint32LE(buffer, static_cast<uint32_t>(val_bytes.size()));
     buffer.insert(buffer.end(), val_bytes.begin(), val_bytes.end());
 
-    // 3. SetterAccountAddress (36 bytes: type(4) + pubkey(32))
-    buffer.insert(buffer.end(), setter_address.begin(), setter_address.end());
-
-    // 4. RecipientAccountAddress (36 bytes: type(4) + pubkey(32))
-    buffer.insert(buffer.end(), recipient_address.begin(), recipient_address.end());
-
-    return buffer;
+    return buffer;   // 0.6.0: nothing after the value (the parser reads nothing more)
 }
 
 Result<model::SetupAccountDatasetTransactionBody> TransactionUtil::ParseSetupAccountDatasetBodyBytes(
@@ -1567,12 +1567,10 @@ Result<model::SetupAccountDatasetTransactionBody> TransactionUtil::ParseSetupAcc
 
 std::vector<uint8_t> TransactionUtil::GetRemoveAccountDatasetBodyBytes(
     const std::string& property,
-    const std::string& value,
-    const std::vector<uint8_t>& setter_address,
-    const std::vector<uint8_t>& recipient_address) {
+    const std::string& value) {
 
     // Same format as SetupAccountDataset
-    return GetSetupAccountDatasetBodyBytes(property, value, setter_address, recipient_address);
+    return GetSetupAccountDatasetBodyBytes(property, value);
 }
 
 Result<model::RemoveAccountDatasetTransactionBody> TransactionUtil::ParseRemoveAccountDatasetBodyBytes(

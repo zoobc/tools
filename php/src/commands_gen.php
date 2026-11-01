@@ -219,10 +219,10 @@ return array (
       ),
       6 => 
       array (
-        'name' => 'opponent_hex',
-        'kind' => 'hexbytes',
+        'name' => 'opponent',
+        'kind' => 'address',
         'required' => false,
-        'help' => '36-byte opponent account bytes (open seat if empty); a single byte 01 marks a state-channel app',
+        'help' => 'the invited opponent, any kind that can sign (an open seat if empty)',
         'default' => '',
       ),
     ),
@@ -260,10 +260,10 @@ return array (
       ),
       5 => 
       array (
-        'name' => 'opponent_hex',
-        'encoding' => 'hex',
-        'from' => 'opponent_hex',
-        'when' => 'opponent_hex != \'\'',
+        'name' => 'opponent',
+        'encoding' => 'address32',
+        'from' => 'opponent',
+        'when' => 'opponent != \'\'',
       ),
     ),
     'example' => 
@@ -273,7 +273,7 @@ return array (
       'stake_amount' => '100000000',
       'seats' => '2',
       'params_hex' => '',
-      'opponent_hex' => '',
+      'opponent' => 'ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I',
     ),
     'notes' => 
     array (
@@ -3245,19 +3245,6 @@ return array (
         'encoding' => 'str32',
         'from' => 'value',
       ),
-      2 => 
-      array (
-        'name' => 'setter',
-        'encoding' => 'sender_address',
-        'from' => 'setter',
-        'computed' => 'the sender\'s 36-byte account',
-      ),
-      3 => 
-      array (
-        'name' => 'recipient',
-        'encoding' => 'address',
-        'from' => 'recipient',
-      ),
     ),
     'example' => 
     array (
@@ -3267,7 +3254,7 @@ return array (
     ),
     'notes' => 
     array (
-      0 => 'The node reads property only (the value is not compared); the setter and recipient accounts at the end are written by the reference and not read.',
+      0 => 'Node 0.6.0: the body is property and value only (the node does not compare the value); the setter and subject accounts that used to follow are gone.',
     ),
   ),
   45 => 
@@ -3888,19 +3875,6 @@ return array (
         'encoding' => 'str32',
         'from' => 'value',
       ),
-      2 => 
-      array (
-        'name' => 'setter',
-        'encoding' => 'sender_address',
-        'from' => 'setter',
-        'computed' => 'the sender\'s 36-byte account',
-      ),
-      3 => 
-      array (
-        'name' => 'recipient',
-        'encoding' => 'address',
-        'from' => 'recipient',
-      ),
     ),
     'example' => 
     array (
@@ -3910,7 +3884,7 @@ return array (
     ),
     'notes' => 
     array (
-      0 => 'The node reads property and value only; the setter and recipient accounts after them are written by the reference and not read.',
+      0 => 'Node 0.6.0: the body is property and value only; the setter and subject accounts that used to follow are gone (the envelope carries both).',
     ),
   ),
   53 => 
@@ -4188,6 +4162,14 @@ return array (
         'help' => 'Unix seconds, 0 = good till cancelled',
         'default' => '0',
       ),
+      6 => 
+      array (
+        'name' => 'counterparty',
+        'kind' => 'address',
+        'required' => false,
+        'help' => 'the only account that may take the offer, any kind that can sign (empty = an open offer)',
+        'default' => '',
+      ),
     ),
     'body' => 
     array (
@@ -4221,6 +4203,13 @@ return array (
         'encoding' => 'u64le',
         'from' => 'expiry',
       ),
+      5 => 
+      array (
+        'name' => 'counterparty',
+        'encoding' => 'address32',
+        'from' => 'counterparty',
+        'when' => 'counterparty != \'\'',
+      ),
     ),
     'example' => 
     array (
@@ -4229,10 +4218,11 @@ return array (
       'want_token' => '123456789',
       'want_amount' => '5000',
       'expiry' => '0',
+      'counterparty' => 'ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I',
     ),
     'notes' => 
     array (
-      0 => 'An offer only one account may take (node 0.6.0): the body continues after expiry with a u32 LE length and that account\'s typed address (its 4-byte type first; any kind that can sign). Without it the body is these 40 bytes and the offer is open. zbc-cli swap-create takes it as an optional seventh parameter, counterparty; this description and the ports do not have it yet.',
+      0 => 'Node 0.6.0: the counterparty is length-prefixed (u32le) and typed; the node refuses a kind that cannot sign. zbc-swap-create (the single program) takes no counterparty: an open offer only.',
     ),
   ),
   57 => 

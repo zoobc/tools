@@ -100,13 +100,9 @@ def sign_transaction(tx_type: int, timestamp: int, sender: KeyPair, recipient: b
     digest = signing_digest(unsigned, ctx)
     signature = ed25519.sign(digest, sender.seed)
     full = unsigned + signature
-    if not recipient:
-        recipient_json = ""
-    elif len(recipient) == 36 and recipient[:4] == b"\x00\x00\x00\x00":
-        recipient_json = recipient[4:].hex()
-    else:
-        recipient_json = recipient.hex()
-    payload = {"version": version, "timestamp": timestamp, "sender_account_address": sender.public_key.hex(),
+    # 0.6.0 (rule typed_accounts_only): sender and recipient go typed, as signed (the node refuses a bare 32-byte key).
+    recipient_json = recipient.hex() if recipient else ""
+    payload = {"version": version, "timestamp": timestamp, "sender_account_address": sender.account_bytes.hex(),
                "recipient_account_address": recipient_json, "transaction_type": tx_type, "fee": fee,
                "transaction_body_bytes": body.hex(), "signature": signature.hex()}
     if message:

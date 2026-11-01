@@ -124,6 +124,9 @@ def encode_field(f: dict, params: Dict[str, str], sender: KeyPair, files: Option
         return struct.pack("<I", len(b)) + b
     if enc == "address":
         return parse_address(value).bytes
+    if enc == "address32":
+        a = parse_address(value).bytes
+        return struct.pack("<I", len(a)) + a
     if enc == "address8":
         a = parse_address(value).bytes
         return bytes([len(a)]) + a

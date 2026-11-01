@@ -184,6 +184,17 @@ public:
     static bool IsBareLegacyKey(const std::vector<uint8_t>& a) {
         return a.size() == 32 && !(a[0] == 13 && a[1] == 0 && a[2] == 0 && a[3] == 0);
     }
+    // Rule typed_accounts_only (0.6.0): a bare 32-byte key is a NODE key, never an account. The one refusal text, and
+    // whether the rule is in force for the newest block (a static helper has no block height; every chain built from
+    // 0.6.0 has the rule at 0).
+    static constexpr const char* kBareAccountRefused = "accounts are typed: a bare 32-byte key is not an account on this chain";
+    static bool BareAccountsRefused();
+    // The node key of a node's typed node-key account (00000000 || 32-byte node key), the account a node signs its
+    // duties with; empty for any other account.
+    static std::vector<uint8_t> NodeKeyOfAccount(const std::vector<uint8_t>& a) {
+        if (a.size() == 36 && a[0] == 0 && a[1] == 0 && a[2] == 0 && a[3] == 0) return std::vector<uint8_t>(a.begin() + 4, a.end());
+        return {};
+    }
     // ONE LIST (owner decisions 1, 2, 3, 7, 8 of 2026-10-30): the account types that can sign a transaction. Everything
     // the node verifies is here, P2SH (6) included (the BIP49 single-key form). Not here, so never a recipient of value,
     // an escrow approver, a node owner or a group member: Empty (2), Estonia eID (3, no verifier), BTC P2WSH (8, a
@@ -218,7 +229,7 @@ public:
     // The address form of the same question. A bare legacy key is a ZBC key (signs); anything shorter than a type is
     // nothing; otherwise the type decides.
     static bool IsNonSigningAccountAddress(const std::vector<uint8_t>& a) {
-        if (IsBareLegacyKey(a)) return false;
+        if (IsBareLegacyKey(a)) return BareAccountsRefused();   // typed_accounts_only: a bare key is not an account
         if (a.size() < ACCOUNT_TYPE_SIZE) return true;
         return !IsSigningAccountType(ReadInt32LE(a.data()));
     }
@@ -465,15 +476,13 @@ public:
     static uint32_t GetSignatureLength(int32_t account_type);
 
     // ========================================================================
-    // SetupAccountDataset body: PropertyLen(4) + Property + ValueLen(4) + Value
-    //   + SetterAccountAddress(36) + RecipientAccountAddress(36)
-    // Go: common/transaction/setupAccountDataset.go - GetBodyBytes/ParseBodyBytes
+    // SetupAccountDataset body: PropertyLen(4) + Property + ValueLen(4) + Value, exactly what the parser reads
+    // (0.6.0: the setter and recipient accounts the Go layout appended, 72 bytes nobody read, are gone; the setter is
+    // the sender and the recipient the envelope's).
     // ========================================================================
     static std::vector<uint8_t> GetSetupAccountDatasetBodyBytes(
         const std::string& property,
-        const std::string& value,
-        const std::vector<uint8_t>& setter_address,     // Full 36-byte address with type prefix
-        const std::vector<uint8_t>& recipient_address);  // Full 36-byte address with type prefix
+        const std::string& value);
     static Result<model::SetupAccountDatasetTransactionBody> ParseSetupAccountDatasetBodyBytes(
         const std::vector<uint8_t>& body_bytes);
 
@@ -481,9 +490,7 @@ public:
     // Go: common/transaction/removeAccountDataset.go - GetBodyBytes/ParseBodyBytes
     static std::vector<uint8_t> GetRemoveAccountDatasetBodyBytes(
         const std::string& property,
-        const std::string& value,
-        const std::vector<uint8_t>& setter_address,
-        const std::vector<uint8_t>& recipient_address);
+        const std::string& value);
     static Result<model::RemoveAccountDatasetTransactionBody> ParseRemoveAccountDatasetBodyBytes(
         const std::vector<uint8_t>& body_bytes);
 

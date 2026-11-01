@@ -182,10 +182,10 @@ pub const COMMANDS_JSON: &str = r####"[
         "default": ""
       },
       {
-        "name": "opponent_hex",
-        "kind": "hexbytes",
+        "name": "opponent",
+        "kind": "address",
         "required": false,
-        "help": "36-byte opponent account bytes (open seat if empty); a single byte 01 marks a state-channel app",
+        "help": "the invited opponent, any kind that can sign (an open seat if empty)",
         "default": ""
       }
     ],
@@ -216,10 +216,10 @@ pub const COMMANDS_JSON: &str = r####"[
         "from": "params_hex"
       },
       {
-        "name": "opponent_hex",
-        "encoding": "hex",
-        "from": "opponent_hex",
-        "when": "opponent_hex != ''"
+        "name": "opponent",
+        "encoding": "address32",
+        "from": "opponent",
+        "when": "opponent != ''"
       }
     ],
     "example": {
@@ -228,7 +228,7 @@ pub const COMMANDS_JSON: &str = r####"[
       "stake_amount": "100000000",
       "seats": "2",
       "params_hex": "",
-      "opponent_hex": ""
+      "opponent": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
     }
   },
   {
@@ -2629,7 +2629,7 @@ pub const COMMANDS_JSON: &str = r####"[
   },
   {
     "notes": [
-      "The node reads property only (the value is not compared); the setter and recipient accounts at the end are written by the reference and not read."
+      "Node 0.6.0: the body is property and value only (the node does not compare the value); the setter and subject accounts that used to follow are gone."
     ],
     "name": "RemoveAccountDataset",
     "type": 259,
@@ -2680,17 +2680,6 @@ pub const COMMANDS_JSON: &str = r####"[
         "name": "value",
         "encoding": "str32",
         "from": "value"
-      },
-      {
-        "name": "setter",
-        "encoding": "sender_address",
-        "from": "setter",
-        "computed": "the sender's 36-byte account"
-      },
-      {
-        "name": "recipient",
-        "encoding": "address",
-        "from": "recipient"
       }
     ],
     "example": {
@@ -3166,7 +3155,7 @@ pub const COMMANDS_JSON: &str = r####"[
   },
   {
     "notes": [
-      "The node reads property and value only; the setter and recipient accounts after them are written by the reference and not read."
+      "Node 0.6.0: the body is property and value only; the setter and subject accounts that used to follow are gone (the envelope carries both)."
     ],
     "name": "SetupAccountDataset",
     "type": 3,
@@ -3217,17 +3206,6 @@ pub const COMMANDS_JSON: &str = r####"[
         "name": "value",
         "encoding": "str32",
         "from": "value"
-      },
-      {
-        "name": "setter",
-        "encoding": "sender_address",
-        "from": "setter",
-        "computed": "the sender's 36-byte account"
-      },
-      {
-        "name": "recipient",
-        "encoding": "address",
-        "from": "recipient"
       }
     ],
     "example": {
@@ -3413,7 +3391,7 @@ pub const COMMANDS_JSON: &str = r####"[
   },
   {
     "notes": [
-      "An offer only one account may take (node 0.6.0): the body continues after expiry with a u32 LE length and that account's typed address (its 4-byte type first; any kind that can sign). Without it the body is these 40 bytes and the offer is open. zbc-cli swap-create takes it as an optional seventh parameter, counterparty; this description and the ports do not have it yet."
+      "Node 0.6.0: the counterparty is length-prefixed (u32le) and typed; the node refuses a kind that cannot sign. zbc-swap-create (the single program) takes no counterparty: an open offer only."
     ],
     "name": "CreateSwapOffer",
     "type": 18,
@@ -3465,6 +3443,13 @@ pub const COMMANDS_JSON: &str = r####"[
         "required": false,
         "help": "Unix seconds, 0 = good till cancelled",
         "default": "0"
+      },
+      {
+        "name": "counterparty",
+        "kind": "address",
+        "required": false,
+        "help": "the only account that may take the offer, any kind that can sign (empty = an open offer)",
+        "default": ""
       }
     ],
     "body": [
@@ -3492,6 +3477,12 @@ pub const COMMANDS_JSON: &str = r####"[
         "name": "expiry",
         "encoding": "u64le",
         "from": "expiry"
+      },
+      {
+        "name": "counterparty",
+        "encoding": "address32",
+        "from": "counterparty",
+        "when": "counterparty != ''"
       }
     ],
     "example": {
@@ -3499,7 +3490,8 @@ pub const COMMANDS_JSON: &str = r####"[
       "give_amount": "100000000",
       "want_token": "123456789",
       "want_amount": "5000",
-      "expiry": "0"
+      "expiry": "0",
+      "counterparty": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
     }
   },
   {

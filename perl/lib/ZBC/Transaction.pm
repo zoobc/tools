@@ -100,8 +100,9 @@ sub sign_transaction {
     my $digest = signing_digest($unsigned, $ctx);
     my $signature = ZBC::Ed25519::sign($digest, $sender->seed);
     my $full = $unsigned . $signature;
-    my $recipient_json = $recipient eq '' ? '' : (length($recipient) == 36 && substr($recipient, 0, 4) eq "\0\0\0\0") ? to_hex(substr $recipient, 4) : to_hex($recipient);
-    my $payload = { version => 0 + $version, timestamp => 0 + $timestamp, sender_account_address => to_hex($sender->public_key),
+    # 0.6.0 (rule typed_accounts_only): sender and recipient go typed, as signed (the node refuses a bare 32-byte key).
+    my $recipient_json = $recipient eq '' ? '' : to_hex($recipient);
+    my $payload = { version => 0 + $version, timestamp => 0 + $timestamp, sender_account_address => to_hex("\0\0\0\0" . $sender->public_key),
                     recipient_account_address => $recipient_json, transaction_type => 0 + $tx_type, fee => 0 + $fee,
                     transaction_body_bytes => to_hex($body), signature => to_hex($signature) };
     $payload->{message_hex} = to_hex($message) if length $message;

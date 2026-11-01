@@ -40,10 +40,9 @@ final class Transaction
         $digest = self::signingDigest($unsigned, $ctx);
         $signature = $sender->sign($digest);
         $full = $unsigned . $signature;
-        if ($recipient === '') { $recipientJson = ''; }
-        elseif (strlen($recipient) === 36 && substr($recipient, 0, 4) === "\0\0\0\0") { $recipientJson = bin2hex(substr($recipient, 4)); }
-        else { $recipientJson = bin2hex($recipient); }
-        $payload = ['version' => $version, 'timestamp' => $timestamp, 'sender_account_address' => bin2hex($sender->publicKey), 'recipient_account_address' => $recipientJson,
+        // 0.6.0 (rule typed_accounts_only): sender and recipient go typed, as signed (the node refuses a bare 32-byte key).
+        $recipientJson = $recipient === '' ? '' : bin2hex($recipient);
+        $payload = ['version' => $version, 'timestamp' => $timestamp, 'sender_account_address' => bin2hex("\0\0\0\0" . $sender->publicKey), 'recipient_account_address' => $recipientJson,
                     'transaction_type' => $type, 'fee' => $fee, 'transaction_body_bytes' => bin2hex($body), 'signature' => bin2hex($signature)];
         if ($message !== '') { $payload['message_hex'] = bin2hex($message); }
         if ($escrow) { $payload['escrow'] = $escrow->payload(); }

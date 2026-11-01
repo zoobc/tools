@@ -44,8 +44,8 @@ Body: one JSON object, `Content-Type: application/json`. This is the `payload` p
 | `version` | int | 1 |
 | `timestamp` | int | Unix seconds, as signed |
 | `transaction_type` | int | the type code |
-| `sender_account_address` | hex | a ZooBC sender: the bare 32-byte public key (the node adds the 4-byte type 0 prefix) |
-| `recipient_account_address` | hex | a ZooBC recipient: the bare 32-byte key; another chain's: the full typed bytes; no recipient: `""` |
+| `sender_account_address` | hex | the sender's typed account: a ZooBC sender is `00000000` and its 32-byte public key (72 hex). From node 0.6.0 (rule typed_accounts_only) a bare 32-byte key is refused |
+| `recipient_account_address` | hex | the recipient's typed account (a ZooBC one: 72 hex, type first), any chain alike; no recipient: `""` |
 | `fee` | int | atomic units |
 | `transaction_body_bytes` | hex | the body |
 | `signature` | hex | the 64-byte signature |

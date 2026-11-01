@@ -194,17 +194,16 @@ func SignTransaction(tx Unsigned, kp KeyPair, ctx SigningContext) (Signed, error
 	digest := SigningDigest(unsigned, ctx)
 	sig := kp.Sign(digest)
 	full := append(append([]byte{}, unsigned...), sig...)
+	// 0.6.0 (rule typed_accounts_only): sender and recipient go typed, as signed (the node refuses a bare 32-byte key).
 	recipient := ""
-	if len(tx.Recipient) == 36 && bytes.Equal(tx.Recipient[:4], []byte{0, 0, 0, 0}) {
-		recipient = hex.EncodeToString(tx.Recipient[4:])
-	} else if len(tx.Recipient) > 0 {
+	if len(tx.Recipient) > 0 {
 		recipient = hex.EncodeToString(tx.Recipient)
 	}
 	v := int(tx.Version)
 	if v == 0 {
 		v = 1
 	}
-	p := Payload{Version: v, Timestamp: tx.Timestamp, SenderAccountAddress: hex.EncodeToString(tx.Sender[4:]), RecipientAccountAddress: recipient,
+	p := Payload{Version: v, Timestamp: tx.Timestamp, SenderAccountAddress: hex.EncodeToString(tx.Sender), RecipientAccountAddress: recipient,
 		TransactionType: tx.Type, Fee: tx.Fee, TransactionBodyBytes: hex.EncodeToString(tx.Body), Signature: hex.EncodeToString(sig)}
 	if len(tx.Message) > 0 {
 		p.MessageHex = hex.EncodeToString(tx.Message)

@@ -995,22 +995,30 @@ struct EscrowParams {
     int64_t timeout = 0;
     std::string instruction;
     bool active = false;
+    // Funding a receiver-issued EscrowRequest (zbc-cli fund-escrow-request): the envelope is
+    // multi-party and links the request; the approver is given as the request's stored bytes.
+    int64_t escrow_request_id = 0;
+    std::vector<uint8_t> approver_bytes;
 };
 
 inline zoobc::Result<std::vector<uint8_t>> build_escrow_data(
     const EscrowParams& params, json& escrow_json) {
 
-    auto approver_result = parse_address(params.approver);
-    if (!approver_result.IsOk()) {
-        return zoobc::Error{approver_result.GetError()};
-    }
-
     zoobc::model::Escrow escrow_value;
-    escrow_value.approver_address = approver_result.Value().address;
+    if (!params.approver_bytes.empty()) {
+        escrow_value.approver_address = params.approver_bytes;
+    } else {
+        auto approver_result = parse_address(params.approver);
+        if (!approver_result.IsOk()) {
+            return zoobc::Error{approver_result.GetError()};
+        }
+        escrow_value.approver_address = approver_result.Value().address;
+    }
     escrow_value.commission = params.commission;
     escrow_value.timeout = params.timeout;
     escrow_value.instruction = params.instruction;
-    escrow_value.multi_party = false;
+    escrow_value.multi_party = params.escrow_request_id != 0;
+    escrow_value.escrow_request_id = params.escrow_request_id;
     auto bytes = TransactionUtil::GetEscrowBytes(escrow_value);
 
     escrow_json = {
@@ -1020,6 +1028,10 @@ inline zoobc::Result<std::vector<uint8_t>> build_escrow_data(
     };
     if (!escrow_value.instruction.empty()) {
         escrow_json["instruction"] = escrow_value.instruction;
+    }
+    if (escrow_value.multi_party) {
+        escrow_json["multi_party"] = true;
+        escrow_json["escrow_request_id"] = std::to_string(escrow_value.escrow_request_id);
     }
 
     return bytes;
@@ -1641,6 +1653,14 @@ inline std::function<void(const std::string&)> make_emitter(bool json_output) {
 // Build JSON payload for submission
 // ============================================================================
 
+// A bare 32-byte ZBC public key as its typed account (00000000 || key); anything else unchanged.
+inline std::vector<uint8_t> typed_account(const std::vector<uint8_t>& a) {
+    if (!TransactionUtil::IsBareLegacyKey(a)) return a;
+    std::vector<uint8_t> t = {0, 0, 0, 0};
+    t.insert(t.end(), a.begin(), a.end());
+    return t;
+}
+
 inline std::string build_json_payload(
     int32_t version,
     int64_t timestamp,
@@ -1655,11 +1675,14 @@ inline std::string build_json_payload(
     int64_t survival = 0,
     uint32_t expiry = 0) {
 
+    // 0.6.0 (rule typed_accounts_only): an account is typed. The node refuses a bare 32-byte key as a sender or a
+    // recipient ("accounts are typed: a bare 32-byte key is not an account on this chain"), so a bare ZBC public key
+    // is sent as the ZBC account 00000000 || key, the bytes the signature covers. Typed addresses go as they are.
     json tx_json = {
         {"version", version},
         {"timestamp", timestamp},
-        {"sender_account_address", bytes_to_hex(sender_pubkey)},
-        {"recipient_account_address", bytes_to_hex(recipient_pubkey)},
+        {"sender_account_address", bytes_to_hex(typed_account(sender_pubkey))},
+        {"recipient_account_address", bytes_to_hex(typed_account(recipient_pubkey))},
         {"transaction_type", tx_type},
         {"fee", fee},
         {"transaction_body_bytes", bytes_to_hex(body_bytes)},
@@ -1773,20 +1796,8 @@ inline int run_transaction(
         }
         auto tx_hash = hash_result.Value();
 
-        // For ZBC recipients, strip type prefix for backward compat in JSON payload
-        std::vector<uint8_t> recipient_for_json;
-        if (!recipient_address.empty() && recipient_address.size() >= 4) {
-            // Check if ZBC type (0)
-            uint32_t rtype = static_cast<uint32_t>(recipient_address[0]) |
-                            (static_cast<uint32_t>(recipient_address[1]) << 8) |
-                            (static_cast<uint32_t>(recipient_address[2]) << 16) |
-                            (static_cast<uint32_t>(recipient_address[3]) << 24);
-            if (rtype == 0) {
-                recipient_for_json = std::vector<uint8_t>(recipient_address.begin() + 4, recipient_address.end());
-            } else {
-                recipient_for_json = recipient_address;
-            }
-        }
+        // 0.6.0: the recipient goes typed, as signed (a ZBC recipient used to lose its type prefix here).
+        const std::vector<uint8_t> recipient_for_json = recipient_address;
 
         auto json_payload = build_json_payload(
             version, timestamp, sender_pubkey, recipient_for_json,
@@ -1797,8 +1808,8 @@ inline int run_transaction(
         const json contract_fields = {
             {"transaction_hash", bytes_to_hex(tx_hash)},
             {"transaction_type", tx_type},
-            {"sender_account_address", bytes_to_hex(sender_pubkey)},
-            {"recipient_account_address", bytes_to_hex(recipient_for_json)},
+            {"sender_account_address", bytes_to_hex(typed_account(sender_pubkey))},
+            {"recipient_account_address", bytes_to_hex(typed_account(recipient_for_json))},
             {"fee", params.fee},
             {"timestamp", timestamp},
             {"version", version},

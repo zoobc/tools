@@ -68,13 +68,10 @@ object Transaction {
         val digest = signingDigest(unsigned, ctx)
         val signature = sender.sign(digest)
         val full = unsigned + signature
-        val recipientJson = when {
-            recipient.isEmpty() -> ""
-            recipient.size == 36 && recipient.copyOf(4).all { it == 0.toByte() } -> Encoding.bytesToHex(recipient.copyOfRange(4, 36))
-            else -> Encoding.bytesToHex(recipient)
-        }
+        // 0.6.0 (rule typed_accounts_only): sender and recipient go typed, as signed (the node refuses a bare 32-byte key).
+        val recipientJson = if (recipient.isEmpty()) "" else Encoding.bytesToHex(recipient)
         val payload = buildJsonObject {
-            put("version", version); put("timestamp", timestamp); put("sender_account_address", Encoding.bytesToHex(sender.publicKey))
+            put("version", version); put("timestamp", timestamp); put("sender_account_address", Encoding.bytesToHex(ByteArray(4) + sender.publicKey))
             put("recipient_account_address", recipientJson); put("transaction_type", type); put("fee", fee)
             put("transaction_body_bytes", Encoding.bytesToHex(body)); put("signature", Encoding.bytesToHex(signature))
             if (message.isNotEmpty()) put("message_hex", Encoding.bytesToHex(message))

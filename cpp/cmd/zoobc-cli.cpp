@@ -14,6 +14,9 @@
 #include "zoobc/common/chain_identity.h"
 #include "zoobc/transaction/account_group.h"
 #include "zoobc/transaction/escrow_request_rules.h"
+#include "zoobc/transaction/batch_rules.h"
+#include <fstream>
+#include <map>
 #include <sstream>
 #include <ctime>
 using namespace txc;
@@ -36,6 +39,47 @@ static std::vector<uint8_t> hx(const std::string& h){
 static std::string& chain_hint(){ static std::string s; return s; }
 // --token N, parked by main() for the one builder that reads it (liquid-payment).
 static int64_t& liquid_token_flag(){ static int64_t t = 0; return t; }
+// Command-specific options (0.6.0): main() lifts them out of argv before the shared parser sees
+// them, and parks them here for the builder of the one command that reads each.
+//   store-file --private / --allow <a,b,...>
+struct CmdFlag { const char* name; bool takes_value; const char* help; };
+static const std::map<std::string, std::vector<CmdFlag>>& cmd_flags(){
+    static const std::map<std::string, std::vector<CmdFlag>> f = {
+        {"store-file", {{"--private", false,
+            "  --private               Owner only: the node serves the file's pieces to its owner alone.\n"
+            "                          Not encryption: pieces replicate in the clear; encrypt what must stay secret.\n"},
+                        {"--allow", true,
+            "  --allow <a,b,...>       Also serve it to these accounts (at most 16, comma-separated).\n"
+            "                          Either flag needs the storage_acl rule active on the chain.\n"}}},
+    };
+    return f;
+}
+static std::map<std::string, std::string>& cmd_opt(){ static std::map<std::string, std::string> o; return o; }
+// Extra --help text for commands whose usage the shared printer cannot say.
+static const std::map<std::string, std::string>& cmd_help(){
+    static const std::map<std::string, std::string> h = {
+        {"send-zbc-batch",
+         "File format: one payment per line, `recipient,amount` (amount in atomic ZBC, 1 ZBC = 100000000);\n"
+         "blank lines and lines starting with # are skipped; a comma, tab or space separates the two fields.\n"
+         "The payments go out as SendZBCBatch transactions of at most 25 payments each, sent one after\n"
+         "the other. --fee is PER PAYMENT (default 0.05 ZBC): a batch of n payments pays n x fee, the\n"
+         "minimum the node asks of a batch. Every line is checked before anything is sent; the first\n"
+         "transaction the node refuses stops the run, and the table says which lines were not sent.\n"
+         "Output: one summary table (--verbose) or one JSON object (default).\n"},
+        {"transfer-token-batch",
+         "File format: one transfer per line, `token_id,recipient,amount` (amount in the token's atomic\n"
+         "units); blank lines and lines starting with # are skipped. Transfers go out as\n"
+         "TransferTokenBatch transactions of at most 32 transfers each, sent one after the other.\n"
+         "--fee is PER TRANSFER (default 0.05 ZBC). Every line is checked before anything is sent; the\n"
+         "first refusal stops the run. Output: one summary table (--verbose) or one JSON object.\n"},
+        {"fund-escrow-request",
+         "Funds a receiver-issued escrow request naming you as the payer: reads it from the node\n"
+         "(GET /api/v1/escrow_requests?address=<you>) and sends the escrowed SendZBC it asks for, with\n"
+         "the request's exact amount, approver, commission, deadline and instruction, linked to the\n"
+         "request (multi-party envelope). The request must be pending. --escrow-* options are not used.\n"},
+    };
+    return h;
+}
 static ParamDef PK(){ return {"Sender private key","sender_privkey","Sender private key (64 hex)","",true,nullptr}; }
 static ParamDef P(const char* n,const char* k,const char* pr,const char* d="",bool req=true){ return {n,k,pr,d,req,nullptr}; }
 // Decode a hex string to bytes (for object ids). Throws on odd length / non-hex.
@@ -94,6 +138,7 @@ static std::string category_of(const std::string& c){
     static const std::map<std::string,std::string> cat = {
         {"send-zbc","value"},{"liquid-payment","value"},{"liquid-payment-stop","value"},
         {"transfer-token","tokens"},{"issue-token","tokens"},{"mint-token","tokens"},{"burn-token","tokens"},{"finance-token","tokens"},
+        {"send-zbc-batch","value"},{"transfer-token-batch","tokens"},{"fund-escrow-request","account"},
         {"swap-create","exchange"},{"swap-accept","exchange"},{"swap-cancel","exchange"},{"market-create","exchange"},{"order-place","exchange"},{"order-cancel","exchange"},
         {"app-create","apps"},{"app-join","apps"},{"app-move","apps"},{"app-resign","apps"},{"app-claim","apps"},{"app-settle","apps"},
         {"store-file","storage"},{"fund-stored-file","storage"},{"add-prepaid-storage","storage"},{"close-longevity","storage"},
@@ -147,6 +192,157 @@ static int group_consent_command(bool link, std::vector<std::string>& v, ParsedP
                            link ? "SUCCESS: link-account submitted!" : "SUCCESS: transfer-group-control submitted!");
 }
 
+// ---- batches from a file (send-zbc-batch, transfer-token-batch; SendZBCBatch 257, TransferTokenBatch 267) ----
+// Every line is read and checked first (a bad line is a usage error naming it, and nothing is sent);
+// then the actions go out in batches of the node's maximum (25 payments, 32 token transfers), one
+// transaction after the other, each through run_transaction exactly as a single command would send
+// it. The first refusal stops the run. One summary at the end: a table (--verbose) or one JSON object.
+struct BatchAction { int line = 0; int64_t token = 0; std::vector<uint8_t> recipient; std::string display; int64_t amount = 0; };
+
+static std::vector<std::string> split_fields(const std::string& line){
+    std::vector<std::string> f; std::string cur;
+    for(char c: line){ if(c==','||c=='\t'||c==' '){ if(!cur.empty()){ f.push_back(cur); cur.clear(); } } else cur+=c; }
+    if(!cur.empty()) f.push_back(cur);
+    return f;
+}
+
+static int batch_command(bool tokens, std::vector<std::string>& v, ParsedParams& params){
+    auto emit_error = make_emitter(params.json_output);
+    auto kp = derive_zbc_keypair(v[0]);
+    if (!kp.IsOk()) return fail(emit_error, exit_code::USAGE, kp.GetError().ToString());
+    std::ifstream in(v[1]);
+    if (!in) return fail(emit_error, exit_code::USAGE, "cannot read the file " + v[1]);
+    std::vector<BatchAction> acts; std::string line; int n = 0;
+    while (std::getline(in, line)) {
+        ++n;
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        size_t a = line.find_first_not_of(" \t");
+        if (a == std::string::npos || line[a] == '#') continue;
+        auto f = split_fields(line.substr(a));
+        const size_t want = tokens ? 3 : 2;
+        const std::string where = v[1] + " line " + std::to_string(n) + ": ";
+        if (f.size() != want)
+            return fail(emit_error, exit_code::USAGE, where + "expected " + (tokens ? "token_id,recipient,amount" : "recipient,amount") +
+                        " (" + std::to_string(f.size()) + " fields given)");
+        BatchAction act; act.line = n;
+        try {
+            if (tokens) { act.token = parse_id_i64(f[0], "token_id"); if (act.token == 0) throw std::runtime_error("token_id 0 is ZBC: use send-zbc-batch"); }
+            auto r = parse_address(f[tokens ? 1 : 0], chain_hint());
+            if (!r.IsOk()) throw std::runtime_error("invalid recipient " + f[tokens ? 1 : 0]);
+            act.recipient = r.Value().address; act.display = r.Value().display;
+            act.amount = static_cast<int64_t>(parse_whole_u64(f[tokens ? 2 : 1], "amount", static_cast<uint64_t>(INT64_MAX)));
+            if (act.amount <= 0) throw std::runtime_error("amount must be > 0");
+        } catch (const std::exception& e) { return fail(emit_error, exit_code::USAGE, where + e.what()); }
+        acts.push_back(std::move(act));
+        if (acts.size() > 10000) return fail(emit_error, exit_code::USAGE, v[1] + ": more than 10000 lines; split the file");
+    }
+    if (acts.empty()) return fail(emit_error, exit_code::USAGE, v[1] + ": no " + (tokens ? "transfers" : "payments") + " in the file");
+
+    const size_t per = tokens ? zoobc::transaction::batch::kMaxTokenTransfers : zoobc::transaction::batch::kMaxPayments;
+    const uint32_t type = tokens ? (uint32_t)TT::TransferTokenBatch : (uint32_t)TT::SendZBCBatch;
+    json rows = json::array(); int code = exit_code::OK; size_t sent_lines = 0;
+    for (size_t start = 0; start < acts.size(); start += per) {
+        const size_t end = std::min(acts.size(), start + per);
+        json row = {{"index", static_cast<int>(rows.size()) + 1}, {"first_line", acts[start].line}, {"last_line", acts[end - 1].line},
+                    {"actions", end - start}};
+        int64_t total = 0;
+        for (size_t i = start; i < end; ++i) total += acts[i].amount;
+        row["total_amount"] = total;
+        if (code != exit_code::OK) { row["status"] = "not sent"; rows.push_back(row); continue; }
+        std::vector<uint8_t> body;
+        if (tokens) {
+            std::vector<zoobc::transaction::batch::TokenTransfer> t;
+            for (size_t i = start; i < end; ++i) t.push_back({acts[i].token, acts[i].recipient, acts[i].amount});
+            body = zoobc::transaction::batch::EncodeTokenTransfers(t);
+        } else {
+            std::vector<zoobc::transaction::batch::Payment> p;
+            for (size_t i = start; i < end; ++i) p.push_back({acts[i].recipient, acts[i].amount});
+            body = zoobc::transaction::batch::EncodePayments(p);
+        }
+        ParsedParams one = params; one.json_output = true;
+        one.fee = params.fee * static_cast<int64_t>(end - start);
+        row["fee"] = one.fee;
+        std::ostringstream cap; auto* old = std::cout.rdbuf(cap.rdbuf());
+        int rc = exit_code::INTERNAL;
+        try { rc = run_transaction(one, type, kp.Value().public_key, std::vector<uint8_t>{}, body, kp.Value(), KeyType::ZBC,
+                                   json{{"actions", end - start}}, emit_error_json); }
+        catch (...) { std::cout.rdbuf(old); throw; }
+        std::cout.rdbuf(old);
+        json res = json::parse(cap.str(), nullptr, false);
+        if (res.is_object() && res.contains("transaction_hash")) row["transaction_hash"] = res["transaction_hash"];
+        if (rc == exit_code::OK) { row["status"] = params.offline ? "signed (offline)" : "submitted"; sent_lines += end - start;
+            if (params.offline && res.is_object() && res.contains("transaction_bytes")) row["transaction_bytes"] = res["transaction_bytes"]; }
+        else { code = rc; row["status"] = "refused"; row["exit_code"] = rc; row["error_class"] = exit_code::name(rc);
+            row["error"] = res.is_object() && res.contains("error") ? res["error"] : json(cap.str()); }
+        rows.push_back(row);
+    }
+    if (params.json_output) {
+        json out = {{"success", code == exit_code::OK}, {"command", tokens ? "transfer-token-batch" : "send-zbc-batch"},
+                    {"lines", acts.size()}, {"lines_sent", sent_lines}, {"transactions", rows}};
+        if (code != exit_code::OK) { out["exit_code"] = code; out["error_class"] = exit_code::name(code); }
+        std::cout << out.dump(2) << std::endl;
+    } else {
+        std::cout << (tokens ? "transfer-token-batch" : "send-zbc-batch") << ": " << acts.size() << " lines, " << rows.size()
+                  << " transaction(s)\n\n";
+        std::cout << "  #  lines        actions  total amount        fee         status            transaction hash\n";
+        for (const auto& r : rows) {
+            char buf[256];
+            const std::string lines = std::to_string(r["first_line"].get<int>()) + "-" + std::to_string(r["last_line"].get<int>());
+            std::snprintf(buf, sizeof(buf), "%3d  %-11s  %7d  %18lld  %10lld  %-16s  ", r["index"].get<int>(), lines.c_str(),
+                          static_cast<int>(r["actions"].get<size_t>()), static_cast<long long>(r["total_amount"].get<int64_t>()),
+                          static_cast<long long>(r.value("fee", int64_t{0})), r["status"].get<std::string>().c_str());
+            std::cout << buf << r.value("transaction_hash", std::string("-")) << "\n";
+            if (r.contains("error")) std::cout << "     " << (r["error"].is_string() ? r["error"].get<std::string>() : r["error"].dump()) << "\n";
+        }
+        std::cout << "\n" << sent_lines << " of " << acts.size() << " lines " << (params.offline ? "signed" : "submitted")
+                  << (code == exit_code::OK ? "" : std::string("; stopped: ") + exit_code::name(code)) << "\n";
+    }
+    return code;
+}
+
+// ---- fund-escrow-request: the payer's side of a receiver-issued EscrowRequest (type 260) ----
+static int fund_escrow_request_command(std::vector<std::string>& v, ParsedParams& params){
+    auto emit_error = make_emitter(params.json_output);
+    auto kp = derive_zbc_keypair(v[0]);
+    if (!kp.IsOk()) return fail(emit_error, exit_code::USAGE, kp.GetError().ToString());
+    const int64_t id = parse_id_i64(v[1], "request_id");
+    if (params.escrow.active)
+        return fail(emit_error, exit_code::USAGE, "--escrow-* options are not used: the request fixes the escrow terms");
+    const std::string me = zoobc::crypto::ZoobcAddress::Encode(kp.Value().public_key, "ZBC");
+    const ApiTarget t = parse_api_url(params.api_url);
+    httplib::Result res = with_api_client(t, [&](auto& c) {
+        return c.Get((t.path_prefix + "/api/v1/escrow_requests?address=" + me).c_str()); });
+    if (!res) return fail(emit_error, exit_code::UNREACHABLE, "cannot reach the node at " + params.api_url + " to read the request");
+    if (res->status != 200) return fail(emit_error, res->status >= 500 ? exit_code::NODE_BUSY : exit_code::REJECTED,
+                                        "the node answered HTTP " + std::to_string(res->status) + " for the escrow requests: " + res->body);
+    json j = json::parse(res->body, nullptr, false);
+    if (!j.is_object() || !j.contains("escrow_requests") || !j["escrow_requests"].is_array())
+        return fail(emit_error, exit_code::INTERNAL, "unexpected escrow_requests answer from the node");
+    const json* req = nullptr;
+    for (const auto& r : j["escrow_requests"])
+        if (r.value("id_str", std::string()) == std::to_string(id)) { req = &r; break; }
+    if (!req) return fail(emit_error, exit_code::NOT_FOUND, "no escrow request " + std::to_string(id) + " names " + me + " as the payer");
+    const std::string status = req->value("status_name", std::string());
+    if (status != "pending") return fail(emit_error, exit_code::REJECTED, "escrow request " + std::to_string(id) + " is " + status + ", not pending");
+    std::vector<uint8_t> requester = hexb(req->value("requester_address", std::string()));
+    const int64_t amount = req->value("proposed_amount", int64_t{0});
+    params.escrow.active = true;
+    params.escrow.approver_bytes = hexb(req->value("approver_address", std::string()));
+    params.escrow.commission = req->value("commission", int64_t{0});
+    params.escrow.timeout = req->value("timeout", int64_t{0});
+    const std::string ih = req->value("instruction_hex", std::string());
+    if (!ih.empty()) { auto b = hexb(ih); params.escrow.instruction.assign(b.begin(), b.end()); }
+    else params.escrow.instruction = req->value("instruction", std::string());
+    params.escrow.escrow_request_id = id;
+    if (requester.empty() || params.escrow.approver_bytes.empty() || amount <= 0)
+        return fail(emit_error, exit_code::INTERNAL, "the node's escrow request " + std::to_string(id) + " is incomplete");
+    if (requester.size() == 32) requester.insert(requester.begin(), 4, 0);   // a bare legacy key is the typed ZBC account
+    json extra = {{"escrow_request_id", std::to_string(id)}, {"amount", amount}, {"requester", req->value("requester_address", std::string())}};
+    return run_transaction(params, (uint32_t)TT::SendZBC, kp.Value().public_key, requester,
+                           TransactionUtil::GetSendZBCBodyBytes(amount), kp.Value(), KeyType::ZBC, extra, emit_error,
+                           "SUCCESS: fund-escrow-request submitted!");
+}
+
 static std::map<std::string, Cmd> registry() {
     std::map<std::string, Cmd> m;
     // ---- value transfer ----
@@ -155,6 +351,12 @@ static std::map<std::string, Cmd> registry() {
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
             auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid recipient address"); rec=r.Value().address;
             int64_t amt=N(v,2); body=TransactionUtil::GetSendZBCBodyBytes(amt); ex={{"amount",amt}}; }};
+    m["send-zbc-batch"] = {"Send ZBC to many recipients from a file (SendZBCBatch, 25 per transaction)", (uint32_t)TT::SendZBCBatch, false,
+        {PK(), P("File","file","path of a file of `recipient,amount` lines")}, nullptr,
+        [](std::vector<std::string>& v, ParsedParams& p){ return batch_command(false, v, p); }};
+    m["transfer-token-batch"] = {"Transfer tokens to many recipients from a file (TransferTokenBatch, 32 per transaction)", (uint32_t)TT::TransferTokenBatch, false,
+        {PK(), P("File","file","path of a file of `token_id,recipient,amount` lines")}, nullptr,
+        [](std::vector<std::string>& v, ParsedParams& p){ return batch_command(true, v, p); }};
     // ---- colored-coin tokens ----
     m["issue-token"] = {"Issue a colored-coin token", (uint32_t)TT::IssueToken, false,
         {PK(), P("Symbol","symbol","symbol e.g. GOLD"), P("Name","name","token name"), P("Decimals","decimals","0-8"),
@@ -232,12 +434,17 @@ static std::map<std::string, Cmd> registry() {
     m["app-create"] = {"Create an app (2P or solo-vs-house)", (uint32_t)TT::CreateApp, false,
         {PK(), P("App type","app_type","1 ttt,3 c4,6 gomoku,16 dice,17 coinflip"), P("Stake token","stake_token","0=ZBC"),
          P("Stake amount","stake_amount","atomic"), P("Seats","seats","2=PvP, 1=solo","2",false),
-         P("Params (hex)","params_hex","solo bet e.g. coinflip choice '00'","",false), P("Opponent (hex)","opponent_hex","36-byte opponent (open if empty)","",false)},
+         P("Params (hex)","params_hex","solo bet e.g. coinflip choice '00'","",false), P("Opponent","opponent","the invited opponent: any address that can sign, or its typed-account hex (open if empty)","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>&, std::vector<uint8_t>& body, json& ex){
             int gt=NI(v,1); int64_t st=parse_id_i64(v[2],"stake_token"),sa=N(v,3); int seats=(v.size()>4&&!v[4].empty())?NI(v,4):2;
             std::vector<uint8_t> prm=(v.size()>5&&!v[5].empty())?hx(v[5]):std::vector<uint8_t>();
             body.push_back((uint8_t)gt); u64(body,st); u64(body,sa); body.push_back((uint8_t)seats); u16(body,(int)prm.size()); body.insert(body.end(),prm.begin(),prm.end());
-            if(v.size()>6&&!v[6].empty()){ auto op=hx(v[6]); body.insert(body.end(),op.begin(),op.end()); }
+            if(v.size()>6&&!v[6].empty()){   // 0.6.0: u32 LE length + the opponent's typed account (any kind that signs)
+                std::vector<uint8_t> op; auto pa=parse_address(v[6], chain_hint());
+                if(pa.IsOk()) op=pa.Value().address; else op=hx(v[6]);
+                if(op.size()<4||op.size()>255) throw std::runtime_error("invalid opponent address");
+                const uint32_t n=(uint32_t)op.size(); for(int i=0;i<4;i++) body.push_back((uint8_t)((n>>(8*i))&0xff));
+                body.insert(body.end(),op.begin(),op.end()); ex["opponent"]=v[6]; }
             ex={{"app_type",gt},{"stake_token",st},{"stake_amount",sa},{"seats",seats}}; }};
     m["app-join"] = {"Join an open app", (uint32_t)TT::JoinApp, false,
         {PK(), P("App id","app_id","app id")},
@@ -327,7 +534,7 @@ static std::map<std::string, Cmd> registry() {
             std::string dsval=v[3];
             if(v.size()>4 && !v[4].empty()){ try { dsval=b64d(v[4]); } catch(const std::exception& e){ throw std::runtime_error(std::string("value_b64 is not valid base64: ")+e.what()); } }
             if(dsval.empty()) throw std::runtime_error("give value or value_b64");
-            body=TransactionUtil::GetSetupAccountDatasetBodyBytes(v[2], dsval, setter, rec); ex={{"property",v[2]},{"value_bytes",(int)dsval.size()}}; }};
+            body=TransactionUtil::GetSetupAccountDatasetBodyBytes(v[2], dsval); ex={{"property",v[2]},{"value_bytes",(int)dsval.size()}}; }};
     m["remove-dataset"] = {"Remove an account-dataset property", (uint32_t)TT::RemoveAccountDataset, true,
         {PK(), P("Subject","recipient","dataset subject address (ZBC_), or `self` for the signer's own account"), P("Property","property","key"), P("Value","value","not needed: the node removes the property whatever value is sent (accepted for older scripts)","",false), P("Value (base64)","value_b64","not needed, as value","",false)},
         [](std::vector<std::string>& v, std::vector<uint8_t>& rec, std::vector<uint8_t>& body, json& ex){
@@ -340,7 +547,7 @@ static std::map<std::string, Cmd> registry() {
             else { auto r=parse_address(v[1], chain_hint()); if(!r.IsOk()) throw std::runtime_error("invalid subject address (a ZBC_ address, or `self`)"); rec=r.Value().address; }
             std::string dsval=v[3];
             if(v.size()>4 && !v[4].empty()){ try { dsval=b64d(v[4]); } catch(const std::exception& e){ throw std::runtime_error(std::string("value_b64 is not valid base64: ")+e.what()); } }
-            body=TransactionUtil::GetRemoveAccountDatasetBodyBytes(v[2], dsval, setter, rec); ex={{"property",v[2]},{"value_bytes",(int)dsval.size()}}; }};
+            body=TransactionUtil::GetRemoveAccountDatasetBodyBytes(v[2], dsval); ex={{"property",v[2]},{"value_bytes",(int)dsval.size()}}; }};
     // ---- dataset objects: transfer / accept / policy / delete ----
     m["transfer-dataset"] = {"Propose transfer of a dataset object", (uint32_t)TT::TransferDataset, false,
         {PK(), P("Object id","object_id","dataset object id (64 hex = creating tx hash)"), P("New owner","new_owner","new owner address (ZBC_)")},
@@ -376,6 +583,9 @@ static std::map<std::string, Cmd> registry() {
             if(amt<=0) throw std::runtime_error("amount must be > 0");
             u64(body,tid); u64(body,amt); ex={{"token_id",tid},{"amount",amt}};
             if(v.size()>4&&!v[4].empty()){ int64_t sv=N(v,4); if(sv<0) throw std::runtime_error("survival must be >= 0"); body.push_back(0); u64(body,sv); ex["survival"]=sv; } }};
+    m["fund-escrow-request"] = {"Fund an escrow request that names you as the payer (escrowed SendZBC linked to it)", (uint32_t)TT::SendZBC, false,
+        {PK(), P("Request id","request_id","the escrow request id (decimal)")}, nullptr,
+        [](std::vector<std::string>& v, ParsedParams& p){ return fund_escrow_request_command(v, p); }};
     // ---- account / escrow ----
     m["escrow-request"] = {"Create a recipient-initiated escrow request", (uint32_t)TT::EscrowRequest, false,
         {PK(), P("Proposed sender","proposed_sender","proposed sender address"),
@@ -567,7 +777,25 @@ static std::map<std::string, Cmd> registry() {
             body.insert(body.end(), root.begin(), root.end());
             u64(body,total); u32(body,psz); u64(body,dep); u32(body,pcount);
             body.insert(body.end(), pieces.begin(), pieces.end());
-            ex={{"file_root",bytes_to_hex(root)},{"total_size",total},{"piece_size",psz},{"deposit",dep},{"piece_count",pcount}}; }};
+            ex={{"file_root",bytes_to_hex(root)},{"total_size",total},{"piece_size",psz},{"deposit",dep},{"piece_count",pcount}};
+            // Access control (rule storage_acl): flags(1) bit0 owner-only, bit1 an allow list follows as
+            // count(u8) | count x [addr_len(u8) | address]. Neither flag: no block, a public file as before.
+            const bool priv=cmd_opt().count("--private")>0; auto al=cmd_opt().find("--allow");
+            if(priv||al!=cmd_opt().end()){
+                std::vector<std::vector<uint8_t>> allow; json shown=json::array();
+                if(al!=cmd_opt().end()){
+                    for(const auto& a: split_csv(al->second)){
+                        auto r=parse_address(a, chain_hint()); if(!r.IsOk()) throw std::runtime_error("--allow: invalid address "+a);
+                        if(r.Value().address.size()>255) throw std::runtime_error("--allow: address too long: "+a);
+                        allow.push_back(r.Value().address); shown.push_back(r.Value().display); }
+                    if(allow.empty()) throw std::runtime_error("--allow needs at least one address");
+                    if(allow.size()>16) throw std::runtime_error("--allow takes at most 16 addresses ("+std::to_string(allow.size())+" given)");
+                }
+                body.push_back((uint8_t)((priv?1:0)|(allow.empty()?0:2)));
+                if(!allow.empty()){ body.push_back((uint8_t)allow.size());
+                    for(const auto& a: allow){ body.push_back((uint8_t)a.size()); body.insert(body.end(), a.begin(), a.end()); } }
+                ex["access"]=priv?"private":"public"; if(!allow.empty()) ex["allow"]=shown;
+            } }};
     m["fund-stored-file"] = {"Add to an active stored file's rent deposit (anyone may; nothing added comes back)", (uint32_t)TT::FundStoredFile, false,
         {PK(), P("File root","file_root","the stored file's root (64 hex)"),
          P("Amount","amount","atomic ZBC to add (>= 1000000 = 0.01 ZBC)")},
@@ -987,8 +1215,31 @@ int main(int argc, char* argv[]) {
     config.name = "zbc-cli " + cmd; config.description = c.desc; config.tx_type = c.tx_type;
     config.params = c.params; config.has_recipient = c.has_recipient;
     ParsedParams params; auto emit_error = make_emitter(params.json_output);
+    // This command's own options (cmd_flags) come out of argv here; the shared parser refuses any
+    // option it does not know, so another command's option still fails as a usage error.
+    std::vector<char*> args{argv[1]};
+    {
+        auto fl = cmd_flags().find(cmd);
+        for (int i = 2; i < argc; ++i) {
+            const std::string a = argv[i];
+            if (a == "--help" || a == "-h") {
+                print_tool_usage(config, argv[1]);
+                if (fl != cmd_flags().end()) { std::cout << "\nOptions of " << cmd << ":\n"; for (const auto& f : fl->second) std::cout << f.help; }
+                auto h = cmd_help().find(cmd); if (h != cmd_help().end()) std::cout << "\n" << h->second;
+                return 0;
+            }
+            const CmdFlag* hit = nullptr;
+            if (fl != cmd_flags().end()) for (const auto& f : fl->second) if (a == f.name) hit = &f;
+            if (!hit) { args.push_back(argv[i]); continue; }
+            if (cmd_opt().count(a)) return fail(emit_error, exit_code::USAGE, a + " is given twice");
+            if (hit->takes_value) {
+                if (i + 1 >= argc) return fail(emit_error, exit_code::USAGE, a + " requires a value");
+                cmd_opt()[a] = argv[++i];
+            } else cmd_opt()[a] = "1";
+        }
+    }
     // shift argv by 1 so parse_params consumes the subcommand as argv[0]
-    int rc = parse_params(config, argc - 1, argv + 1, params, [&](const std::string& mm){ emit_error(mm); });
+    int rc = parse_params(config, static_cast<int>(args.size()), args.data(), params, [&](const std::string& mm){ emit_error(mm); });
     if (rc != 0) return rc == -1 ? 0 : rc;
     emit_error = make_emitter(params.json_output);
     if (!init_sodium(emit_error)) return exit_code::INTERNAL;

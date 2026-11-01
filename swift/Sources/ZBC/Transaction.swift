@@ -94,11 +94,9 @@ public enum Transaction {
         let digest = signingDigest(unsigned, ctx)
         let signature = sender.sign(digest)
         let full = unsigned + signature
-        let recipientJson: String
-        if recipient.isEmpty { recipientJson = "" }
-        else if recipient.count == 36 && recipient[0..<4].allSatisfy({ $0 == 0 }) { recipientJson = Enc.hex(Array(recipient[4...])) }
-        else { recipientJson = Enc.hex(recipient) }
-        var payload: [(String, Any)] = [("version", Int(version)), ("timestamp", timestamp), ("sender_account_address", Enc.hex(sender.publicKey)),
+        // 0.6.0 (rule typed_accounts_only): sender and recipient go typed, as signed (the node refuses a bare 32-byte key).
+        let recipientJson = recipient.isEmpty ? "" : Enc.hex(recipient)
+        var payload: [(String, Any)] = [("version", Int(version)), ("timestamp", timestamp), ("sender_account_address", Enc.hex([0, 0, 0, 0] + sender.publicKey)),
             ("recipient_account_address", recipientJson), ("transaction_type", Int(type)), ("fee", fee), ("transaction_body_bytes", Enc.hex(body)), ("signature", Enc.hex(signature))]
         if !message.isEmpty { payload.append(("message_hex", Enc.hex(message))) }
         if let e = escrow { payload.append(("escrow", try e.payload())) }

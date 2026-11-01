@@ -50,6 +50,13 @@
       "required": false,
       "help": "Unix seconds, 0 = good till cancelled",
       "default": "0"
+    },
+    {
+      "name": "counterparty",
+      "kind": "address",
+      "required": false,
+      "help": "the only account that may take the offer, any kind that can sign (empty = an open offer)",
+      "default": ""
     }
   ],
   "body": [
@@ -77,6 +84,12 @@
       "name": "expiry",
       "encoding": "u64le",
       "from": "expiry"
+    },
+    {
+      "name": "counterparty",
+      "encoding": "address32",
+      "from": "counterparty",
+      "when": "counterparty != ''"
     }
   ],
   "example": {
@@ -84,9 +97,10 @@
     "give_amount": "100000000",
     "want_token": "123456789",
     "want_amount": "5000",
-    "expiry": "0"
+    "expiry": "0",
+    "counterparty": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
   },
   "notes": [
-    "An offer only one account may take (node 0.6.0): the body continues after expiry with a u32 LE length and that account's typed address (its 4-byte type first; any kind that can sign). Without it the body is these 40 bytes and the offer is open. zbc-cli swap-create takes it as an optional seventh parameter, counterparty; this description and the ports do not have it yet."
+    "Node 0.6.0: the counterparty is length-prefixed (u32le) and typed; the node refuses a kind that cannot sign. zbc-swap-create (the single program) takes no counterparty: an open offer only."
   ]
 }

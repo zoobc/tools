@@ -74,7 +74,7 @@ Every object carries `"success": true|false`.
 |-----|---------|
 | `transaction_hash` | Hex. The transaction's identity on the chain. |
 | `transaction_type` | Numeric type code. |
-| `sender_account_address`, `recipient_account_address` | Hex public keys as sent. |
+| `sender_account_address`, `recipient_account_address` | The typed accounts as sent (a ZooBC account: 72 hex, `00000000` and the key). |
 | `fee`, `timestamp` | As signed. |
 | `api_response` | The node's reply, verbatim. |
 

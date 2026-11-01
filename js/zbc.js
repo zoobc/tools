@@ -3480,11 +3480,11 @@ var ZBC = (() => {
     const signature = sign(digest, kp.seed);
     const bytes = concat(unsigned, signature);
     const hash = sha3_256(bytes);
-    const recipientForJson = tx.recipient.length === 0 ? "" : tx.recipient.length === 36 && tx.recipient[0] === 0 && tx.recipient[1] === 0 && tx.recipient[2] === 0 && tx.recipient[3] === 0 ? bytesToHex(tx.recipient.slice(4)) : bytesToHex(tx.recipient);
+    const recipientForJson = tx.recipient.length === 0 ? "" : bytesToHex(tx.recipient);
     const payload = {
       version: tx.version ?? 1,
       timestamp: BigInt(tx.timestamp),
-      sender_account_address: bytesToHex(tx.sender.slice(4)),
+      sender_account_address: bytesToHex(tx.sender),
       recipient_account_address: recipientForJson,
       transaction_type: tx.type,
       fee: BigInt(tx.fee),
@@ -3798,6 +3798,10 @@ var ZBC = (() => {
       }
       case "address":
         return parseAddress(value).bytes;
+      case "address32": {
+        const a = parseAddress(value).bytes;
+        return w.u32(a.length).bytes(a).finish();
+      }
       case "address8": {
         const a = parseAddress(value).bytes;
         return w.u8(a.length).bytes(a).finish();
@@ -4378,10 +4382,10 @@ var ZBC = (() => {
           "default": ""
         },
         {
-          "name": "opponent_hex",
-          "kind": "hexbytes",
+          "name": "opponent",
+          "kind": "address",
           "required": false,
-          "help": "36-byte opponent account bytes (open seat if empty); a single byte 01 marks a state-channel app",
+          "help": "the invited opponent, any kind that can sign (an open seat if empty)",
           "default": ""
         }
       ],
@@ -4412,10 +4416,10 @@ var ZBC = (() => {
           "from": "params_hex"
         },
         {
-          "name": "opponent_hex",
-          "encoding": "hex",
-          "from": "opponent_hex",
-          "when": "opponent_hex != ''"
+          "name": "opponent",
+          "encoding": "address32",
+          "from": "opponent",
+          "when": "opponent != ''"
         }
       ],
       "example": {
@@ -4424,7 +4428,7 @@ var ZBC = (() => {
         "stake_amount": "100000000",
         "seats": "2",
         "params_hex": "",
-        "opponent_hex": ""
+        "opponent": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
       },
       "notes": [
         "zbc-app-create takes (app_type, stake_token, stake_amount, seats, channel) and cannot pass params or an opponent."
@@ -6876,17 +6880,6 @@ var ZBC = (() => {
           "name": "value",
           "encoding": "str32",
           "from": "value"
-        },
-        {
-          "name": "setter",
-          "encoding": "sender_address",
-          "from": "setter",
-          "computed": "the sender's 36-byte account"
-        },
-        {
-          "name": "recipient",
-          "encoding": "address",
-          "from": "recipient"
         }
       ],
       "example": {
@@ -6895,7 +6888,7 @@ var ZBC = (() => {
         "value": "tester"
       },
       "notes": [
-        "The node reads property only (the value is not compared); the setter and recipient accounts at the end are written by the reference and not read."
+        "Node 0.6.0: the body is property and value only (the node does not compare the value); the setter and subject accounts that used to follow are gone."
       ]
     },
     {
@@ -7413,17 +7406,6 @@ var ZBC = (() => {
           "name": "value",
           "encoding": "str32",
           "from": "value"
-        },
-        {
-          "name": "setter",
-          "encoding": "sender_address",
-          "from": "setter",
-          "computed": "the sender's 36-byte account"
-        },
-        {
-          "name": "recipient",
-          "encoding": "address",
-          "from": "recipient"
         }
       ],
       "example": {
@@ -7432,7 +7414,7 @@ var ZBC = (() => {
         "value": "tester"
       },
       "notes": [
-        "The node reads property and value only; the setter and recipient accounts after them are written by the reference and not read."
+        "Node 0.6.0: the body is property and value only; the setter and subject accounts that used to follow are gone (the envelope carries both)."
       ]
     },
     {
@@ -7661,6 +7643,13 @@ var ZBC = (() => {
           "required": false,
           "help": "Unix seconds, 0 = good till cancelled",
           "default": "0"
+        },
+        {
+          "name": "counterparty",
+          "kind": "address",
+          "required": false,
+          "help": "the only account that may take the offer, any kind that can sign (empty = an open offer)",
+          "default": ""
         }
       ],
       "body": [
@@ -7688,6 +7677,12 @@ var ZBC = (() => {
           "name": "expiry",
           "encoding": "u64le",
           "from": "expiry"
+        },
+        {
+          "name": "counterparty",
+          "encoding": "address32",
+          "from": "counterparty",
+          "when": "counterparty != ''"
         }
       ],
       "example": {
@@ -7695,10 +7690,11 @@ var ZBC = (() => {
         "give_amount": "100000000",
         "want_token": "123456789",
         "want_amount": "5000",
-        "expiry": "0"
+        "expiry": "0",
+        "counterparty": "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
       },
       "notes": [
-        "An offer only one account may take (node 0.6.0): the body continues after expiry with a u32 LE length and that account's typed address (its 4-byte type first; any kind that can sign). Without it the body is these 40 bytes and the offer is open. zbc-cli swap-create takes it as an optional seventh parameter, counterparty; this description and the ports do not have it yet."
+        "Node 0.6.0: the counterparty is length-prefixed (u32le) and typed; the node refuses a kind that cannot sign. zbc-swap-create (the single program) takes no counterparty: an open offer only."
       ]
     },
     {

@@ -244,6 +244,14 @@ func EncodeField(f FieldDef, params map[string]string, ctx *BodyContext) ([]byte
 			return nil, Usage("invalid %s: %v", f.From, err)
 		}
 		return a.Bytes(), nil
+	case "address32":
+		a, err := ParseAddress(value, "")
+		if err != nil {
+			return nil, Usage("invalid %s: %v", f.From, err)
+		}
+		b := a.Bytes()
+		n := uint32(len(b))
+		return append([]byte{byte(n), byte(n >> 8), byte(n >> 16), byte(n >> 24)}, b...), nil
 	case "address8":
 		a, err := ParseAddress(value, "")
 		if err != nil {

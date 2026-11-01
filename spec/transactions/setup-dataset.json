@@ -49,17 +49,6 @@
       "name": "value",
       "encoding": "str32",
       "from": "value"
-    },
-    {
-      "name": "setter",
-      "encoding": "sender_address",
-      "from": "setter",
-      "computed": "the sender's 36-byte account"
-    },
-    {
-      "name": "recipient",
-      "encoding": "address",
-      "from": "recipient"
     }
   ],
   "example": {
@@ -68,6 +57,6 @@
     "value": "tester"
   },
   "notes": [
-    "The node reads property and value only; the setter and recipient accounts after them are written by the reference and not read."
+    "Node 0.6.0: the body is property and value only; the setter and subject accounts that used to follow are gone (the envelope carries both)."
   ]
 }

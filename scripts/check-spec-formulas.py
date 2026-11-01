@@ -53,7 +53,12 @@ except ImportError:
     print("skip  Ed25519 checks: pip install cryptography to run them")
 
 # signing.md 5: ZBC-MSG-v1
-check("signing.md 5: digest = SHA3-256('ZBC-MSG' || message)", all(hashlib.sha3_256(b"ZBC-MSG" + bytes.fromhex(m["message_hex"])).hexdigest() == m["digest"] for m in msgs["vectors"]))
+# (v2 vectors, 5a, carry their own scheme and genesis; v1 applies to the rest)
+v1m = [m for m in msgs["vectors"] if m.get("scheme", "ZBC-MSG-v1") == "ZBC-MSG-v1"]
+v2m = [m for m in msgs["vectors"] if m.get("scheme") == "ZBC-MSG-v2"]
+check("signing.md 5: digest = SHA3-256('ZBC-MSG' || message)", all(hashlib.sha3_256(b"ZBC-MSG" + bytes.fromhex(m["message_hex"])).hexdigest() == m["digest"] for m in v1m))
+check("signing.md 5a: digest = SHA3-256('ZBC-MSG-v2' || genesis || message)",
+      bool(v2m) and all(hashlib.sha3_256(b"ZBC-MSG-v2" + bytes.fromhex(m["genesis_hash"]) + bytes.fromhex(m["message_hex"])).hexdigest() == m["digest"] for m in v2m))
 check("messages.json: message_hex is the UTF-8 of message", all(m["hex_input"] or bytes.fromhex(m["message_hex"]).decode() == m["message"] for m in msgs["vectors"]))
 
 # signing.md 8: sealed messages. A standard-library rendering of the formulas (X25519 ladder, HSalsa20, XSalsa20,
@@ -173,9 +178,11 @@ check("signing.md 4: digest = SHA3-256('ZBC-TX' || genesis || unsigned), or SHA3
 check("signing.md 2: transaction_bytes = unsigned || signature, transaction_hash = SHA3-256(transaction_bytes)",
       all(v["expected"]["transaction_bytes"] == v["expected"]["unsigned_bytes"] + v["expected"]["signature"]
           and hashlib.sha3_256(bytes.fromhex(v["expected"]["transaction_bytes"])).hexdigest() == v["expected"]["transaction_hash"] for v in txs + alls))
+def typed(h):   # 0.6.0: the payload's accounts are typed; a 64-hex value (older vectors) is a bare ZBC key
+    return b"\0\0\0\0" + bytes.fromhex(h) if len(h) == 64 else bytes.fromhex(h)
 def envelope(v):
     p = v["expected"]["payload"]
-    b = struct.pack("<I", p["transaction_type"]) + b"\x01" + struct.pack("<q", p["timestamp"]) + b"\0\0\0\0" + bytes.fromhex(p["sender_account_address"])
+    b = struct.pack("<I", p["transaction_type"]) + b"\x01" + struct.pack("<q", p["timestamp"]) + typed(p["sender_account_address"])
     r = p["recipient_account_address"]
     b += b"\x02\0\0\0" if r == "" else (b"\0\0\0\0" + bytes.fromhex(r) if len(r) == 64 else bytes.fromhex(r))
     b += struct.pack("<q", p["fee"]) + struct.pack("<I", len(p["transaction_body_bytes"]) // 2) + bytes.fromhex(p["transaction_body_bytes"])
@@ -216,6 +223,7 @@ def body_of(spec, v, files):
         elif enc == "bytes32":
             raw = bytes.fromhex(files[f["from"]]); out += struct.pack("<I", len(raw)) + raw
         elif enc == "address": out += typed_addr(val)
+        elif enc == "address32": a = typed_addr(val); out += struct.pack("<I", len(a)) + a
         elif enc == "address8": a = typed_addr(val); out += bytes([len(a)]) + a
         elif enc == "address_list8":
             items = [x for x in val.split(",") if x]; out += bytes([len(items)]) + b"".join(typed_addr(x) for x in items)

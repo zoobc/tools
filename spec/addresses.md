@@ -33,8 +33,8 @@ then the key or address payload of that type.
 A ZooBC account is therefore 36 bytes: `00 00 00 00` followed by the public key. That is what the
 envelope carries for sender, recipient and escrow approver, and what appears in the API as
 `sender_account_address` / `recipient_account_address` when 72 hex characters long. The submit
-payload sends a ZooBC sender and recipient as the bare 32-byte key (64 hex); the node adds the
-prefix (`api.md`).
+payload sends them the same way, typed (72 hex for a ZooBC account): from node 0.6.0 (rule
+typed_accounts_only) a bare 32-byte key is refused as an account (`api.md`).
 
 ## 2. The `ZBC_` text form
 

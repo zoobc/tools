@@ -158,10 +158,10 @@ our $JSON = <<'END_OF_SPEC';
     "name" : "params_hex"
    },
    {
-    "encoding" : "hex",
-    "from" : "opponent_hex",
-    "name" : "opponent_hex",
-    "when" : "opponent_hex != ''"
+    "encoding" : "address32",
+    "from" : "opponent",
+    "name" : "opponent",
+    "when" : "opponent != ''"
    }
   ],
   "command" : "app-create",
@@ -169,7 +169,7 @@ our $JSON = <<'END_OF_SPEC';
   "description" : "Open an on-chain app (game): type, stake, seats, optional params and opponent.",
   "example" : {
    "app_type" : "1",
-   "opponent_hex" : "",
+   "opponent" : "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
    "params_hex" : "",
    "seats" : "2",
    "stake_amount" : "100000000",
@@ -225,9 +225,9 @@ our $JSON = <<'END_OF_SPEC';
    },
    {
     "default" : "",
-    "help" : "36-byte opponent account bytes (open seat if empty); a single byte 01 marks a state-channel app",
-    "kind" : "hexbytes",
-    "name" : "opponent_hex",
+    "help" : "the invited opponent, any kind that can sign (an open seat if empty)",
+    "kind" : "address",
+    "name" : "opponent",
     "required" : false
    }
   ],
@@ -2643,17 +2643,6 @@ our $JSON = <<'END_OF_SPEC';
     "encoding" : "str32",
     "from" : "value",
     "name" : "value"
-   },
-   {
-    "computed" : "the sender's 36-byte account",
-    "encoding" : "sender_address",
-    "from" : "setter",
-    "name" : "setter"
-   },
-   {
-    "encoding" : "address",
-    "from" : "recipient",
-    "name" : "recipient"
    }
   ],
   "command" : "remove-dataset",
@@ -2667,7 +2656,7 @@ our $JSON = <<'END_OF_SPEC';
   "name" : "RemoveAccountDataset",
   "needs_node" : false,
   "notes" : [
-   "The node reads property only (the value is not compared); the setter and recipient accounts at the end are written by the reference and not read."
+   "Node 0.6.0: the body is property and value only (the node does not compare the value); the setter and subject accounts that used to follow are gone."
   ],
   "options" : [
    "message",
@@ -3180,17 +3169,6 @@ our $JSON = <<'END_OF_SPEC';
     "encoding" : "str32",
     "from" : "value",
     "name" : "value"
-   },
-   {
-    "computed" : "the sender's 36-byte account",
-    "encoding" : "sender_address",
-    "from" : "setter",
-    "name" : "setter"
-   },
-   {
-    "encoding" : "address",
-    "from" : "recipient",
-    "name" : "recipient"
    }
   ],
   "command" : "setup-dataset",
@@ -3204,7 +3182,7 @@ our $JSON = <<'END_OF_SPEC';
   "name" : "SetupAccountDataset",
   "needs_node" : false,
   "notes" : [
-   "The node reads property and value only; the setter and recipient accounts after them are written by the reference and not read."
+   "Node 0.6.0: the body is property and value only; the setter and subject accounts that used to follow are gone (the envelope carries both)."
   ],
   "options" : [
    "message",
@@ -3442,12 +3420,19 @@ our $JSON = <<'END_OF_SPEC';
     "encoding" : "u64le",
     "from" : "expiry",
     "name" : "expiry"
+   },
+   {
+    "encoding" : "address32",
+    "from" : "counterparty",
+    "name" : "counterparty",
+    "when" : "counterparty != ''"
    }
   ],
   "command" : "swap-create",
   "custom" : null,
   "description" : "Offer give_amount of give_token for want_amount of want_token; the give side is held.",
   "example" : {
+   "counterparty" : "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
    "expiry" : "0",
    "give_amount" : "100000000",
    "give_token" : "0",
@@ -3457,7 +3442,7 @@ our $JSON = <<'END_OF_SPEC';
   "name" : "CreateSwapOffer",
   "needs_node" : false,
   "notes" : [
-   "An offer only one account may take (node 0.6.0): the body continues after expiry with a u32 LE length and that account's typed address (its 4-byte type first; any kind that can sign). Without it the body is these 40 bytes and the offer is open. zbc-cli swap-create takes it as an optional seventh parameter, counterparty; this description and the ports do not have it yet."
+   "Node 0.6.0: the counterparty is length-prefixed (u32le) and typed; the node refuses a kind that cannot sign. zbc-swap-create (the single program) takes no counterparty: an open offer only."
   ],
   "options" : [
    "message",
@@ -3499,6 +3484,13 @@ our $JSON = <<'END_OF_SPEC';
     "help" : "Unix seconds, 0 = good till cancelled",
     "kind" : "int64",
     "name" : "expiry",
+    "required" : false
+   },
+   {
+    "default" : "",
+    "help" : "the only account that may take the offer, any kind that can sign (empty = an open offer)",
+    "kind" : "address",
+    "name" : "counterparty",
     "required" : false
    }
   ],
