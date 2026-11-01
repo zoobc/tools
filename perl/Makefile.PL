@@ -5,7 +5,7 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile(
     NAME             => 'ZBC',
-    VERSION          => 'v0.1.1',
+    VERSION          => 'v0.2.0',
     ABSTRACT         => 'ZooBC keys, addresses, message signing, transactions, node client and zbc-cli',
     AUTHOR           => 'ZooBC Foundation',
     LICENSE          => 'mit',

@@ -12,7 +12,7 @@ project(zoobc-tools LANGUAGES CXX)
 # `zbc-cli version` reports the tools release and the commit it was built from. In the node
 # repository these come from its VERSION file; a public checkout has neither, so they come from
 # here — keep the version in step with ts/package.json, py/pyproject.toml and rust/Cargo.toml.
-set(ZBC_TOOLS_VERSION "0.1.1")
+set(ZBC_TOOLS_VERSION "0.2.0")
 find_package(Git QUIET)
 if(GIT_FOUND)
     execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --short HEAD

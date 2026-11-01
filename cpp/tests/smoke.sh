@@ -19,16 +19,21 @@ out=$("$B/zbc-account-from-key" "$K")
 grep -Eq "\"account_address\": ?\"$ADDR\"" <<<"$out" || fail "address from key: $out"
 pass "zbc-account-from-key derives the known address"
 
-out=$("$B/zbc-cli" sign-message "$K" "$MSG")
-grep -Eq "\"signature\": ?\"$SIG\"" <<<"$out" || fail "sign-message: $out"
-grep -Eq '"scheme": ?"ZBC-MSG-v1"' <<<"$out" || fail "sign-message scheme: $out"
-pass "sign-message reproduces the known signature (ZBC-MSG-v1)"
+SIG2=2f46d85055f241f522f4282cfdfae73614a262ac66a89245fcdacd7d5d57007071f132d3903a14f03c865887da24a01c5a8600d6563ec3cb1abfd81ab3022b0d   # ZBC-MSG-v2 over genesis ZERO32
+out=$("$B/zbc-cli" sign-message "$K" "$MSG" --genesis "$ZERO32")
+grep -Eq "\"signature\": ?\"$SIG2\"" <<<"$out" || fail "sign-message: $out"
+grep -Eq '"scheme": ?"ZBC-MSG-v2"' <<<"$out" || fail "sign-message scheme: $out"
+pass "sign-message reproduces the known chain-bound signature (ZBC-MSG-v2)"
 
-out=$("$B/zbc-cli" verify-message "$ADDR" "$MSG" "$SIG")
+out=$("$B/zbc-cli" verify-message "$ADDR" "$MSG" "$SIG2" --genesis "$ZERO32")
 grep -Eq '"valid": ?true' <<<"$out" || fail "verify-message: $out"
 pass "verify-message accepts it"
 
-set +e; "$B/zbc-cli" verify-message "$ADDR" "hello zoobd" "$SIG" >/dev/null 2>&1; rc=$?; set -e
+out=$("$B/zbc-cli" verify-message "$ADDR" "$MSG" "$SIG" --genesis "$ZERO32")
+grep -Eq '"valid": ?true' <<<"$out" || fail "verify-message v1: $out"
+pass "verify-message still accepts the old ZBC-MSG-v1 signature (until 2026-12-01)"
+
+set +e; "$B/zbc-cli" verify-message "$ADDR" "hello zoobd" "$SIG2" --genesis "$ZERO32" >/dev/null 2>&1; rc=$?; set -e
 [ "$rc" -eq 10 ] || fail "tampered message: expected exit 10, got $rc"
 pass "verify-message rejects a tampered message with exit 10"
 
