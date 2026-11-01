@@ -4,7 +4,7 @@ package ZBC;
 # ZooBC in Perl: keys, addresses, ZBC-MSG-v2 message signing, the transaction envelope with the chain-bound digest,
 # every transaction body of spec/transactions, the node client and zbc-cli. Loads every module; see README.md.
 use strict; use warnings;
-our $VERSION = 'v0.2.0';
+our $VERSION = 'v0.2.1';
 
 use ZBC::SHA3;
 use ZBC::Blake2b;
