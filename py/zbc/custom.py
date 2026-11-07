@@ -3,7 +3,7 @@
 """The hand-written parts the descriptions mark computed or custom (spec/transactions/README.md)."""
 import hashlib
 import struct
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from . import ed25519
 from .address import is_hex, parse_address
@@ -20,6 +20,42 @@ def proof_of_ownership(owner: KeyPair, node: KeyPair, block_hash: bytes, height:
     (spec/signing.md 6, rule poown_required). Until 2026-10-19 this signed with the owner key."""
     msg = owner.account_bytes + block_hash + struct.pack("<I", height)
     return msg + ed25519.sign(msg, node.seed)
+
+
+NODE_CLAIM_DELAY_BLOCKS = 40320
+
+
+def claim_notice(registry: Any, node_public_key: bytes, claimer: bytes, latest_height: int) -> Tuple[bytes, str]:
+    """(recipient, message) of a claim-node transaction: the node's registered owner and the notice it is sent.
+
+    `registry` is the reply of GET /api/v1/nodes, `claimer` the claiming account (36 typed bytes), `latest_height` the
+    height of the latest block. The recipient is the owner account the registry lists for the node key. When the claimer
+    is someone else, the message is "Claim on your node <node key hex> announced at block H. It executes at block
+    H+40320 unless you remove the node with your owner key." with H = latest_height + 1; the owner's own claim carries
+    none. ValueError when the node key is not in the registry, has no owner, or the reply cannot be read."""
+    if not isinstance(registry, dict):
+        raise ValueError("Cannot read the registered node owner: the reply is not a JSON object")
+    nodes = registry.get("nodes") or []
+    if not isinstance(nodes, list):
+        raise ValueError("Cannot read the registered node owner: nodes is not a list")
+    wanted = node_public_key.hex()
+    for node in nodes:
+        if not isinstance(node, dict):
+            raise ValueError("Cannot read the registered node owner: a node is not a JSON object")
+        if node.get("node_public_key", "") != wanted:
+            continue
+        owner = node.get("account_address", "")
+        if not isinstance(owner, str) or not is_hex(owner):
+            raise ValueError("Cannot read the registered node owner: account_address is not hex")
+        recipient = bytes.fromhex(owner)
+        if recipient == claimer:
+            return recipient, ""
+        if not recipient:
+            raise ValueError("The registered node has no owner account")
+        h = latest_height + 1
+        return recipient, ("Claim on your node %s announced at block %d. It executes at block %d unless you remove the node "
+                           "with your owner key." % (wanted, h, h + NODE_CLAIM_DELAY_BLOCKS))
+    raise ValueError("The node key is not in the node's registry")
 
 
 def compute_fields(spec: dict, params: Dict[str, str], sender: KeyPair, computed: Dict[str, bytes],

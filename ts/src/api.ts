@@ -111,6 +111,14 @@ export class Client {
     return r.json as Record<string, unknown>;
   }
 
+  /** GET /api/v1/nodes: the node registry, each node with its node_public_key and owner account_address (hex). */
+  async nodes(): Promise<unknown> {
+    const r = await this.call("GET", "/api/v1/nodes");
+    if (r.status !== 200) throw new ToolError(ExitCode.internal, "Failed to fetch the registered node owner from " + this.api, { http_code: r.status });
+    if (r.json === undefined || r.json === null) throw new ToolError(ExitCode.internal, "Cannot read the registered node owner: the reply is not JSON");
+    return r.json;
+  }
+
   /** GET /api/v1/blocks/latest: the reference block for a proof of ownership (`block_hash` or a gateway's `hash`). */
   async latestBlock(): Promise<{ hash: Uint8Array; height: number }> {
     const r = await this.call("GET", "/api/v1/blocks/latest");

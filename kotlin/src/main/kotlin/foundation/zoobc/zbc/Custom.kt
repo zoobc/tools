@@ -2,7 +2,10 @@
 // Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
 package foundation.zoobc.zbc
 
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /** The hand-written parts the descriptions mark computed or custom (spec/transactions/README.md). */
@@ -20,6 +23,44 @@ object Custom {
     @JvmStatic fun proofOfOwnership(owner: KeyPair, node: KeyPair, block: ReferenceBlock): ByteArray {
         val msg = owner.accountBytes + block.hash + Bytes.le32(block.height)
         return msg + node.sign(msg)
+    }
+
+    /** How long another account's claim on a node waits for the owner (node rule claim_notifies_owner). */
+    const val NODE_CLAIM_DELAY_BLOCKS = 40320L
+
+    /**
+     * (recipient, message) of a claim-node transaction: the node's registered owner and the notice it is sent. [registry]
+     * is the reply of GET /api/v1/nodes, [claimer] the claiming account (36 typed bytes), [latestHeight] the height of the
+     * latest block. The recipient is the owner account the registry lists for the node key. When the claimer is someone
+     * else, the message is "Claim on your node <node key hex> announced at block H. It executes at block H+40320 unless
+     * you remove the node with your owner key." with H = latestHeight + 1; the owner's own claim carries none. Throws
+     * IllegalStateException when the node key is not in the registry, has no owner, or the reply cannot be read.
+     */
+    @JvmStatic fun claimNotice(registry: JsonElement, nodePublicKey: ByteArray, claimer: ByteArray, latestHeight: Long): Pair<ByteArray, String> {
+        val reply = registry as? JsonObject ?: error("Cannot read the registered node owner: the reply is not a JSON object")
+        val nodes = when (val n = reply["nodes"]) {
+            null, JsonNull -> JsonArray(emptyList())
+            is JsonArray -> n
+            else -> error("Cannot read the registered node owner: nodes is not a list")
+        }
+        val wanted = Encoding.bytesToHex(nodePublicKey)
+        for (item in nodes) {
+            val node = item as? JsonObject ?: error("Cannot read the registered node owner: a node is not a JSON object")
+            val key = (node["node_public_key"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: ""
+            if (key != wanted) continue
+            val owner = when (val a = node["account_address"]) {
+                null -> ""
+                is JsonPrimitive -> if (a.isString) a.content else error("Cannot read the registered node owner: account_address is not hex")
+                else -> error("Cannot read the registered node owner: account_address is not hex")
+            }
+            if (!Encoding.isHex(owner)) error("Cannot read the registered node owner: account_address is not hex")
+            val recipient = Encoding.hexToBytes(owner)
+            if (recipient.contentEquals(claimer)) return recipient to ""
+            if (recipient.isEmpty()) error("The registered node has no owner account")
+            val h = latestHeight + 1
+            return recipient to "Claim on your node $wanted announced at block $h. It executes at block ${h + NODE_CLAIM_DELAY_BLOCKS} unless you remove the node with your owner key."
+        }
+        error("The node key is not in the node's registry")
     }
 
     /** Fill ctx.computed for the fields the generic serialiser cannot produce; returns extra output fields. */

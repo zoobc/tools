@@ -15,8 +15,9 @@ the node's `src/api/api_server.cpp` and `json_serializer.cpp`, and from `cpp/cmd
 
 A command makes at most two calls: `GET /api/v1/node/info` to learn which chain it signs for
 (skipped with `--genesis`), then `POST /api/v1/transactions`. The three node-registration
-commands make a third, `GET /api/v1/blocks/latest`, for the proof of ownership. `--offline`
-makes none.
+commands make a third, `GET /api/v1/blocks/latest`, for the proof of ownership, and claim-node a
+fourth, `GET /api/v1/nodes`, for the node's owner (section 3a); these two are made with
+`--offline` too, which otherwise makes none.
 
 ## 1. `GET /api/v1/node/info`
 
@@ -87,6 +88,19 @@ The node's reply is returned verbatim as `api_response`, with `http_code`.
 Used only to build a proof of ownership (`signing.md` section 6). The tools read `height` and
 the hash, named `block_hash` by a node (which answers with the full block) and `hash` by the
 archival/gateway build of the API; a port reads `block_hash` and falls back to `hash`.
+
+## 3a. `GET /api/v1/nodes`
+
+Used only by claim-node, whose recipient is the node's owner (and whose message, when someone
+else claims, is the notice: `transactions/claim-node.json`). The tools read `nodes`, a list, and in
+each entry `node_public_key` (hex, compared with the node key in lower case) and `account_address`
+(the owner's typed account in hex, 72 characters for a ZooBC account). A node key that is not in
+the list, or is listed with an empty `account_address`, is an error (exit 1), as is a reply other
+than HTTP 200 with JSON. A node lists its active registrations by default.
+
+```json
+{"nodes": [{"node_public_key": "a09aa5f4…", "account_address": "000000005e8eb28d…", "registration_status": 0}]}
+```
 
 ## 4. Reading back: status and account
 

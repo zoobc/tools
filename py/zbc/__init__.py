@@ -5,7 +5,7 @@ from .address import (ParsedAddress, account_type_name, decode_zbc_address, enco
                       parse_key32, typed_address)
 from .api import Client
 from .body import build_body, encode_field, parse_integer, validate_param
-from .custom import compute_fields, custom_body, multisig_address, proof_of_ownership
+from .custom import NODE_CLAIM_DELAY_BLOCKS, claim_notice, compute_fields, custom_body, multisig_address, proof_of_ownership
 from .encryption import (SEALED_MAGIC, SEALED_OVERHEAD, ed25519_pk_to_x25519, ed25519_seed_to_x25519, is_sealed, open_sealed, seal,
                          x25519, x25519_base)
 from .errors import ToolError, classify_node_error, error_class, usage

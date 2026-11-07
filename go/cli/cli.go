@@ -776,6 +776,22 @@ func runTransaction(def *zbc.TxDef, v map[string]string, o *options, e *env) (in
 			return 0, err
 		}
 	}
+	if def.Command == "claim-node" {
+		// the node's owner is the recipient; another claimer's claim carries the notice as its message (it replaces --message)
+		registry, err := client.Nodes()
+		if err != nil {
+			return 0, err
+		}
+		node, err := zbc.KeyPairFromHex(v["node_privkey"])
+		if err != nil {
+			return 0, err
+		}
+		r, notice, err := zbc.ClaimNotice(registry, node.PublicKey, sender.AccountBytes(), in.Block.Height)
+		if err != nil {
+			return 0, err
+		}
+		recipient, o.message = r, &notice
+	}
 	for _, p := range def.Params {
 		// never a private key: kind privkey, and by name too, should a description ever mis-declare one
 		if p.Kind == "privkey" || strings.HasSuffix(p.Name, "privkey") || strings.HasSuffix(p.Name, "privkeys") || p.Kind == "file" || p.Name == "recipient" {

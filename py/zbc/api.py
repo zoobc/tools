@@ -98,6 +98,15 @@ class Client:
                             http_code=status, api_response=j if j is not None else text)
         return j
 
+    def nodes(self) -> Any:
+        """GET /api/v1/nodes: the node registry, each node with its node_public_key and owner account_address (hex)."""
+        status, text, j = self._call("GET", "/api/v1/nodes")
+        if status != 200:
+            raise ToolError(INTERNAL, "Failed to fetch the registered node owner from " + self.api, http_code=status)
+        if j is None:
+            raise ToolError(INTERNAL, "Cannot read the registered node owner: the reply is not JSON")
+        return j
+
     def latest_block(self) -> Tuple[bytes, int]:
         """(hash, height) of the latest block, from `block_hash` (node) or `hash` (gateway)."""
         status, text, j = self._call("GET", "/api/v1/blocks/latest")

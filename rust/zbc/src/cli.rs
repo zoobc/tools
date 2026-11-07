@@ -8,7 +8,7 @@
 use crate::address::{encode_zbc_address, parse_address};
 use crate::api::{rejection_error, Client};
 use crate::body::{build_body, validate_param, BodyContext, Params};
-use crate::custom::{compute_fields, custom_body, CustomInput};
+use crate::custom::{claim_notice, compute_fields, custom_body, CustomInput};
 use crate::encoding::is_hex;
 use crate::encryption::{is_sealed, open_sealed, seal};
 use crate::errors::*;
@@ -561,6 +561,15 @@ fn run_transaction(def: &TxDef, v: &mut Params, o: &Options, io: &mut Io) -> Res
         extra.extend(compute_fields(&input, &mut bc)?);
         build_body(def, v, &bc)?
     };
+    let mut message_text = o.message.clone();
+    if def.command == "claim-node" {
+        // the node's owner is the recipient; another claimer's claim carries the notice as its message (it replaces --message)
+        let node = KeyPair::from_hex(&v["node_privkey"]).map_err(usage)?;
+        let height = block.as_ref().map(|b| b.height).unwrap_or(0);
+        let (r, notice) = claim_notice(&client.nodes()?, &node.public_key, &sender.account_bytes(), height).map_err(|e| ToolError::new(INTERNAL, e))?;
+        recipient = r;
+        message_text = Some(notice);
+    }
     for p in &def.params {
         // never a private key: kind privkey, and by name too, should a description ever mis-declare one
         if p.kind == "privkey" || p.name.ends_with("privkey") || p.name.ends_with("privkeys") || p.kind == "file" || p.name == "recipient" || extra.contains_key(&p.name) {
@@ -576,7 +585,7 @@ fn run_transaction(def: &TxDef, v: &mut Params, o: &Options, io: &mut Io) -> Res
         extra.remove("transaction_hash");
     }
     extra.insert("sender".into(), json!(sender.address()));
-    let mut message = o.message.clone().unwrap_or_default().into_bytes();
+    let mut message = message_text.clone().unwrap_or_default().into_bytes();
     if o.encrypt && !message.is_empty() {   // --encrypt: seal the message to the recipient's key (signing.md 8)
         if recipient.len() != 36 {
             return Err(usage("--encrypt is only supported for ZBC recipients"));
@@ -594,7 +603,7 @@ fn run_transaction(def: &TxDef, v: &mut Params, o: &Options, io: &mut Io) -> Res
     fields.insert("fee".into(), json!(o.fee));
     fields.insert("timestamp".into(), json!(timestamp));
     let mut common = Map::new();
-    if let Some(m) = &o.message {
+    if let Some(m) = &message_text {
         if !m.is_empty() {
             common.insert("message".into(), json!(m));
         }

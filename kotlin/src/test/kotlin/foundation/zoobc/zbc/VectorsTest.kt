@@ -94,10 +94,16 @@ class VectorsTest {
         assertEquals(s(e, "body"), Encoding.bytesToHex(body), "$name body")
         val def = Spec.command(s(v, "command"))!!
         val kp = KeyPair.fromHex(s(v, "key"))
-        val recipient = if (def.recipient == "required") Address.parse(params(v)["recipient"]!!).bytes else ByteArray(0)
+        var recipient = if (def.recipient == "required") Address.parse(params(v)["recipient"]!!).bytes else ByteArray(0)
+        var message = v["message"]?.jsonPrimitive?.contentOrNull ?: ""
+        (v["node_registry"] as? JsonObject)?.let {   // claim-node: the registered owner, and the notice when the signer is someone else
+            val height = v["reference_block"]!!.jsonObject["height"]!!.jsonPrimitive.content.toLong()
+            val (r, notice) = Custom.claimNotice(it, KeyPair.fromHex(params(v)["node_privkey"]!!).publicKey, kp.accountBytes, height)
+            recipient = r; message = notice
+        }
         val escrow = (v["escrow"] as? JsonObject)?.let { Escrow(s(it, "approver"), it["commission"]!!.jsonPrimitive.content.toLong(), it["timeout"]!!.jsonPrimitive.content.toLong(), s(it, "instruction")) }
         val signed = Transaction.sign(v["type"]!!.jsonPrimitive.content.toInt(), v["timestamp"]!!.jsonPrimitive.content.toLong(), kp, recipient, v["fee"]!!.jsonPrimitive.content.toLong(), body,
-            SigningContext.of(s(v, "genesis")), escrow, (v["message"]?.jsonPrimitive?.contentOrNull ?: "").toByteArray())
+            SigningContext.of(s(v, "genesis")), escrow, message.toByteArray())
         assertEquals(s(e, "unsigned_bytes"), Encoding.bytesToHex(signed.unsigned), name); assertEquals(s(e, "digest"), Encoding.bytesToHex(signed.digest), name)
         assertEquals(s(e, "signature"), Encoding.bytesToHex(signed.signature), name); assertEquals(s(e, "transaction_bytes"), Encoding.bytesToHex(signed.bytes), name)
         assertEquals(s(e, "transaction_hash"), Encoding.bytesToHex(signed.hash), name); assertEquals(e["payload"], signed.payload, "$name payload")
@@ -121,6 +127,16 @@ class VectorsTest {
                 val bc = Body.Context(kp, files); Custom.computeFields(input, bc); Body.build(def, p, bc)
             }
             checkSigned(v, body)
+        }
+    }
+
+    @Test fun claimNoticeRefusals() {
+        val v = load("transactions-all.json")["vectors"]!!.jsonArray.map { it.jsonObject }.first { s(it, "name") == "claim-node/other-claimer" }
+        val node = KeyPair.fromHex(params(v)["node_privkey"]!!).publicKey; val claimer = KeyPair.fromHex(s(v, "key")).accountBytes
+        val noOwner = JsonObject(mapOf("nodes" to JsonArray(v["node_registry"]!!.jsonObject["nodes"]!!.jsonArray.map { JsonObject(it.jsonObject + ("account_address" to JsonPrimitive(""))) })))
+        for ((registry, why) in listOf(JsonObject(mapOf("nodes" to JsonArray(emptyList()))) to "not in the node's registry", noOwner to "no owner account")) {
+            val e = assertFails(why) { Custom.claimNotice(registry, node, claimer, 1000) }
+            assertTrue(e.message!!.contains(why), e.message)
         }
     }
 

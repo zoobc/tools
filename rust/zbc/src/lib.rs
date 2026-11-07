@@ -22,7 +22,7 @@ pub mod transaction;
 
 pub use address::{decode_zbc_address, encode_zbc_address, parse_address, parse_key32, ParsedAddress};
 pub use api::Client;
-pub use custom::{multisig_address, proof_of_ownership, ReferenceBlock};
+pub use custom::{claim_notice, multisig_address, proof_of_ownership, ReferenceBlock};
 pub use encryption::{ed25519_public_key_to_x25519, ed25519_seed_to_x25519, is_sealed, open_sealed, seal, x25519_base, SEALED_MAGIC, SEALED_OVERHEAD};
 pub use errors::ToolError;
 pub use keys::{mnemonic_to_seed, slip10_derive, validate_mnemonic, wallet_account, KeyPair};

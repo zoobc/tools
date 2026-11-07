@@ -18,6 +18,39 @@ final class Custom
         return $msg . $node->sign($msg);
     }
 
+    /** How long another account's claim on a node waits for the owner (node rule claim_notifies_owner). */
+    public const NODE_CLAIM_DELAY_BLOCKS = 40320;
+
+    /**
+     * [recipient, message] of a claim-node transaction: the node's registered owner and the notice it is sent. $registry
+     * is the reply of GET /api/v1/nodes (decoded to arrays), $claimer the claiming account (36 typed bytes), $latestHeight
+     * the height of the latest block. The recipient is the owner account the registry lists for the node key. When the
+     * claimer is someone else, the message is "Claim on your node <node key hex> announced at block H. It executes at
+     * block H+40320 unless you remove the node with your owner key." with H = $latestHeight + 1; the owner's own claim
+     * carries none. Throws \RuntimeException when the node key is not in the registry, has no owner, or the reply cannot
+     * be read.
+     */
+    public static function claimNotice(mixed $registry, string $nodePublicKey, string $claimer, int $latestHeight): array
+    {
+        if (!is_array($registry) || ($registry !== [] && array_is_list($registry))) { throw new \RuntimeException('Cannot read the registered node owner: the reply is not a JSON object'); }
+        $nodes = $registry['nodes'] ?? [];
+        if (!is_array($nodes) || !array_is_list($nodes)) { throw new \RuntimeException('Cannot read the registered node owner: nodes is not a list'); }
+        $wanted = bin2hex($nodePublicKey);
+        foreach ($nodes as $node) {
+            if (!is_array($node) || ($node !== [] && array_is_list($node))) { throw new \RuntimeException('Cannot read the registered node owner: a node is not a JSON object'); }
+            if (($node['node_public_key'] ?? '') !== $wanted) { continue; }
+            $owner = $node['account_address'] ?? '';
+            if (!is_string($owner) || !Encoding::isHex($owner)) { throw new \RuntimeException('Cannot read the registered node owner: account_address is not hex'); }
+            $recipient = (string) hex2bin($owner);
+            if ($recipient === $claimer) { return [$recipient, '']; }
+            if ($recipient === '') { throw new \RuntimeException('The registered node has no owner account'); }
+            $h = $latestHeight + 1;
+            return [$recipient, "Claim on your node $wanted announced at block $h. It executes at block " . ($h + self::NODE_CLAIM_DELAY_BLOCKS)
+                . ' unless you remove the node with your owner key.'];
+        }
+        throw new \RuntimeException("The node key is not in the node's registry");
+    }
+
     /** Fill $ctx->computed for the fields the generic serialiser cannot produce; returns extra output fields. */
     public static function computeFields(CustomInput $in, BodyContext $ctx): array
     {

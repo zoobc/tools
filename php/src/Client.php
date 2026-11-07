@@ -98,6 +98,15 @@ final class Client
         return $r->body();
     }
 
+    /** GET /api/v1/nodes: the node registry, each node with its node_public_key and owner account_address (hex). */
+    public function nodes(): mixed
+    {
+        $r = $this->call('GET', '/api/v1/nodes');
+        if ($r->status !== 200) { throw new ToolError(ExitCode::INTERNAL, "Failed to fetch the registered node owner from {$this->api}", ['http_code' => $r->status]); }
+        if ($r->json === null) { throw new ToolError(ExitCode::INTERNAL, 'Cannot read the registered node owner: the reply is not JSON'); }
+        return $r->json;
+    }
+
     /** GET /api/v1/blocks/latest: the reference block for a proof of ownership (`block_hash`, or a gateway's `hash`). */
     public function latestBlock(): ReferenceBlock
     {

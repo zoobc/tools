@@ -12,7 +12,7 @@ from ._commands import COMMANDS, COMMAND_BY_NAME
 from .address import is_hex, parse_address
 from .api import Client
 from .body import build_body, validate_param
-from .custom import compute_fields, custom_body
+from .custom import claim_notice, compute_fields, custom_body
 from .errors import INTERNAL, NODE_UNREACHABLE, OK, TIMEOUT, USAGE, VERIFY_FAILED, ToolError, classify_node_error, usage
 from .encryption import is_sealed, open_sealed, seal
 from .keys import key_pair
@@ -485,6 +485,9 @@ def run_transaction(spec: dict, v: Dict[str, str], o: Options) -> int:
         computed: Dict[str, bytes] = {}
         extra.update(compute_fields(spec, v, sender, computed, reference))
         body = build_body(spec, v, sender, files, computed)
+    if spec["command"] == "claim-node":
+        # the node's owner is the recipient; another claimer's claim carries the notice as its message (it replaces --message)
+        recipient, o.message = claim_notice(client.nodes(), key_pair(v["node_privkey"]).public_key, sender.account_bytes, reference[1])
     for p in spec["params"]:
         # never a private key: kind privkey, and by name too, should a description ever mis-declare one
         if p["kind"] not in ("privkey", "file") and not p["name"].endswith(("privkey", "privkeys")) and p["name"] not in extra and p["name"] != "recipient":

@@ -31,9 +31,13 @@ def envelope(v, body):
     spec = _commands.COMMAND_BY_NAME[v["command"]]
     sender = zbc.key_pair(v["key"])
     recipient = zbc.parse_address(v["params"]["recipient"]).bytes if spec["recipient"] == "required" else b""
+    message = v.get("message") or ""
+    if v.get("node_registry") is not None:   # claim-node: the registered owner, and the notice when the signer is someone else
+        node = zbc.key_pair(v["params"]["node_privkey"])
+        recipient, message = zbc.claim_notice(v["node_registry"], node.public_key, sender.account_bytes, v["reference_block"]["height"])
     escrow = zbc.Escrow(**v["escrow"]) if v.get("escrow") else None
     return zbc.sign_transaction(v["type"], v["timestamp"], sender, recipient, v["fee"], body, zbc.SigningContext.of(v["genesis"]),
-                                escrow, (v.get("message") or "").encode())
+                                escrow, message.encode())
 
 
 class Vectors(unittest.TestCase):
@@ -112,6 +116,14 @@ class Vectors(unittest.TestCase):
                 body = zbc.build_body(spec, v["params"], sender, files, computed)
             self.assertEqual(body.hex(), v["expected"]["body"], v["name"])
             self.check_signed(v, envelope(v, body))
+
+    def test_claim_notice_refusals(self):
+        v = next(v for v in load("transactions-all.json")["vectors"] if v["name"] == "claim-node/other-claimer")
+        node, claimer = zbc.key_pair(v["params"]["node_privkey"]).public_key, zbc.key_pair(v["key"]).account_bytes
+        no_owner = {"nodes": [dict(n, account_address="") for n in v["node_registry"]["nodes"]]}
+        for registry, why in (({"nodes": []}, "not in the node's registry"), (no_owner, "no owner account")):
+            with self.assertRaisesRegex(ValueError, why):
+                zbc.claim_notice(registry, node, claimer, 1000)
 
     def test_transaction_id(self):
         self.assertEqual(zbc.transaction_id(bytes.fromhex("4ac2d11be8fe534bf2b2776fa7c1a3ece08e17f3b71e8d796545f5edde8b86fa")), 5427962248764179018)

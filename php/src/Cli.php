@@ -357,6 +357,10 @@ TXT;
             $extra += Custom::computeFields($input, $bc);
             $body = Body::build($def, $v, $bc);
         }
+        if ($def['command'] === 'claim-node') {
+            // the node's owner is the recipient; another claimer's claim carries the notice as its message (it replaces --message)
+            [$recipient, $o['message']] = Custom::claimNotice($client->nodes(), KeyPair::fromHex($v['node_privkey'])->publicKey, $sender->accountBytes(), $block->height);
+        }
         foreach ($def['params'] as $p) {
             // never a private key: kind privkey, and by name too, should a description ever mis-declare one
             if (in_array($p['kind'], ['privkey', 'file'], true) || preg_match('/privkeys?$/D', $p['name']) || $p['name'] === 'recipient' || array_key_exists($p['name'], $extra)) { continue; }

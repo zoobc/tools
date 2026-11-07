@@ -266,11 +266,19 @@ T("update-node", 258, "NodeRegistrationUpdate", "Change a node registration's lo
   [F("node_public_key", "pubkey_of_key", "node_privkey"), F("locked_balance", "u64le"), F("proof_of_ownership", "custom", computed="as register-node")],
   binary="zbc-node-update", needs_node=True, custom="proof_of_ownership", example={"node_privkey": SEED2, "locked_balance": "200000000000"},
   notes=["zbc-node-update takes (node_privkey, owner_privkey, new_locked_balance)."]),
-T("claim-node", 770, "ClaimNodeRegistration", "Claim the locked balance of a removed or expired node registration.",
+T("claim-node", 770, "ClaimNodeRegistration",
+  "Claim a node's lock: the owner's own claim is an exit (as remove-node); another account's claim, proved by the node key, "
+  "executes 40,320 blocks later unless the owner removes the node first (a claim on a leaving node is void).",
   [P("node_privkey", "privkey", "the node's private key")],
   [F("node_public_key", "pubkey_of_key", "node_privkey"), F("proof_of_ownership", "custom", computed="as register-node")],
   binary="zbc-node-claim", needs_node=True, custom="proof_of_ownership", example={"node_privkey": SEED2},
-  notes=["zbc-node-claim takes (node_privkey, owner_privkey)."]),
+  notes=["zbc-node-claim takes (node_privkey, owner_privkey).",
+         "The envelope's recipient is the node's owner account, read from GET /api/v1/nodes (the entry whose node_public_key is "
+         "the node key in lower-case hex; its account_address is the typed account in hex). A node key not in that list, or "
+         "listed with no owner, is an error (exit 1).",
+         "When the signer is not the owner, the message is the claim notice \"Claim on your node <node key hex> announced at "
+         "block H. It executes at block H+40320 unless you remove the node with your owner key.\", H = the latest block's "
+         "height + 1; it replaces --message (and --encrypt seals it to the owner). The owner's own claim carries no message."]),
 T("remove-node", 514, "RemoveNodeRegistration", "Remove a node from the registry; the locked balance returns to the owner.",
   [P("node_privkey", "privkey", "the node's private key; its public key is the body")],
   [F("node_public_key", "pubkey_of_key", "node_privkey")], binary="zbc-node-remove", example={"node_privkey": SEED2},

@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"crypto/sha3"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"sort"
 )
 
@@ -34,6 +36,59 @@ type CustomInput struct {
 }
 
 // ComputeFields fills ctx.Computed for the fields the generic serialiser cannot produce; returns extra output fields.
+// NodeClaimDelayBlocks is how long another account's claim on a node waits for the owner (node rule claim_notifies_owner).
+const NodeClaimDelayBlocks = 40320
+
+// ClaimNotice is the recipient and message of a claim-node transaction: the node's registered owner and the notice it is
+// sent. registry is the reply of GET /api/v1/nodes, claimer the claiming account (36 typed bytes), latestHeight the height
+// of the latest block. The recipient is the owner account the registry lists for the node key. When the claimer is
+// someone else, the message is "Claim on your node <node key hex> announced at block H. It executes at block H+40320
+// unless you remove the node with your owner key." with H = latestHeight + 1; the owner's own claim carries none. An
+// error when the node key is not in the registry, has no owner, or the reply cannot be read.
+func ClaimNotice(registry any, nodePublicKey, claimer []byte, latestHeight uint32) (recipient []byte, message string, err error) {
+	reply, ok := registry.(map[string]any)
+	if !ok {
+		return nil, "", errors.New("cannot read the registered node owner: the reply is not a JSON object")
+	}
+	var nodes []any
+	if n, present := reply["nodes"]; present && n != nil {
+		if nodes, ok = n.([]any); !ok {
+			return nil, "", errors.New("cannot read the registered node owner: nodes is not a list")
+		}
+	}
+	wanted := hex.EncodeToString(nodePublicKey)
+	for _, item := range nodes {
+		node, ok := item.(map[string]any)
+		if !ok {
+			return nil, "", errors.New("cannot read the registered node owner: a node is not a JSON object")
+		}
+		if key, _ := node["node_public_key"].(string); key != wanted {
+			continue
+		}
+		owner := ""
+		if a, present := node["account_address"]; present {
+			owner, ok = a.(string)
+			if !ok {
+				return nil, "", errors.New("cannot read the registered node owner: account_address is not hex")
+			}
+		}
+		if !IsHex(owner, 0) {
+			return nil, "", errors.New("cannot read the registered node owner: account_address is not hex")
+		}
+		recipient, _ = hex.DecodeString(owner)
+		if bytes.Equal(recipient, claimer) {
+			return recipient, "", nil
+		}
+		if len(recipient) == 0 {
+			return nil, "", errors.New("the registered node has no owner account")
+		}
+		h := uint64(latestHeight) + 1
+		return recipient, fmt.Sprintf("Claim on your node %s announced at block %d. It executes at block %d unless you remove the node with your owner key.",
+			wanted, h, h+NodeClaimDelayBlocks), nil
+	}
+	return nil, "", errors.New("the node key is not in the node's registry")
+}
+
 func ComputeFields(in CustomInput, ctx *BodyContext) (map[string]any, error) {
 	if ctx.Computed == nil {
 		ctx.Computed = map[string][]byte{}

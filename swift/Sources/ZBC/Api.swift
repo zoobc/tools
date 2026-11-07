@@ -116,6 +116,14 @@ public final class Client {
         return r.body
     }
 
+    /// GET /api/v1/nodes: the node registry, each node with its node_public_key and owner account_address (hex).
+    public func nodes() throws -> Any {
+        let r = try call("GET", "/api/v1/nodes")
+        guard r.status == 200 else { throw ToolError(ExitCode.internalError, "Failed to fetch the registered node owner from \(api)", extra: ["http_code": r.status]) }
+        guard let j = r.json else { throw ToolError(ExitCode.internalError, "Cannot read the registered node owner: the reply is not JSON") }
+        return j
+    }
+
     /// GET /api/v1/blocks/latest: the reference block for a proof of ownership (`block_hash`, or a gateway's `hash`).
     public func latestBlock() throws -> Custom.ReferenceBlock {
         let r = try call("GET", "/api/v1/blocks/latest")

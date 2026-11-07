@@ -1,6 +1,6 @@
 {
  "license": "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci",
- "description": "Transactions built by the C++ tools with --offline --timestamp (signing.md). `params` are the command-line strings in spec/transactions order after the key; `expected` is what the tools printed: body, unsigned envelope, digest, signature, transaction_bytes = unsigned || signature, transaction_hash = SHA3-256(transaction_bytes), and the submit payload. `genesis` = the chain signed for ('v1' = legacy bare digest). `reference_block` is the block a proof of ownership used. Core set: SendZBC and ApprovalEscrow.",
+ "description": "Transactions built by the C++ tools with --offline --timestamp (signing.md). `params` are the command-line strings in spec/transactions order after the key; `expected` is what the tools printed: body, unsigned envelope, digest, signature, transaction_bytes = unsigned || signature, transaction_hash = SHA3-256(transaction_bytes), and the submit payload. `genesis` = the chain signed for ('v1' = legacy bare digest). `reference_block` is the block a proof of ownership used. `node_registry` (claim-node) is GET /api/v1/nodes as the stand-in node answered it: the recipient is the node's owner, and when the signer is not the owner the message is the claim notice, H = reference_block height + 1. Core set: SendZBC and ApprovalEscrow.",
  "vectors": [
   {
    "name": "send-zbc/plain",

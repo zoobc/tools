@@ -847,7 +847,7 @@ COMMANDS = [
   "type": 770,
   "command": "claim-node",
   "binary": "zbc-node-claim",
-  "description": "Claim the locked balance of a removed or expired node registration.",
+  "description": "Claim a node's lock: the owner's own claim is an exit (as remove-node); another account's claim, proved by the node key, executes 40,320 blocks later unless the owner removes the node first (a claim on a leaving node is void).",
   "sender_key": "sender_privkey",
   "recipient": "none",
   "options": [
@@ -887,7 +887,9 @@ COMMANDS = [
    "node_privkey": "2222222222222222222222222222222222222222222222222222222222222222"
   },
   "notes": [
-   "zbc-node-claim takes (node_privkey, owner_privkey)."
+   "zbc-node-claim takes (node_privkey, owner_privkey).",
+   "The envelope's recipient is the node's owner account, read from GET /api/v1/nodes (the entry whose node_public_key is the node key in lower-case hex; its account_address is the typed account in hex). A node key not in that list, or listed with no owner, is an error (exit 1).",
+   "When the signer is not the owner, the message is the claim notice \"Claim on your node <node key hex> announced at block H. It executes at block H+40320 unless you remove the node with your owner key.\", H = the latest block's height + 1; it replaces --message (and --encrypt seals it to the owner). The owner's own claim carries no message."
   ]
  },
  {

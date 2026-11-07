@@ -8,7 +8,8 @@
 Every value in the vectors is what the C++ tools printed; nothing is computed here. --check
 regenerates into a temporary directory and fails if any file differs from the committed one,
 which is what CI runs. A tiny local HTTP server stands in for a node during the three
-node-registration commands, whose proof of ownership needs a reference block.
+node-registration commands, whose proof of ownership needs a reference block (and claim-node the
+node registry, for the owner it notifies).
 """
 import argparse, json, os, pathlib, shutil, subprocess, sys, tempfile, threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -28,6 +29,14 @@ Z_V = "ZBS_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJBNBJQ"   # t
 PUB_1 = "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"   # public key of SEED_1 (A_1 as 64 hex)
 V_SIG_1 = "4cdf8cafca5d06dd6c81c5460c9affec7eada96a63943e485b673ae33da6330570885a8b3f5dd752cbbe2b4404ae9402cdd2f6c36a09941e5d8546dbdd4ef10b"  # sign-message(SEED_1, "hello zoobc")
 REF_BLOCK = {"block_hash": "5a" * 32, "height": 1000}
+# GET /api/v1/nodes as the stand-in node answers it. claim-node reads it for the node's owner, the transaction's recipient
+# (node 0.6.1, rule claim_notifies_owner): node key 22..22 is registered to the vector key itself (SEED_V), node key 33..33
+# to SEED_1's account, so the example is the owner's own claim and claim-node/other-claimer is someone else's.
+NODE_REGISTRY = {"nodes": [
+    {"node_public_key": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+     "account_address": "000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152", "registration_status": 0},
+    {"node_public_key": "17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce",
+     "account_address": "00000000" + PUB_1, "registration_status": 0}]}
 # ZBC-MSG-v1 vectors frozen when v2 shipped (2026-10-19): the tools no longer PRODUCE v1 signatures, but
 # verify-message accepts them until MESSAGE_SIGNING_V1_SUNSET (2026-12-01T00:00:00Z). Ports keep verifying
 # these until then; remove them, and the two v1 cases in cli.json, after the sunset.
@@ -348,20 +357,15 @@ class FakeNode(BaseHTTPRequestHandler):
         body = None
         if self.path.endswith("/api/v1/blocks/latest"): body = REF_BLOCK
         elif self.path.endswith("/api/v1/node/info"): body = {"signing_version": 2, "genesis_hash": GENESIS}
-        # claim-node (node 0.6.1, rule claim_notifies_owner): the tool reads the registry to learn the node's owner. The
-        # example's node key (node_privkey 22..22) is registered to the vector key itself (SEED_V), so the claim is the
-        # owner's own and carries no notice: the recorded bytes are unchanged.
-        elif self.path.endswith("/api/v1/nodes"): body = {"nodes": [{
-            "node_public_key": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
-            "account_address": "000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
-            "registration_status": 0}]}
+        elif self.path.endswith("/api/v1/nodes"): body = NODE_REGISTRY
         if body is None:
             self.send_response(404); self.end_headers(); return
         data = json.dumps(body).encode()
         self.send_response(200); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(data))); self.end_headers()
         self.wfile.write(data)
 
-def transaction_vector(name, spec, params, *, key=SEED_V, fee=FEE, ts=T0, genesis=GENESIS, message=None, escrow=None, extra_args=(), api=None, files=None):
+def transaction_vector(name, spec, params, *, key=SEED_V, fee=FEE, ts=T0, genesis=GENESIS, message=None, escrow=None, extra_args=(), api=None, files=None,
+                       registry=None):
     cmd = spec["command"]
     if spec["binary"] and not spec.get("_cli", True):
         argv = [str(BIN / spec["binary"])]
@@ -395,6 +399,8 @@ def transaction_vector(name, spec, params, *, key=SEED_V, fee=FEE, ts=T0, genesi
                         "signing_version": j["signing_version"], "payload": j["payload"]}}
     if files:
         rec["files"] = {k: pathlib.Path(v).read_bytes().hex() for k, v in files.items()}
+    if registry is not None:
+        rec["node_registry"] = registry
     return rec
 
 def transactions_vectors():
@@ -436,15 +442,21 @@ def transactions_vectors():
             if s["needs_node"]: kw["api"] = "http://127.0.0.1:%d" % port
             if any(p["kind"] == "file" for p in s["params"]): kw["files"] = {"content_file": str(content)}
             if s["command"] == "liquid-payment": kw["extra_args"] = ()
+            if s["command"] == "claim-node": kw["registry"] = NODE_REGISTRY
             every.append(transaction_vector("%s/example" % cmd, s, ex, **kw))
         lp = specs["liquid-payment"]; lp2 = dict(lp); lp2["_cli"] = False
         every.append(transaction_vector("liquid-payment/token", lp2, {"recipient": A_1, "amount": "500000000", "complete_minutes": "60", "token_id": "123456789"}, ts=T0 + 200))
+        # someone else's claim: the recipient is the owner (SEED_1's account) and the message is the notice
+        every.append(transaction_vector("claim-node/other-claimer", specs["claim-node"], {"node_privkey": "33" * 32}, ts=T0 + 201,
+                                        api="http://127.0.0.1:%d" % port, registry=NODE_REGISTRY))
     finally:
         srv.shutdown(); shutil.rmtree(tmp)
     desc = ("Transactions built by the C++ tools with --offline --timestamp (signing.md). `params` are the command-line strings in "
             "spec/transactions order after the key; `expected` is what the tools printed: body, unsigned envelope, digest, signature, "
             "transaction_bytes = unsigned || signature, transaction_hash = SHA3-256(transaction_bytes), and the submit payload. "
-            "`genesis` = the chain signed for ('v1' = legacy bare digest). `reference_block` is the block a proof of ownership used.")
+            "`genesis` = the chain signed for ('v1' = legacy bare digest). `reference_block` is the block a proof of ownership used. "
+            "`node_registry` (claim-node) is GET /api/v1/nodes as the stand-in node answered it: the recipient is the node's owner, and "
+            "when the signer is not the owner the message is the claim notice, H = reference_block height + 1.")
     return ({"description": desc + " Core set: SendZBC and ApprovalEscrow.", "vectors": core},
             {"description": desc + " One vector per transaction type, from each spec/transactions example.", "vectors": every})
 

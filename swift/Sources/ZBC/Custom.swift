@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
 
+import Foundation
+
 /// The hand-written parts the descriptions mark computed or custom (spec/transactions/README.md).
 public enum Custom {
     /// The block a proof of ownership refers to.
@@ -20,6 +22,41 @@ public enum Custom {
         var msg = owner.accountBytes
         msg += block.hash; msg += LE.u32(block.height)
         return msg + node.sign(msg)
+    }
+
+    /// How long another account's claim on a node waits for the owner (node rule claim_notifies_owner).
+    public static let nodeClaimDelayBlocks: UInt64 = 40320
+
+    /// (recipient, message) of a claim-node transaction: the node's registered owner and the notice it is sent. `registry` is
+    /// the reply of GET /api/v1/nodes (as JSONSerialization reads it), `claimer` the claiming account (36 typed bytes),
+    /// `latestHeight` the height of the latest block. The recipient is the owner account the registry lists for the node key.
+    /// When the claimer is someone else, the message is "Claim on your node <node key hex> announced at block H. It executes
+    /// at block H+40320 unless you remove the node with your owner key." with H = latestHeight + 1; the owner's own claim
+    /// carries none. Throws ToolError (internal) when the node key is not in the registry, has no owner, or the reply cannot
+    /// be read.
+    public static func claimNotice(_ registry: Any, nodePublicKey: [UInt8], claimer: [UInt8], latestHeight: UInt32) throws -> (recipient: [UInt8], message: String) {
+        guard let reply = registry as? [String: Any] else { throw ToolError.internalError("Cannot read the registered node owner: the reply is not a JSON object") }
+        var nodes: [Any] = []
+        if let n = reply["nodes"], !(n is NSNull) {
+            guard let list = n as? [Any] else { throw ToolError.internalError("Cannot read the registered node owner: nodes is not a list") }
+            nodes = list
+        }
+        let wanted = Enc.hex(nodePublicKey)
+        for item in nodes {
+            guard let node = item as? [String: Any] else { throw ToolError.internalError("Cannot read the registered node owner: a node is not a JSON object") }
+            guard (node["node_public_key"] as? String ?? "") == wanted else { continue }
+            var owner = ""
+            if let a = node["account_address"] {
+                guard let text = a as? String else { throw ToolError.internalError("Cannot read the registered node owner: account_address is not hex") }
+                owner = text
+            }
+            guard Enc.isHex(owner), let recipient = Enc.unhex(owner) else { throw ToolError.internalError("Cannot read the registered node owner: account_address is not hex") }
+            if recipient == claimer { return (recipient, "") }
+            if recipient.isEmpty { throw ToolError.internalError("The registered node has no owner account") }
+            let h = UInt64(latestHeight) + 1
+            return (recipient, "Claim on your node \(wanted) announced at block \(h). It executes at block \(h + nodeClaimDelayBlocks) unless you remove the node with your owner key.")
+        }
+        throw ToolError.internalError("The node key is not in the node's registry")
     }
 
     /// Fill `ctx.computed` for the fields the generic serialiser cannot produce; returns extra output fields.

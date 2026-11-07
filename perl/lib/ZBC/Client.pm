@@ -105,6 +105,15 @@ sub account {
 }
 
 # [hash bytes, height] of the latest block, from `block_hash` (node) or `hash` (gateway).
+# GET /api/v1/nodes: the node registry, each node with its node_public_key and owner account_address (hex).
+sub nodes {
+    my ($self) = @_;
+    my ($status, $text, $j) = $self->_call('GET', '/api/v1/nodes');
+    die ZBC::Error->new(INTERNAL, "Failed to fetch the registered node owner from $self->{api}", http_code => $status) if $status != 200;
+    die ZBC::Error->new(INTERNAL, "Cannot read the registered node owner: the reply is not JSON") unless defined $j;
+    return $j;
+}
+
 sub latest_block {
     my ($self) = @_;
     my ($status, $text, $j) = $self->_call('GET', '/api/v1/blocks/latest');

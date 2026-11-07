@@ -86,8 +86,12 @@ function checkSigned(array $v, string $body): void
     $def = Spec::command($v['command']);
     $kp = KeyPair::fromHex($v['key']);
     $recipient = $def['recipient'] === 'required' ? Address::parse($v['params']['recipient'])->bytes() : '';
+    $message = $v['message'] ?? '';
+    if (isset($v['node_registry'])) {   // claim-node: the registered owner, and the notice when the signer is someone else
+        [$recipient, $message] = Custom::claimNotice($v['node_registry'], KeyPair::fromHex($v['params']['node_privkey'])->publicKey, $kp->accountBytes(), $v['reference_block']['height']);
+    }
     $escrow = isset($v['escrow']) ? new Escrow($v['escrow']['approver'], $v['escrow']['commission'], $v['escrow']['timeout'], $v['escrow']['instruction'] ?? '') : null;
-    $signed = Transaction::sign($v['type'], $v['timestamp'], $kp, $recipient, $v['fee'], $body, SigningContext::of($v['genesis']), $escrow, $v['message'] ?? '');
+    $signed = Transaction::sign($v['type'], $v['timestamp'], $kp, $recipient, $v['fee'], $body, SigningContext::of($v['genesis']), $escrow, $message);
     check("$name unsigned", bin2hex($signed->unsigned) === $e['unsigned_bytes']);
     check("$name digest", bin2hex($signed->digest) === $e['digest']);
     check("$name signature", bin2hex($signed->signature) === $e['signature']);
@@ -111,6 +115,15 @@ foreach ($load('transactions-all.json')['vectors'] as $v) {
         $body = Body::build($def, $v['params'], $bc);
     }
     checkSigned($v, $body);
+}
+foreach ($load('transactions-all.json')['vectors'] as $v) {
+    if ($v['name'] !== 'claim-node/other-claimer') { continue; }
+    $node = KeyPair::fromHex($v['params']['node_privkey'])->publicKey; $claimer = KeyPair::fromHex($v['key'])->accountBytes();
+    $noOwner = ['nodes' => array_map(fn ($n) => ['account_address' => ''] + $n, $v['node_registry']['nodes'])];
+    foreach ([[['nodes' => []], "not in the node's registry"], [$noOwner, 'no owner account']] as [$registry, $why]) {
+        try { Custom::claimNotice($registry, $node, $claimer, 1000); $msg = 'accepted'; } catch (RuntimeException $e) { $msg = $e->getMessage(); }
+        check("claim-node refused: $why", str_contains($msg, $why), $msg);
+    }
 }
 check('transaction id', Transaction::id(hex2bin('4ac2d11be8fe534bf2b2776fa7c1a3ece08e17f3b71e8d796545f5edde8b86fa')) === 5427962248764179018);
 

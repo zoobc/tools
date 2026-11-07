@@ -37,6 +37,46 @@ pub struct CustomInput<'a> {
 }
 
 /// Fill `ctx.computed` for the fields the generic serialiser cannot produce; returns extra output fields.
+/// How long another account's claim on a node waits for the owner (node rule claim_notifies_owner).
+pub const NODE_CLAIM_DELAY_BLOCKS: u64 = 40320;
+
+/// The recipient and message of a claim-node transaction: the node's registered owner and the notice it is sent.
+/// `registry` is the reply of GET /api/v1/nodes, `claimer` the claiming account (36 typed bytes), `latest_height` the
+/// height of the latest block. The recipient is the owner account the registry lists for the node key. When the claimer
+/// is someone else, the message is "Claim on your node <node key hex> announced at block H. It executes at block H+40320
+/// unless you remove the node with your owner key." with H = latest_height + 1; the owner's own claim carries none. An
+/// error when the node key is not in the registry, has no owner, or the reply cannot be read.
+pub fn claim_notice(registry: &Value, node_public_key: &[u8], claimer: &[u8], latest_height: u32) -> Result<(Vec<u8>, String), String> {
+    let reply = registry.as_object().ok_or("Cannot read the registered node owner: the reply is not a JSON object")?;
+    let empty = Vec::new();
+    let nodes = match reply.get("nodes") {
+        None | Some(Value::Null) => &empty,
+        Some(n) => n.as_array().ok_or("Cannot read the registered node owner: nodes is not a list")?,
+    };
+    let wanted = hex::encode(node_public_key);
+    for node in nodes {
+        let node = node.as_object().ok_or("Cannot read the registered node owner: a node is not a JSON object")?;
+        if node.get("node_public_key").and_then(Value::as_str).unwrap_or("") != wanted {
+            continue;
+        }
+        let owner = match node.get("account_address") {
+            None => "",
+            Some(a) => a.as_str().ok_or("Cannot read the registered node owner: account_address is not hex")?,
+        };
+        let recipient = hex::decode(owner).map_err(|_| "Cannot read the registered node owner: account_address is not hex")?;
+        if recipient == claimer {
+            return Ok((recipient, String::new()));
+        }
+        if recipient.is_empty() {
+            return Err("The registered node has no owner account".into());
+        }
+        let h = latest_height as u64 + 1;
+        return Ok((recipient, format!("Claim on your node {wanted} announced at block {h}. It executes at block {} unless you remove the node with your owner key.",
+                                      h + NODE_CLAIM_DELAY_BLOCKS)));
+    }
+    Err("The node key is not in the node's registry".into())
+}
+
 pub fn compute_fields(input: &CustomInput, ctx: &mut BodyContext) -> Result<Map<String, Value>, ToolError> {
     let p = input.params;
     let get = |k: &str| p.get(k).cloned().unwrap_or_default();

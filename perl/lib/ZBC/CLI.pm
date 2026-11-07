@@ -9,7 +9,7 @@ use ZBC::Address qw(parse_address);
 use ZBC::Body qw(build_body validate_param parse_integer);
 use ZBC::Client;
 use ZBC::Commands;
-use ZBC::Custom qw(compute_fields custom_body);
+use ZBC::Custom qw(compute_fields custom_body claim_notice);
 use ZBC::Encoding qw(is_hex from_hex to_hex);
 use ZBC::Encryption qw(is_sealed open_sealed seal);
 use ZBC::Error;
@@ -457,6 +457,10 @@ sub run_transaction {
         my $more = compute_fields($spec, $v, $sender, \%computed, $reference);
         %extra = (%extra, %$more);
         $body = build_body($spec, $v, $sender, \%files, \%computed);
+    }
+    if ($spec->{command} eq 'claim-node') {
+        # the node's owner is the recipient; another claimer's claim carries the notice as its message (it replaces --message)
+        ($recipient, $o->{message}) = claim_notice($client->nodes, key_pair($v->{node_privkey})->public_key, $sender->account_bytes, $reference->[1]);
     }
     for my $p (@{ $spec->{params} }) {
         # never a private key: kind privkey, and by name too, should a description ever mis-declare one

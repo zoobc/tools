@@ -358,6 +358,13 @@ public enum Cli {
             extra += try Custom.computeFields(input, bc)
             body = try Body.build(def, v, bc)
         }
+        var messageText = o.message
+        if def.command == "claim-node" {
+            // the node's owner is the recipient; another claimer's claim carries the notice as its message (it replaces --message)
+            let notice = try Custom.claimNotice(try client.nodes(), nodePublicKey: try KeyPair(hex: v["node_privkey"]!).publicKey, claimer: sender.accountBytes,
+                                                latestHeight: block?.height ?? 0)
+            recipient = notice.recipient; messageText = notice.message
+        }
         // never a private key: kind privkey, and by name too, should a description ever mis-declare one
         for p in def.params where p.kind != "privkey" && !p.name.hasSuffix("privkey") && !p.name.hasSuffix("privkeys") && p.kind != "file" && p.name != "recipient" && !extra.contains(where: { $0.0 == p.name }) {
             let val = v[p.name] ?? ""
@@ -369,7 +376,7 @@ public enum Cli {
         }
         extra.append(("sender", sender.address))
         let signed: SignedTransaction
-        var message = Array((o.message ?? "").utf8)
+        var message = Array((messageText ?? "").utf8)
         if o.encrypt && !message.isEmpty {   // --encrypt: seal the message to the recipient's key (signing.md 8)
             if recipient.count != 36 { throw ToolError.usage("--encrypt is only supported for ZBC recipients") }
             guard let sealed = Encryption.seal(message, recipientPublicKey: Array(recipient[4..<36])) else { throw ToolError.internalError("sealing failed") }
@@ -381,7 +388,7 @@ public enum Cli {
         let fields: [(String, Any)] = [("transaction_hash", Enc.hex(signed.hash)), ("transaction_type", Int(def.type)), ("sender_account_address", payload["sender_account_address"]!),
                                        ("recipient_account_address", payload["recipient_account_address"]!), ("fee", o.fee), ("timestamp", timestamp)]
         var common: [(String, Any)] = []
-        if let m = o.message, !m.isEmpty { common.append(("message", m)) }
+        if let m = messageText, !m.isEmpty { common.append(("message", m)) }
         if let e = payload["escrow"] { common.append(("escrow", e)) }
         common += extra
         if o.offline {

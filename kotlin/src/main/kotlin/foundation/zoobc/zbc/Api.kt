@@ -94,6 +94,13 @@ class Client @JvmOverloads constructor(api: String = "http://localhost:8080", va
         return r.body()
     }
 
+    /** GET /api/v1/nodes: the node registry, each node with its node_public_key and owner account_address (hex). */
+    fun nodes(): JsonElement {
+        val r = call("GET", "/api/v1/nodes")
+        if (r.status != 200) throw ToolError(ExitCode.INTERNAL, "Failed to fetch the registered node owner from $api", mapOf("http_code" to JsonPrimitive(r.status)))
+        return r.json ?: throw ToolError(ExitCode.INTERNAL, "Cannot read the registered node owner: the reply is not JSON")
+    }
+
     /** GET /api/v1/blocks/latest: the reference block for a proof of ownership (`block_hash`, or a gateway's `hash`). */
     fun latestBlock(): Custom.ReferenceBlock {
         val r = call("GET", "/api/v1/blocks/latest")

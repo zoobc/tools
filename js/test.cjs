@@ -10,7 +10,7 @@ let n = 0;
 for (const s of load("keys.json").seeds) { const kp = ZBC.keyPairFromSeed(s.seed); assert.equal(kp.address, s.address); assert.equal(kp.nodeAddress, s.node_address); n++; }
 for (const w of load("keys.json").wallets) for (const a of w.accounts) { assert.equal(ZBC.walletAccount(w.mnemonic, a.index, w.passphrase).address, a.address); n++; }
 for (const v of load("addresses.json").vectors) {
-  if (v.valid) assert.equal(ZBC.bytesToHex(ZBC.parseAddress(v.input, v.chain ?? "").bytes), v.address_bytes, v.input);
+  if (v.valid) { const p = ZBC.parseAddress(v.input, v.chain ?? ""); assert.equal(ZBC.bytesToHex(p.bytes), v.address_bytes, v.input); assert.equal(p.typeName, v.type_label, v.input); }
   else assert.throws(() => ZBC.parseAddress(v.input, v.chain ?? ""), v.input);
   n++;
 }
@@ -37,6 +37,11 @@ for (const v of load("transactions-all.json").vectors) {   // proof of ownership
   const bc = { sender, files: {}, computed: {} };
   ZBC.computeFields({ def, params: { ...v.params }, sender, ctx: ZBC.signingContext(v.genesis), timestamp: BigInt(v.timestamp), referenceBlock: { hash: ZBC.hexToBytes(v.reference_block.block_hash), height: v.reference_block.height } }, bc);
   assert.equal(ZBC.bytesToHex(ZBC.buildBody(def, v.params, bc)), v.expected.body, v.name); n++;
+  if (v.node_registry) {   // claim-node: the recipient is the registered owner, the message the notice to another claimer's owner
+    const c = ZBC.claimNotice(v.node_registry, ZBC.keyPairFromSeed(v.params.node_privkey).publicKey, sender.accountBytes, v.reference_block.height);
+    assert.equal(ZBC.bytesToHex(c.recipient), v.expected.payload.recipient_account_address, v.name);
+    assert.equal(ZBC.bytesToHex(ZBC.utf8(c.message)), v.expected.payload.message_hex ?? "", v.name); n++;
+  }
 }
 assert.ok(typeof ZBC.Client === "function" && ZBC.COMMANDS.length >= 58);
 for (const s of load("encryption.json").sealed) { const f = ZBC.seal(ZBC.hexToBytes(s.plaintext_hex), ZBC.hexToBytes(s.recipient_public_key), ZBC.hexToBytes(s.ephemeral_secret_key)); assert.equal(ZBC.bytesToHex(f), s.message_field); assert.equal(ZBC.bytesToHex(ZBC.openSealed(f, ZBC.hexToBytes(s.recipient_seed))), s.plaintext_hex); n++; }

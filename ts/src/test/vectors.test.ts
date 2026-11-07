@@ -12,7 +12,7 @@ import { parseAddress, decodeZbcAddress } from "../address.js";
 import { MESSAGE_SIGNING_V1_SUNSET, signMessage, verifyMessage, verifyMessageDetailed } from "../message.js";
 import { signTransaction, signingContext, sendZbcBody, approvalEscrowBody, transactionId } from "../transaction.js";
 import { buildBody, BodyContext } from "../body.js";
-import { computeFields, customBody } from "../custom.js";
+import { claimNotice, computeFields, customBody } from "../custom.js";
 import { COMMAND_BY_NAME } from "../generated/commands.js";
 import { bytesToHex, fromUtf8, hexToBytes, utf8 } from "../util/bytes.js";
 import { ed25519PublicKeyToX25519, ed25519SeedToX25519, x25519Base } from "../crypto/x25519.js";
@@ -90,9 +90,14 @@ function ctxOf(v: Vec) { return signingContext(v.genesis); }
 function senderOf(v: Vec) { return keyPairFromSeed(v.key); }
 function envelope(v: Vec, body: Uint8Array) {
   const def = COMMAND_BY_NAME.get(v.command)!;
-  const recipient = def.recipient === "required" ? parseAddress(v.params.recipient).bytes : new Uint8Array();
+  let recipient = def.recipient === "required" ? parseAddress(v.params.recipient).bytes : new Uint8Array();
+  let message: string | null = v.message;
+  if (v.node_registry) {   // claim-node: the registered owner, and the notice when the signer is someone else
+    const n = claimNotice(v.node_registry, keyPairFromSeed(v.params.node_privkey).publicKey, senderOf(v).accountBytes, v.reference_block.height);
+    recipient = n.recipient; message = n.message;
+  }
   return signTransaction({ type: v.type, timestamp: BigInt(v.timestamp), sender: senderOf(v).accountBytes, recipient, fee: BigInt(v.fee), body,
-                           escrow: v.escrow, message: v.message ? utf8(v.message) : undefined }, senderOf(v), ctxOf(v));
+                           escrow: v.escrow, message: message ? utf8(message) : undefined }, senderOf(v), ctxOf(v));
 }
 function checkSigned(v: Vec, signed: ReturnType<typeof signTransaction>) {
   const e = v.expected;
@@ -126,6 +131,13 @@ test("transactions-all.json: every type's body from its description, then the wh
     assert.equal(bytesToHex(body), v.expected.body, v.name + " body");
     checkSigned(v, envelope(v, body));
   }
+});
+test("claim-node: a node key not in the registry, or with no owner, is refused", () => {
+  const v = load("transactions-all.json").vectors.find((x: Vec) => x.name === "claim-node/other-claimer");
+  const node = keyPairFromSeed(v.params.node_privkey).publicKey, claimer = senderOf(v).accountBytes;
+  const noOwner = { nodes: v.node_registry.nodes.map((n: Record<string, unknown>) => ({ ...n, account_address: "" })) };
+  assert.throws(() => claimNotice({ nodes: [] }, node, claimer, 1000), /not in the node's registry/);
+  assert.throws(() => claimNotice(noOwner, node, claimer, 1000), /no owner account/);
 });
 test("transaction id is the first 8 bytes of the hash as int64 LE", () => {
   assert.equal(transactionId(hexToBytes("4ac2d11be8fe534bf2b2776fa7c1a3ece08e17f3b71e8d796545f5edde8b86fa")), 5427962248764179018n);

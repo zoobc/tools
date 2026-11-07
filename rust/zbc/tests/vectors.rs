@@ -113,13 +113,22 @@ fn check_signed(v: &Value, body: Vec<u8>) {
     assert_eq!(hex::encode(&body), s(e, "body"), "{name} body");
     let def = command(&s(v, "command")).unwrap();
     let kp = KeyPair::from_hex(&s(v, "key")).unwrap();
-    let recipient = if def.recipient == "required" { parse_address(&s(&v["params"], "recipient"), "").unwrap().bytes() } else { Vec::new() };
+    let mut recipient = if def.recipient == "required" { parse_address(&s(&v["params"], "recipient"), "").unwrap().bytes() } else { Vec::new() };
+    let mut message = v["message"].as_str().unwrap_or("").as_bytes().to_vec();
+    if !v["node_registry"].is_null() {
+        // claim-node: the registered owner, and the notice when the signer is someone else
+        let node = KeyPair::from_hex(&s(&v["params"], "node_privkey")).unwrap();
+        let height = v["reference_block"]["height"].as_u64().unwrap() as u32;
+        let (r, notice) = claim_notice(&v["node_registry"], &node.public_key, &kp.account_bytes(), height).unwrap_or_else(|e| panic!("{name}: {e}"));
+        recipient = r;
+        message = notice.into_bytes();
+    }
     let escrow = v["escrow"].as_object().map(|e| Escrow {
         approver: e["approver"].as_str().unwrap().into(), commission: e["commission"].as_i64().unwrap(), timeout: e["timeout"].as_i64().unwrap(),
         instruction: e.get("instruction").and_then(Value::as_str).unwrap_or("").into(),
     });
     let tx = Unsigned { tx_type: v["type"].as_u64().unwrap() as u32, timestamp: v["timestamp"].as_i64().unwrap(), sender: kp.account_bytes(), recipient,
-                        fee: v["fee"].as_i64().unwrap(), body, escrow, message: v["message"].as_str().unwrap_or("").as_bytes().to_vec(), version: 1 };
+                        fee: v["fee"].as_i64().unwrap(), body, escrow, message, version: 1 };
     let signed = sign_transaction(&tx, &kp, &SigningContext::of(&s(v, "genesis")).unwrap()).unwrap();
     assert_eq!(hex::encode(&signed.unsigned), s(e, "unsigned_bytes"), "{name}");
     assert_eq!(hex::encode(signed.digest), s(e, "digest"), "{name}");
@@ -127,6 +136,22 @@ fn check_signed(v: &Value, body: Vec<u8>) {
     assert_eq!(hex::encode(&signed.bytes), s(e, "transaction_bytes"), "{name}");
     assert_eq!(hex::encode(signed.hash), s(e, "transaction_hash"), "{name}");
     assert_eq!(serde_json::to_value(&signed.payload).unwrap(), e["payload"], "{name} payload");
+}
+
+#[test]
+fn claim_notice_refusals() {
+    let all = load("transactions-all.json");
+    let v = all["vectors"].as_array().unwrap().iter().find(|v| v["name"] == "claim-node/other-claimer").expect("claim-node/other-claimer");
+    let node = KeyPair::from_hex(&s(&v["params"], "node_privkey")).unwrap();
+    let claimer = KeyPair::from_hex(&s(v, "key")).unwrap().account_bytes();
+    let mut no_owner = v["node_registry"].clone();
+    for n in no_owner["nodes"].as_array_mut().unwrap() {
+        n["account_address"] = Value::from("");
+    }
+    for (registry, why) in [(serde_json::json!({"nodes": []}), "not in the node's registry"), (no_owner, "no owner account")] {
+        let err = claim_notice(&registry, &node.public_key, &claimer, 1000).unwrap_err();
+        assert!(err.contains(why), "{err}");
+    }
 }
 
 #[test]

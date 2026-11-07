@@ -207,6 +207,21 @@ func (c *Client) Account(address string) (map[string]any, error) {
 }
 
 // LatestBlock is GET /api/v1/blocks/latest: the reference block for a proof of ownership (`block_hash` or a gateway's `hash`).
+// Nodes is GET /api/v1/nodes: the node registry, each node with its node_public_key and owner account_address (hex).
+func (c *Client) Nodes() (any, error) {
+	r, err := c.call("GET", "/api/v1/nodes", nil)
+	if err != nil {
+		return nil, err
+	}
+	if r.Status != 200 {
+		return nil, &ToolError{Code: ExitInternal, Message: "Failed to fetch the registered node owner from " + c.API, Extra: map[string]any{"http_code": r.Status}}
+	}
+	if r.JSON == nil {
+		return nil, &ToolError{Code: ExitInternal, Message: "Cannot read the registered node owner: the reply is not JSON"}
+	}
+	return r.JSON, nil
+}
+
 func (c *Client) LatestBlock() (ReferenceBlock, error) {
 	r, err := c.call("GET", "/api/v1/blocks/latest", nil)
 	if err != nil {

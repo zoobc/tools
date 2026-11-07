@@ -13,7 +13,7 @@ use ZBC::ExitCode qw(usage);
 use ZBC::Keys qw(key_pair);
 use ZBC::Transaction qw(SEND_ZBC u32 u64 unsigned_bytes signing_digest);
 
-our @EXPORT_OK = qw(proof_of_ownership compute_fields multisig_address custom_body);
+our @EXPORT_OK = qw(proof_of_ownership compute_fields multisig_address custom_body claim_notice NODE_CLAIM_DELAY_BLOCKS);
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
 
 # owner address (36) || block hash (32) || height u32le, then the NODE key's signature over those 72 bytes (signing.md
@@ -27,6 +27,36 @@ sub proof_of_ownership {
 
 # Fill `computed` for the fields the generic serialiser cannot produce; returns a hash of extra output fields.
 # `reference_block` is [hash bytes, height] from GET /api/v1/blocks/latest, for the proof of ownership.
+# How long another account's claim on a node waits for the owner (node rule claim_notifies_owner).
+use constant NODE_CLAIM_DELAY_BLOCKS => 40320;
+
+# (recipient, message) of a claim-node transaction: the node's registered owner and the notice it is sent. $registry is
+# the reply of GET /api/v1/nodes (decoded), $claimer the claiming account (36 typed bytes), $latest_height the height of
+# the latest block. The recipient is the owner account the registry lists for the node key. When the claimer is someone
+# else, the message is "Claim on your node <node key hex> announced at block H. It executes at block H+40320 unless you
+# remove the node with your owner key." with H = $latest_height + 1; the owner's own claim carries none. Dies when the
+# node key is not in the registry, has no owner, or the reply cannot be read.
+sub claim_notice {
+    my ($registry, $node_public_key, $claimer, $latest_height) = @_;
+    die "Cannot read the registered node owner: the reply is not a JSON object" unless ref $registry eq 'HASH';
+    my $nodes = $registry->{nodes} // [];
+    die "Cannot read the registered node owner: nodes is not a list" unless ref $nodes eq 'ARRAY';
+    my $wanted = to_hex($node_public_key);
+    for my $node (@$nodes) {
+        die "Cannot read the registered node owner: a node is not a JSON object" unless ref $node eq 'HASH';
+        next unless ($node->{node_public_key} // '') eq $wanted;
+        my $owner = $node->{account_address} // '';
+        die "Cannot read the registered node owner: account_address is not hex" if ref $owner || !is_hex($owner);
+        my $recipient = from_hex($owner);
+        return ($recipient, '') if $recipient eq $claimer;
+        die "The registered node has no owner account" if $recipient eq '';
+        my $h = $latest_height + 1;
+        return ($recipient, sprintf("Claim on your node %s announced at block %d. It executes at block %d unless you remove the node with your owner key.",
+                                    $wanted, $h, $h + NODE_CLAIM_DELAY_BLOCKS));
+    }
+    die "The node key is not in the node's registry";
+}
+
 sub compute_fields {
     my ($spec, $params, $sender, $computed, $reference_block) = @_;
     my ($cmd, %extra) = ($spec->{command});

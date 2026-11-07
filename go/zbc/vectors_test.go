@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -179,8 +180,9 @@ type txVector struct {
 		BlockHash string `json:"block_hash"`
 		Height    uint32
 	} `json:"reference_block"`
-	Files    map[string]string
-	Expected struct {
+	Files        map[string]string
+	NodeRegistry any `json:"node_registry"`
+	Expected     struct {
 		Body             string          `json:"body"`
 		UnsignedBytes    string          `json:"unsigned_bytes"`
 		Digest           string          `json:"digest"`
@@ -214,6 +216,14 @@ func checkSigned(t *testing.T, v txVector, body []byte) {
 	var msg []byte
 	if v.Message != nil {
 		msg = []byte(*v.Message)
+	}
+	if v.NodeRegistry != nil { // claim-node: the registered owner, and the notice when the signer is someone else
+		node, _ := KeyPairFromHex(v.Params["node_privkey"])
+		r, notice, err := ClaimNotice(v.NodeRegistry, node.PublicKey, kp.AccountBytes(), v.ReferenceBlock.Height)
+		if err != nil {
+			t.Fatalf("%s: %v", v.Name, err)
+		}
+		recipient, msg = r, []byte(notice)
 	}
 	ctx, _ := SigningContextOf(v.Genesis)
 	s, err := SignTransaction(Unsigned{Type: v.Type, Timestamp: v.Timestamp, Sender: kp.AccountBytes(), Recipient: recipient, Fee: v.Fee, Body: body, Escrow: escrow, Message: msg}, kp, ctx)
@@ -279,6 +289,37 @@ func TestAllTransactionTypes(t *testing.T) {
 		}
 		checkSigned(t, v, body)
 	}
+}
+
+func TestClaimNoticeRefusals(t *testing.T) {
+	var d struct{ Vectors []txVector }
+	loadVectors(t, "transactions-all.json", &d)
+	for _, v := range d.Vectors {
+		if v.Name != "claim-node/other-claimer" {
+			continue
+		}
+		node, _ := KeyPairFromHex(v.Params["node_privkey"])
+		kp, _ := KeyPairFromHex(v.Key)
+		var noOwner []any
+		for _, n := range v.NodeRegistry.(map[string]any)["nodes"].([]any) {
+			m := map[string]any{}
+			for k, val := range n.(map[string]any) {
+				m[k] = val
+			}
+			m["account_address"] = ""
+			noOwner = append(noOwner, m)
+		}
+		for _, c := range []struct {
+			registry any
+			why      string
+		}{{map[string]any{"nodes": []any{}}, "not in the node's registry"}, {map[string]any{"nodes": noOwner}, "no owner account"}} {
+			if _, _, err := ClaimNotice(c.registry, node.PublicKey, kp.AccountBytes(), 1000); err == nil || !strings.Contains(err.Error(), c.why) {
+				t.Errorf("claim notice: want %q, got %v", c.why, err)
+			}
+		}
+		return
+	}
+	t.Fatal("no claim-node/other-claimer vector")
 }
 
 func TestTransactionID(t *testing.T) {

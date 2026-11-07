@@ -7,7 +7,7 @@ import { createInterface } from "node:readline/promises";
 import { Client } from "./api.js";
 import { parseAddress } from "./address.js";
 import { buildBody, validateParam, BodyContext } from "./body.js";
-import { computeFields, customBody } from "./custom.js";
+import { claimNotice, computeFields, customBody } from "./custom.js";
 import { ExitCode, ToolError, usage } from "./errors.js";
 import { keyPairFromSeed, KeyPair } from "./keys.js";
 import { publicKeyOfAddress, signMessage, verifyMessageDetailed } from "./message.js";
@@ -361,6 +361,11 @@ async function runTransaction(def: TxDef, v: Record<string, string>, o: Options)
   } else {
     Object.assign(extra, computeFields(custom, bodyCtx));
     body = buildBody(def, v, bodyCtx);
+  }
+  if (def.command === "claim-node") {
+    // the node's owner is the recipient; another claimer's claim carries the notice as its message (it replaces --message)
+    const n = claimNotice(await client.nodes(), keyPairFromSeed(v.node_privkey).publicKey, sender.accountBytes, custom.referenceBlock!.height);
+    recipient = n.recipient; o.message = n.message || null;
   }
   // never a private key: kind privkey, and by name too, should a description ever mis-declare one
   for (const p of def.params) if (p.kind !== "privkey" && !/privkeys?$/.test(p.name) && p.kind !== "file" && !(p.name in extra) && p.name !== "recipient") {

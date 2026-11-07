@@ -20,7 +20,7 @@ the JSON.
 | `binary` | the single-purpose C++ program, or `null` when only `zbc-cli` has it |
 | `description` | one sentence |
 | `sender_key` | the name of the first parameter (the signing key). `ZBC_KEY` applies only when it is `sender_privkey` |
-| `recipient` | `required` when the envelope carries a recipient (the `recipient` parameter), else `none` |
+| `recipient` | `required` when the envelope's recipient is the `recipient` parameter, else `none` (claim-node fills it from the node registry: see its `notes`) |
 | `options` | envelope options that apply: `message`, `encrypt`, `escrow`, `chain` |
 | `needs_node` | `true` when building the body needs a node (proof of ownership) even with `--genesis` |
 | `custom` | `null` when the generic serialiser can produce the body from `body`; else a label for the hand-written part |

@@ -147,6 +147,15 @@ impl Client {
         Ok(r.body())
     }
 
+    /// GET /api/v1/nodes: the node registry, each node with its node_public_key and owner account_address (hex).
+    pub fn nodes(&self) -> Result<Value, ToolError> {
+        let r = self.call("GET", "/api/v1/nodes", None)?;
+        if r.status != 200 {
+            return Err(internal(format!("Failed to fetch the registered node owner from {}", self.api)).with("http_code", json!(r.status)));
+        }
+        r.json.ok_or_else(|| internal("Cannot read the registered node owner: the reply is not JSON"))
+    }
+
     /// GET /api/v1/blocks/latest: the reference block for a proof of ownership (`block_hash`, or a gateway's `hash`).
     pub fn latest_block(&self) -> Result<ReferenceBlock, ToolError> {
         let r = self.call("GET", "/api/v1/blocks/latest", None)?;

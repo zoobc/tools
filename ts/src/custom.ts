@@ -37,6 +37,36 @@ export function proofOfOwnership(owner: KeyPair, node: KeyPair, block: { hash: U
   return concat(msg, sign(msg, node.seed));
 }
 
+export const NODE_CLAIM_DELAY_BLOCKS = 40320;
+
+/**
+ * The recipient and message of a claim-node transaction: the node's registered owner and the notice it is sent.
+ * `registry` is the reply of GET /api/v1/nodes, `claimer` the claiming account (36 typed bytes), `latestHeight`
+ * the height of the latest block. The recipient is the owner account the registry lists for the node key. When
+ * the claimer is someone else, the message is "Claim on your node <node key hex> announced at block H. It executes
+ * at block H+40320 unless you remove the node with your owner key." with H = latestHeight + 1; the owner's own
+ * claim carries none. Throws when the node key is not in the registry, has no owner, or the reply cannot be read.
+ */
+export function claimNotice(registry: unknown, nodePublicKey: Uint8Array, claimer: Uint8Array, latestHeight: number): { recipient: Uint8Array; message: string } {
+  if (!registry || typeof registry !== "object" || Array.isArray(registry)) throw new Error("Cannot read the registered node owner: the reply is not a JSON object");
+  const nodes = (registry as Record<string, unknown>).nodes ?? [];
+  if (!Array.isArray(nodes)) throw new Error("Cannot read the registered node owner: nodes is not a list");
+  const wanted = bytesToHex(nodePublicKey);
+  for (const node of nodes) {
+    if (!node || typeof node !== "object" || Array.isArray(node)) throw new Error("Cannot read the registered node owner: a node is not a JSON object");
+    const n = node as Record<string, unknown>;
+    if ((n.node_public_key ?? "") !== wanted) continue;
+    const owner = n.account_address ?? "";
+    if (typeof owner !== "string" || !isHex(owner)) throw new Error("Cannot read the registered node owner: account_address is not hex");
+    const recipient = hexToBytes(owner);
+    if (bytesToHex(recipient) === bytesToHex(claimer)) return { recipient, message: "" };
+    if (recipient.length === 0) throw new Error("The registered node has no owner account");
+    const h = latestHeight + 1;
+    return { recipient, message: `Claim on your node ${wanted} announced at block ${h}. It executes at block ${h + NODE_CLAIM_DELAY_BLOCKS} unless you remove the node with your owner key.` };
+  }
+  throw new Error("The node key is not in the node's registry");
+}
+
 /** Fill `ctx.computed` for the fields the generic serialiser cannot produce. Returns extra output fields. */
 export function computeFields(input: CustomInput, body: BodyContext): Record<string, unknown> {
   const { def, params, sender } = input;

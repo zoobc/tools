@@ -45,7 +45,7 @@ as printed by `zbc-cli help <command>`. The stdin object may also carry the opti
 |--------|---------|
 | `--api <url>` | Node or gateway to talk to. Default `ZBC_API`, else `http://localhost:8080`. `https://` works. |
 | `--fee <n>` | Fee in atomic units. Default 5 000 000 (0.05 ZBC). |
-| `--timeout <s>`, `--timeout-seconds <s>` | Bound for each HTTP call. Default `ZBC_TIMEOUT`, else 20. A command makes at most two calls. |
+| `--timeout <s>`, `--timeout-seconds <s>` | Bound for each HTTP call. Default `ZBC_TIMEOUT`, else 20. A command makes at most two calls; the node-registration commands one more and claim-node two more (`api.md`). |
 | `--genesis <hex>` | Sign for the chain with this genesis block hash without asking the node. Offline signing, or an unreachable node. `--genesis v1` forces the legacy unbound digest. Default: ask `--api`. |
 | `--json-input` | Read the parameters as one JSON object from stdin. |
 | `--verbose`, `-v` | Interactive prompts and text output instead of JSON. |
@@ -54,7 +54,7 @@ as printed by `zbc-cli help <command>`. The stdin object may also carry the opti
 | `--chain <name>` | Read the recipient as an address of this chain: `zbc`, `btc`, `eth`, `sol`, `dot`, `ada`, `xrp`, `trx`, `xtz`. Detection is automatic; this only forces a reading. |
 | `--escrow-approver <addr>`, `--escrow-commission <n>`, `--escrow-timeout <unix s>`, `--escrow-instruction <s>` | Turn a transfer into an escrow. The timeout is an absolute future Unix time in seconds. |
 | `--hex` | `sign-message` and `verify-message` only: the message is given as hex bytes, not text. |
-| `--offline` | Build, sign and hash, print every intermediate byte string (section 4) and exit 0 without submitting. Nothing is asked of a node, so `--genesis` (or `ZOOBC_GENESIS_HASH`) is required. |
+| `--offline` | Build, sign and hash, print every intermediate byte string (section 4) and exit 0 without submitting. Nothing is asked of a node, so `--genesis` (or `ZOOBC_GENESIS_HASH`) is required; the node-registration commands still read the latest block for their proof of ownership, and claim-node the node registry. |
 | `--timestamp <unix seconds>` | The transaction timestamp, instead of the clock. With `--offline` the output is reproducible byte for byte; that is how `spec/vectors` are made. Also fixes a multisig inner transaction's timestamp. |
 
 Options may appear anywhere on the command line. Unknown options are a usage error.

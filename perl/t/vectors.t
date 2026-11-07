@@ -10,7 +10,7 @@ use ZBC::Address qw(parse_address);
 use ZBC::Body qw(build_body);
 use ZBC::CLI;
 use ZBC::Commands;
-use ZBC::Custom qw(compute_fields custom_body);
+use ZBC::Custom qw(compute_fields custom_body claim_notice);
 use ZBC::Encoding qw(from_hex to_hex is_hex);
 use ZBC::Encryption qw(:all);
 use ZBC::ExitCode qw(USAGE VERIFY_FAILED);
@@ -43,8 +43,12 @@ sub envelope {
     my $spec = ZBC::Commands::by_name($v->{command});
     my $sender = key_pair($v->{key});
     my $recipient = $spec->{recipient} eq 'required' ? parse_address(bytes_of($v->{params}{recipient}))->bytes : '';
+    my $message = bytes_of($v->{message} // '');
+    if ($v->{node_registry}) {   # claim-node: the registered owner, and the notice when the signer is someone else
+        ($recipient, $message) = claim_notice($v->{node_registry}, key_pair($v->{params}{node_privkey})->public_key, $sender->account_bytes, $v->{reference_block}{height});
+    }
     my $escrow = $v->{escrow} ? ZBC::Escrow->new(%{ bytes_deep($v->{escrow}) }) : undef;
-    return sign_transaction($v->{type}, $v->{timestamp}, $sender, $recipient, $v->{fee}, $body, ZBC::SigningContext->of($v->{genesis}), $escrow, bytes_of($v->{message} // ''));
+    return sign_transaction($v->{type}, $v->{timestamp}, $sender, $recipient, $v->{fee}, $body, ZBC::SigningContext->of($v->{genesis}), $escrow, $message);
 }
 
 sub check_signed {
@@ -133,6 +137,16 @@ subtest 'transactions-all.json: every transaction type from the spec' => sub {
         my $body = body_of($v);
         is(to_hex($body), $v->{expected}{body}, "$v->{name}: body");
         check_signed($v, envelope($v, $body));
+    }
+};
+
+subtest 'claim-node: a node key not in the registry, or with no owner, is refused' => sub {
+    my ($v) = grep { $_->{name} eq 'claim-node/other-claimer' } @{ load('transactions-all.json')->{vectors} };
+    my ($node, $claimer) = (key_pair($v->{params}{node_privkey})->public_key, key_pair($v->{key})->account_bytes);
+    my $no_owner = { nodes => [ map { +{ %$_, account_address => '' } } @{ $v->{node_registry}{nodes} } ] };
+    for my $c ([{ nodes => [] }, "not in the node's registry"], [$no_owner, 'no owner account']) {
+        ok(!eval { claim_notice($c->[0], $node, $claimer, 1000); 1 }, "refused: $c->[1]");
+        like($@, qr/\Q$c->[1]\E/, "message: $c->[1]");
     }
 };
 

@@ -38,6 +38,7 @@ var ZBC = (() => {
     MESSAGE_SIGNING_SCHEME: () => MESSAGE_SIGNING_SCHEME,
     MESSAGE_SIGNING_SCHEME_V1: () => MESSAGE_SIGNING_SCHEME_V1,
     MESSAGE_SIGNING_V1_SUNSET: () => MESSAGE_SIGNING_V1_SUNSET,
+    NODE_CLAIM_DELAY_BLOCKS: () => NODE_CLAIM_DELAY_BLOCKS,
     SEALED_MAGIC: () => SEALED_MAGIC,
     SEALED_OVERHEAD: () => SEALED_OVERHEAD,
     SPLIT_POLICY_MAX_RECIPIENTS: () => SPLIT_POLICY_MAX_RECIPIENTS,
@@ -58,6 +59,7 @@ var ZBC = (() => {
     buildBody: () => buildBody,
     bytesToHex: () => bytesToHex,
     chainOf: () => chainOf,
+    claimNotice: () => claimNotice,
     classifyNodeError: () => classifyNodeError,
     computeFields: () => computeFields,
     concat: () => concat,
@@ -3701,6 +3703,13 @@ var ZBC = (() => {
       if (r.status !== 200) throw new ToolError(r.status === 404 ? ExitCode.not_found : classifyNodeError(r.status, r.text), r.status === 404 ? "Account not found" : r.text, { http_code: r.status, api_response: r.json ?? r.text });
       return r.json;
     }
+    /** GET /api/v1/nodes: the node registry, each node with its node_public_key and owner account_address (hex). */
+    async nodes() {
+      const r = await this.call("GET", "/api/v1/nodes");
+      if (r.status !== 200) throw new ToolError(ExitCode.internal, "Failed to fetch the registered node owner from " + this.api, { http_code: r.status });
+      if (r.json === void 0 || r.json === null) throw new ToolError(ExitCode.internal, "Cannot read the registered node owner: the reply is not JSON");
+      return r.json;
+    }
     /** GET /api/v1/blocks/latest: the reference block for a proof of ownership (`block_hash` or a gateway's `hash`). */
     async latestBlock() {
       const r = await this.call("GET", "/api/v1/blocks/latest");
@@ -3910,6 +3919,26 @@ var ZBC = (() => {
   function proofOfOwnership(owner, node, block) {
     const msg = new ByteWriter().bytes(owner.accountBytes).bytes(block.hash).u32(block.height).finish();
     return concat(msg, sign(msg, node.seed));
+  }
+  var NODE_CLAIM_DELAY_BLOCKS = 40320;
+  function claimNotice(registry, nodePublicKey, claimer, latestHeight) {
+    if (!registry || typeof registry !== "object" || Array.isArray(registry)) throw new Error("Cannot read the registered node owner: the reply is not a JSON object");
+    const nodes = registry.nodes ?? [];
+    if (!Array.isArray(nodes)) throw new Error("Cannot read the registered node owner: nodes is not a list");
+    const wanted = bytesToHex(nodePublicKey);
+    for (const node of nodes) {
+      if (!node || typeof node !== "object" || Array.isArray(node)) throw new Error("Cannot read the registered node owner: a node is not a JSON object");
+      const n = node;
+      if ((n.node_public_key ?? "") !== wanted) continue;
+      const owner = n.account_address ?? "";
+      if (typeof owner !== "string" || !isHex(owner)) throw new Error("Cannot read the registered node owner: account_address is not hex");
+      const recipient = hexToBytes(owner);
+      if (bytesToHex(recipient) === bytesToHex(claimer)) return { recipient, message: "" };
+      if (recipient.length === 0) throw new Error("The registered node has no owner account");
+      const h = latestHeight + 1;
+      return { recipient, message: `Claim on your node ${wanted} announced at block ${h}. It executes at block ${h + NODE_CLAIM_DELAY_BLOCKS} unless you remove the node with your owner key.` };
+    }
+    throw new Error("The node key is not in the node's registry");
   }
   function computeFields(input, body) {
     const { def, params, sender } = input;
@@ -5098,7 +5127,7 @@ var ZBC = (() => {
       "type": 770,
       "command": "claim-node",
       "binary": "zbc-node-claim",
-      "description": "Claim the locked balance of a removed or expired node registration.",
+      "description": "Claim a node's lock: the owner's own claim is an exit (as remove-node); another account's claim, proved by the node key, executes 40,320 blocks later unless the owner removes the node first (a claim on a leaving node is void).",
       "sender_key": "sender_privkey",
       "recipient": "none",
       "options": [
@@ -5138,7 +5167,9 @@ var ZBC = (() => {
         "node_privkey": "2222222222222222222222222222222222222222222222222222222222222222"
       },
       "notes": [
-        "zbc-node-claim takes (node_privkey, owner_privkey)."
+        "zbc-node-claim takes (node_privkey, owner_privkey).",
+        "The envelope's recipient is the node's owner account, read from GET /api/v1/nodes (the entry whose node_public_key is the node key in lower-case hex; its account_address is the typed account in hex). A node key not in that list, or listed with no owner, is an error (exit 1).",
+        `When the signer is not the owner, the message is the claim notice "Claim on your node <node key hex> announced at block H. It executes at block H+40320 unless you remove the node with your owner key.", H = the latest block's height + 1; it replaces --message (and --encrypt seals it to the owner). The owner's own claim carries no message.`
       ]
     },
     {

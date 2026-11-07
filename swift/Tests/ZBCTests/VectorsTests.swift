@@ -85,11 +85,17 @@ final class VectorsTests: XCTestCase {
         XCTAssertEqual(Enc.hex(body), s(e, "body"), "\(name) body")
         let def = Spec.command(s(v, "command"))!
         let kp = try KeyPair(hex: s(v, "key"))
-        let recipient = def.recipient == "required" ? try Address.parse(params(v)["recipient"]!).bytes : []
+        var recipient = def.recipient == "required" ? try Address.parse(params(v)["recipient"]!).bytes : []
+        var message = v["message"] as? String ?? ""
+        if let registry = v["node_registry"] as? [String: Any] {   // claim-node: the registered owner, and the notice when the signer is someone else
+            let height = UInt32(i64((v["reference_block"] as! [String: Any])["height"]))
+            let notice = try Custom.claimNotice(registry, nodePublicKey: try KeyPair(hex: params(v)["node_privkey"]!).publicKey, claimer: kp.accountBytes, latestHeight: height)
+            recipient = notice.recipient; message = notice.message
+        }
         var escrow: Escrow? = nil
         if let em = v["escrow"] as? [String: Any] { escrow = Escrow(approver: s(em, "approver"), commission: i64(em["commission"]), timeout: i64(em["timeout"]), instruction: s(em, "instruction")) }
         let signed = try Transaction.sign(type: UInt32(i64(v["type"])), timestamp: i64(v["timestamp"]), sender: kp, recipient: recipient, fee: i64(v["fee"]), body: body,
-                                          ctx: try SigningContext.of(s(v, "genesis")), escrow: escrow, message: Array((v["message"] as? String ?? "").utf8))
+                                          ctx: try SigningContext.of(s(v, "genesis")), escrow: escrow, message: Array(message.utf8))
         XCTAssertEqual(Enc.hex(signed.unsigned), s(e, "unsigned_bytes"), name); XCTAssertEqual(Enc.hex(signed.digest), s(e, "digest"), name)
         XCTAssertEqual(Enc.hex(signed.signature), s(e, "signature"), name); XCTAssertEqual(Enc.hex(signed.bytes), s(e, "transaction_bytes"), name)
         XCTAssertEqual(Enc.hex(signed.hash), s(e, "transaction_hash"), name)
@@ -119,6 +125,17 @@ final class VectorsTests: XCTestCase {
                 body = try Body.build(def, p, bc)
             }
             try checkSigned(v, body)
+        }
+    }
+
+    func testClaimNoticeRefusals() throws {
+        let v = (try load("transactions-all.json")["vectors"] as! [[String: Any]]).first { s($0, "name") == "claim-node/other-claimer" }!
+        let node = try KeyPair(hex: params(v)["node_privkey"]!).publicKey, claimer = try KeyPair(hex: s(v, "key")).accountBytes
+        let nodes = ((v["node_registry"] as! [String: Any])["nodes"] as! [[String: Any]]).map { n -> [String: Any] in var m = n; m["account_address"] = ""; return m }
+        for (registry, why) in [(["nodes": [Any]()] as [String: Any], "not in the node's registry"), (["nodes": nodes] as [String: Any], "no owner account")] {
+            XCTAssertThrowsError(try Custom.claimNotice(registry, nodePublicKey: node, claimer: claimer, latestHeight: 1000), why) { e in
+                XCTAssertTrue((e as? ToolError)?.message.contains(why) == true, "\(e)")
+            }
         }
     }
 

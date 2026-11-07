@@ -339,6 +339,11 @@ Exit codes:
             extra.putAll(Custom.computeFields(input, bc))
             Body.build(def, v, bc)
         }
+        if (def.command == "claim-node") {
+            // the node's owner is the recipient; another claimer's claim carries the notice as its message (it replaces --message)
+            val (r, notice) = Custom.claimNotice(client.nodes(), KeyPair.fromHex(v["node_privkey"]!!).publicKey, sender.accountBytes, block!!.height.toLong() and 0xffffffffL)
+            recipient = r; o.message = notice
+        }
         for (p in def.params) {
             // never a private key: kind privkey, and by name too, should a description ever mis-declare one
             if (p.kind == "privkey" || p.name.endsWith("privkey") || p.name.endsWith("privkeys") || p.kind == "file" || p.name == "recipient" || extra.containsKey(p.name)) continue
