@@ -23,7 +23,11 @@ object Body {
     /** Check one value against its parameter kind; returns the value to keep. */
     @JvmStatic fun validateParam(p: ParamDef, value: String): String {
         when (p.kind) {
-            "privkey" -> if (!Encoding.isHex(value, 64)) throw ToolError.usage("${p.name} must be 64 hex characters (a 32-byte private key)")
+            "privkey" -> {
+                val keys = if (p.list) splitList(value) else listOf(value)
+                if (keys.isEmpty() || !keys.all { Encoding.isHex(it, 64) })
+                    throw ToolError.usage(if (p.list) "${p.name} must be private keys of 64 hex characters, comma separated" else "${p.name} must be 64 hex characters (a 32-byte private key)")
+            }
             "address" -> try { Address.parse(value) } catch (e: IllegalArgumentException) { throw ToolError.usage("invalid ${p.name}: ${e.message}") }
             "address_list" -> for (a in splitList(value)) try { Address.parse(a) } catch (e: IllegalArgumentException) { throw ToolError.usage("invalid ${p.name} entry $a: ${e.message}") }
             "key" -> try { Address.parseKey32(value) } catch (e: IllegalArgumentException) { throw ToolError.usage("invalid ${p.name}: ${e.message}") }

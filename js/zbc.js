@@ -3690,9 +3690,12 @@ var ZBC = (() => {
   }
   function validateParam(p, value) {
     switch (p.kind) {
-      case "privkey":
-        if (!isHex(value, 64)) throw usage(`${p.name} must be 64 hex characters (a 32-byte private key)`);
+      case "privkey": {
+        const keys = p.list ? splitList(value) : [value];
+        if (keys.length === 0 || !keys.every((k) => isHex(k, 64)))
+          throw usage(p.list ? `${p.name} must be private keys of 64 hex characters, comma separated` : `${p.name} must be 64 hex characters (a 32-byte private key)`);
         return value;
+      }
       case "address":
         try {
           parseAddress(value);
@@ -6154,9 +6157,10 @@ var ZBC = (() => {
         },
         {
           "name": "signer_privkeys",
-          "kind": "string",
+          "kind": "privkey",
           "required": true,
-          "help": "comma-separated participant keys that sign now"
+          "help": "comma-separated participant keys that sign now",
+          "list": true
         },
         {
           "name": "recipient",

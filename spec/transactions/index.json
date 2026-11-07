@@ -24,7 +24,7 @@
     "custom": "cannot be produced by the generic serialiser; see `computed`"
   },
   "param_kinds": {
-    "privkey": "64 hex characters, a 32-byte Ed25519 seed",
+    "privkey": "64 hex characters, a 32-byte Ed25519 seed; with `list`, a comma-separated list of them (at least one). Secret: never printed",
     "address": "any address form of addresses.md section 3",
     "address_list": "comma-separated addresses; may be empty",
     "split_list": "comma-separated ADDRESS=PERCENT entries (max 10); PERCENT takes at most two decimals; 'clear', 'none' or empty removes the policy",

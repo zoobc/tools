@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
 /** The shape of spec/transactions/*.json, as embedded by scripts/gen-commands.mjs into generated/commands.ts. */
 
-export interface ParamDef { name: string; kind: string; required: boolean; default?: string; help: string; min?: number; max?: number }
+export interface ParamDef { name: string; kind: string; required: boolean; default?: string; help: string; min?: number; max?: number; list?: boolean }
 export interface FieldDef {
   name: string; encoding: string; from: string;
   size?: number; value?: string; when?: string; computed?: string; default_from?: string; when_zero?: string;

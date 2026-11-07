@@ -359,7 +359,8 @@ async function runTransaction(def: TxDef, v: Record<string, string>, o: Options)
     Object.assign(extra, computeFields(custom, bodyCtx));
     body = buildBody(def, v, bodyCtx);
   }
-  for (const p of def.params) if (p.kind !== "privkey" && p.kind !== "file" && !(p.name in extra) && p.name !== "recipient") {
+  // never a private key: kind privkey, and by name too, should a description ever mis-declare one
+  for (const p of def.params) if (p.kind !== "privkey" && !/privkeys?$/.test(p.name) && p.kind !== "file" && !(p.name in extra) && p.name !== "recipient") {
     const val = v[p.name];
     extra[p.name] = /^(int64|uint64|uint32|uint8)$/.test(p.kind) && /^-?\d+$/.test(val) ? BigInt(val) : val;
   }

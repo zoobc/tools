@@ -61,7 +61,12 @@ final class Body
     public static function validateParam(array $p, string $value): string
     {
         switch ($p['kind']) {
-            case 'privkey': if (!Encoding::isHex($value, 64)) { throw ToolError::usage("{$p['name']} must be 64 hex characters (a 32-byte private key)"); } break;
+            case 'privkey':
+                $keys = !empty($p['list']) ? self::splitList($value) : [$value];
+                if ($keys === [] || array_filter($keys, fn($k) => !Encoding::isHex($k, 64)) !== []) {
+                    throw ToolError::usage(!empty($p['list']) ? "{$p['name']} must be private keys of 64 hex characters, comma separated" : "{$p['name']} must be 64 hex characters (a 32-byte private key)");
+                }
+                break;
             case 'address': try { Address::parse($value); } catch (\InvalidArgumentException $e) { throw ToolError::usage("invalid {$p['name']}: {$e->getMessage()}"); } break;
             case 'address_list': foreach (self::splitList($value) as $a) { try { Address::parse($a); } catch (\InvalidArgumentException $e) { throw ToolError::usage("invalid {$p['name']} entry $a: {$e->getMessage()}"); } } break;
             case 'key': try { Address::parseKey32($value); } catch (\InvalidArgumentException $e) { throw ToolError::usage("invalid {$p['name']}: {$e->getMessage()}"); } break;

@@ -11,7 +11,7 @@ import kotlinx.serialization.json.jsonPrimitive
 /** One command-line parameter of a transaction description (spec/transactions/README.md). */
 @Serializable
 data class ParamDef(val name: String, val kind: String, val required: Boolean, val default: String? = null, val help: String,
-                    val min: Long? = null, val max: Long? = null)
+                    val min: Long? = null, val max: Long? = null, val list: Boolean = false)
 
 /** One body field. */
 @Serializable

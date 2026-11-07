@@ -7,6 +7,8 @@ import Foundation
 public struct ParamDef: Decodable {
     public let name: String, kind: String, required: Bool, help: String
     public let `default`: String?, min: Int64?, max: Int64?
+    /// A comma-separated list of values of `kind`.
+    public var list: Bool? = nil
 }
 
 /// One body field.

@@ -43,7 +43,7 @@ fn category(cmd: &str) -> &'static str {
 }
 
 fn message_commands() -> Vec<(&'static str, &'static str, Vec<ParamDef>)> {
-    let p = |name: &str, kind: &str, help: &str| ParamDef { name: name.into(), kind: kind.into(), required: true, default: None, help: help.into(), min: None, max: None };
+    let p = |name: &str, kind: &str, help: &str| ParamDef { name: name.into(), kind: kind.into(), required: true, default: None, help: help.into(), min: None, max: None, list: false };
     vec![
         ("sign-message", "Sign a message with a private key (ZBC-MSG-v2: bound to one chain, needs --genesis <hex> or a node)",
          vec![p("sender_privkey", "privkey", "Sender private key (64 hex)"), p("message", "string", "text to sign (hex bytes with --hex)")]),
@@ -559,7 +559,8 @@ fn run_transaction(def: &TxDef, v: &mut Params, o: &Options, io: &mut Io) -> Res
         build_body(def, v, &bc)?
     };
     for p in &def.params {
-        if p.kind == "privkey" || p.kind == "file" || p.name == "recipient" || extra.contains_key(&p.name) {
+        // never a private key: kind privkey, and by name too, should a description ever mis-declare one
+        if p.kind == "privkey" || p.name.ends_with("privkey") || p.name.ends_with("privkeys") || p.kind == "file" || p.name == "recipient" || extra.contains_key(&p.name) {
             continue;
         }
         let val = v.get(&p.name).cloned().unwrap_or_default();

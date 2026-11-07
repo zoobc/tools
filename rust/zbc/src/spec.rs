@@ -19,6 +19,9 @@ pub struct ParamDef {
     pub min: Option<i64>,
     #[serde(default)]
     pub max: Option<i64>,
+    /// A comma-separated list of values of `kind`.
+    #[serde(default)]
+    pub list: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]

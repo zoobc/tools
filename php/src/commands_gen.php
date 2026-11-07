@@ -2366,9 +2366,10 @@ return array (
       4 => 
       array (
         'name' => 'signer_privkeys',
-        'kind' => 'string',
+        'kind' => 'privkey',
         'required' => true,
         'help' => 'comma-separated participant keys that sign now',
+        'list' => true,
       ),
       5 => 
       array (

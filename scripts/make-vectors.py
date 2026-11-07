@@ -453,6 +453,9 @@ def cli_vectors():
     case("ZBC_KEY set, a 64-hex recipient without '-'", ["send-zbc", PUB_1, "1", "--genesis", "v1", "--offline"], 2, env=env_key, secrets=[SEED_V])
     case("ZBC_KEY set, '-' and a 64-hex recipient", ["send-zbc", "-", PUB_1, "1", "--genesis", "v1", "--offline"], 0, env=env_key, secrets=[SEED_V])
     case("ZBC_KEY set, key left out", ["send-zbc", A_V, "1", "--genesis", "v1", "--offline"], 0, env=env_key, secrets=[SEED_V])
+    # No output carries a private key: the co-signer keys of a multisig are parameters of kind privkey.
+    case("multisig prints no co-signer key", ["multisig", SEED_2, A_V + "," + A_1, "2", "0", SEED_V + "," + SEED_1, A_1, "1000",
+                                              "--timestamp", str(T0), "--genesis", "v1", "--offline"], 0, secrets=[SEED_V, SEED_1, SEED_2])
     case("approve-escrow bad approval", ["approve-escrow", SEED_V, "3", "11" * 32, "--genesis", "v1", "--offline"], 2)
     case("approve-escrow short hash", ["approve-escrow", SEED_V, "0", "1111", "--genesis", "v1", "--offline"], 2)
     case("unreachable node", ["send-zbc", SEED_V, A_V, "1", "--api", "http://127.0.0.1:9", "--genesis", "v1", "--timeout", "2"], 3)

@@ -287,6 +287,33 @@
    ]
   },
   {
+   "case": "multisig prints no co-signer key",
+   "args": [
+    "multisig",
+    "2222222222222222222222222222222222222222222222222222222222222222",
+    "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX,ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+    "2",
+    "0",
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96,1111111111111111111111111111111111111111111111111111111111111111",
+    "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I",
+    "1000",
+    "--timestamp",
+    "1700000000",
+    "--genesis",
+    "v1",
+    "--offline"
+   ],
+   "stdin": null,
+   "exit_code": 0,
+   "error_class": null,
+   "success": true,
+   "output_excludes": [
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96",
+    "1111111111111111111111111111111111111111111111111111111111111111",
+    "2222222222222222222222222222222222222222222222222222222222222222"
+   ]
+  },
+  {
    "case": "approve-escrow bad approval",
    "args": [
     "approve-escrow",

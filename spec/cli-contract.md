@@ -78,6 +78,10 @@ print one line. Parse it as JSON.
 
 Every object carries `"success": true|false`.
 
+No output carries a private key: not on stdout, not on stderr, not with `--offline`, not in an
+error. A parameter of kind `privkey` (`spec/transactions/index.json`: the signing key, the
+co-signer keys of a multisig, a node, gateway or seat key) is never echoed.
+
 **A submitted transaction, accepted by the node:**
 
 | Key | Meaning |

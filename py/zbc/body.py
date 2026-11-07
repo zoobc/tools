@@ -49,8 +49,9 @@ def split_list(s: str) -> List[str]:
 def validate_param(p: dict, value: str) -> str:
     kind, name = p["kind"], p["name"]
     if kind == "privkey":
-        if not is_hex(value, 64):
-            raise usage("%s must be 64 hex characters (a 32-byte private key)" % name)
+        keys = split_list(value) if p.get("list") else [value]
+        if not keys or not all(is_hex(k, 64) for k in keys):
+            raise usage("%s %s" % (name, "must be private keys of 64 hex characters, comma separated" if p.get("list") else "must be 64 hex characters (a 32-byte private key)"))
     elif kind == "address":
         try:
             parse_address(value)

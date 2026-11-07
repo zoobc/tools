@@ -14,6 +14,7 @@ type ParamDef struct {
 	Help     string `json:"help"`
 	Min      *int64 `json:"min"`
 	Max      *int64 `json:"max"`
+	List     bool   `json:"list"` // a comma-separated list of values of Kind
 }
 
 // FieldDef is one body field.

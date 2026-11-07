@@ -2067,7 +2067,8 @@ let commandsJSON = ####"""
       },
       {
         "help" : "comma-separated participant keys that sign now",
-        "kind" : "string",
+        "kind" : "privkey",
+        "list" : true,
         "name" : "signer_privkeys",
         "required" : true
       },

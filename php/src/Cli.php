@@ -355,7 +355,8 @@ TXT;
             $body = Body::build($def, $v, $bc);
         }
         foreach ($def['params'] as $p) {
-            if (in_array($p['kind'], ['privkey', 'file'], true) || $p['name'] === 'recipient' || array_key_exists($p['name'], $extra)) { continue; }
+            // never a private key: kind privkey, and by name too, should a description ever mis-declare one
+            if (in_array($p['kind'], ['privkey', 'file'], true) || preg_match('/privkeys?$/D', $p['name']) || $p['name'] === 'recipient' || array_key_exists($p['name'], $extra)) { continue; }
             $val = $v[$p['name']] ?? '';
             $extra[$p['name']] = (in_array($p['kind'], ['int64', 'uint64', 'uint32', 'uint8'], true) && self::isInt($val)) ? (int) $val : $val;
         }

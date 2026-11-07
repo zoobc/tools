@@ -26,9 +26,12 @@ export function parseInteger(value: string, kind: string, name: string): bigint 
 /** Check one parameter value against its kind; returns the value to keep (trimmed where it matters). */
 export function validateParam(p: ParamDef, value: string): string {
   switch (p.kind) {
-    case "privkey":
-      if (!isHex(value, 64)) throw usage(`${p.name} must be 64 hex characters (a 32-byte private key)`);
+    case "privkey": {
+      const keys = p.list ? splitList(value) : [value];
+      if (keys.length === 0 || !keys.every((k) => isHex(k, 64)))
+        throw usage(p.list ? `${p.name} must be private keys of 64 hex characters, comma separated` : `${p.name} must be 64 hex characters (a 32-byte private key)`);
       return value;
+    }
     case "address":
       try { parseAddress(value); } catch (e) { throw usage(`invalid ${p.name}: ${(e as Error).message}`); }
       return value;

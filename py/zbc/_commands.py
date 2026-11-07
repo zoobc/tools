@@ -1950,9 +1950,10 @@ COMMANDS = [
    },
    {
     "name": "signer_privkeys",
-    "kind": "string",
+    "kind": "privkey",
     "required": True,
-    "help": "comma-separated participant keys that sign now"
+    "help": "comma-separated participant keys that sign now",
+    "list": True
    },
    {
     "name": "recipient",

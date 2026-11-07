@@ -1951,9 +1951,10 @@ export const COMMANDS: readonly TxDef[] = [
    },
    {
     "name": "signer_privkeys",
-    "kind": "string",
+    "kind": "privkey",
     "required": true,
-    "help": "comma-separated participant keys that sign now"
+    "help": "comma-separated participant keys that sign now",
+    "list": true
    },
    {
     "name": "recipient",

@@ -68,8 +68,10 @@ pub fn split_list(s: &str) -> Vec<String> {
 pub fn validate_param(p: &ParamDef, value: &str) -> Result<String, ToolError> {
     match p.kind.as_str() {
         "privkey" => {
-            if !is_hex(value, 64) {
-                return Err(usage(format!("{} must be 64 hex characters (a 32-byte private key)", p.name)));
+            let keys = if p.list { split_list(value) } else { vec![value.to_string()] };
+            if keys.is_empty() || !keys.iter().all(|k| is_hex(k, 64)) {
+                let what = if p.list { "must be private keys of 64 hex characters, comma separated" } else { "must be 64 hex characters (a 32-byte private key)" };
+                return Err(usage(format!("{} {what}", p.name)));
             }
         }
         "address" => {

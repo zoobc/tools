@@ -22,7 +22,11 @@ public enum Body {
     /// Check one value against its parameter kind; returns the value to keep.
     public static func validateParam(_ p: ParamDef, _ value: String) throws -> String {
         switch p.kind {
-        case "privkey": guard Enc.isHex(value, 64) else { throw ToolError.usage("\(p.name) must be 64 hex characters (a 32-byte private key)") }
+        case "privkey":
+            let keys = p.list == true ? splitList(value) : [value]
+            guard !keys.isEmpty, keys.allSatisfy({ Enc.isHex($0, 64) }) else {
+                throw ToolError.usage(p.list == true ? "\(p.name) must be private keys of 64 hex characters, comma separated" : "\(p.name) must be 64 hex characters (a 32-byte private key)")
+            }
         case "address": do { _ = try Address.parse(value) } catch let e as Address.Invalid { throw ToolError.usage("invalid \(p.name): \(e.message)") }
         case "address_list": for a in splitList(value) { do { _ = try Address.parse(a) } catch let e as Address.Invalid { throw ToolError.usage("invalid \(p.name) entry \(a): \(e.message)") } }
         case "key": do { _ = try Address.parseKey32(value) } catch let e as Address.Invalid { throw ToolError.usage("invalid \(p.name): \(e.message)") }

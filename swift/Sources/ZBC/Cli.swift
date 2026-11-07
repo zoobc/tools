@@ -355,7 +355,8 @@ public enum Cli {
             extra += try Custom.computeFields(input, bc)
             body = try Body.build(def, v, bc)
         }
-        for p in def.params where p.kind != "privkey" && p.kind != "file" && p.name != "recipient" && !extra.contains(where: { $0.0 == p.name }) {
+        // never a private key: kind privkey, and by name too, should a description ever mis-declare one
+        for p in def.params where p.kind != "privkey" && !p.name.hasSuffix("privkey") && !p.name.hasSuffix("privkeys") && p.kind != "file" && p.name != "recipient" && !extra.contains(where: { $0.0 == p.name }) {
             let val = v[p.name] ?? ""
             if ["int64", "uint64", "uint32", "uint8"].contains(p.kind), isInt(val), let n = Int64(val) { extra.append((p.name, n)) } else { extra.append((p.name, val)) }
         }

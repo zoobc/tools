@@ -14,11 +14,12 @@ OUT = pathlib.Path(__file__).resolve().parent.parent / "spec" / "transactions"
 LICENSE = "MIT. Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci"
 
 # ---- helpers to keep the table short ---------------------------------------------------------
-def P(name, kind, help, required=True, default=None, min=None, max=None):
+def P(name, kind, help, required=True, default=None, min=None, max=None, list=False):
     d = {"name": name, "kind": kind, "required": required, "help": help}
     if default is not None: d["default"] = default
     if min is not None: d["min"] = min      # the reference refuses values outside [min, max] (usage error)
     if max is not None: d["max"] = max
+    if list: d["list"] = True               # a comma-separated list of values of this kind
     return d
 def F(name, encoding, source=None, **kw):
     d = {"name": name, "encoding": encoding, "from": source or name}
@@ -241,7 +242,7 @@ T("cancel-longevity", 53, "CancelLongevity", "Cancel a longevity sponsorship you
   example={"target_tx_id": "-1234567890123456789"}, notes=["No zbc-cli subcommand."]),
 T("multisig", 5, "MultiSignature", "N-of-M multisig SendZBC: the inner transaction plus the participant signatures gathered so far.",
   [P("participants", "address_list", "comma-separated participant addresses"), P("min_signatures", "uint32", "signatures required (N of M)"),
-   P("nonce", "int64", "multisig account nonce", required=False, default="0"), P("signer_privkeys", "string", "comma-separated participant keys that sign now"),
+   P("nonce", "int64", "multisig account nonce", required=False, default="0"), P("signer_privkeys", "privkey", "comma-separated participant keys that sign now", list=True),
    P("recipient", "address", "inner SendZBC recipient"), P("amount", "int64", "inner amount (atomic)"), P("inner_fee", "int64", "inner fee (atomic)", required=False, default="10000000")],
   [F("info_present", "literal", value="01000000"), F("min_signatures", "u32le"), F("nonce", "u64le"),
    F("participant_count", "u32le", "participants", computed="number of participants"), F("participants", "address_list", computed="each 36-byte address, in the order given"),
@@ -351,7 +352,7 @@ ENCODINGS = {
     "custom": "cannot be produced by the generic serialiser; see `computed`",
 }
 KINDS = {
-    "privkey": "64 hex characters, a 32-byte Ed25519 seed",
+    "privkey": "64 hex characters, a 32-byte Ed25519 seed; with `list`, a comma-separated list of them (at least one). Secret: never printed",
     "address": "any address form of addresses.md section 3",
     "address_list": "comma-separated addresses; may be empty",
     "split_list": "comma-separated ADDRESS=PERCENT entries (max 10); PERCENT takes at most two decimals; 'clear', 'none' or empty removes the policy",
@@ -366,6 +367,9 @@ def main():
     seen = set()
     for t in TX:
         assert t["command"] not in seen, t["command"]; seen.add(t["command"])
+        for p in t["params"]:   # a private key is always kind privkey, so no tool prints it (cli-contract.md 4)
+            assert (p["kind"] == "privkey") == (p["name"].endswith("privkey") or p["name"].endswith("privkeys")), (t["command"], p["name"])
+            assert not p.get("list") or p["kind"] == "privkey", (t["command"], p["name"])
         (OUT / (t["command"] + ".json")).write_text(json.dumps(t, indent=2, ensure_ascii=False) + "\n")
     index = {
         "license": LICENSE,

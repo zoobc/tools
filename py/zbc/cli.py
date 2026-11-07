@@ -484,7 +484,8 @@ def run_transaction(spec: dict, v: Dict[str, str], o: Options) -> int:
         extra.update(compute_fields(spec, v, sender, computed, reference))
         body = build_body(spec, v, sender, files, computed)
     for p in spec["params"]:
-        if p["kind"] not in ("privkey", "file") and p["name"] not in extra and p["name"] != "recipient":
+        # never a private key: kind privkey, and by name too, should a description ever mis-declare one
+        if p["kind"] not in ("privkey", "file") and not p["name"].endswith(("privkey", "privkeys")) and p["name"] not in extra and p["name"] != "recipient":
             val = v[p["name"]]
             extra[p["name"]] = int(val) if p["kind"] in ("int64", "uint64", "uint32", "uint8") and _INT.match(val) else val
     if spec["command"] == "approve-escrow":

@@ -458,7 +458,8 @@ sub run_transaction {
         $body = build_body($spec, $v, $sender, \%files, \%computed);
     }
     for my $p (@{ $spec->{params} }) {
-        next if $p->{kind} eq 'privkey' || $p->{kind} eq 'file' || exists $extra{ $p->{name} } || $p->{name} eq 'recipient';
+        # never a private key: kind privkey, and by name too, should a description ever mis-declare one
+        next if $p->{kind} eq 'privkey' || $p->{name} =~ /privkeys?\z/ || $p->{kind} eq 'file' || exists $extra{ $p->{name} } || $p->{name} eq 'recipient';
         my $val = $v->{ $p->{name} };
         $extra{ $p->{name} } = ($p->{kind} =~ /^(int64|uint64|uint32|uint8)$/ && _is_int($val)) ? 0 + $val : $val;
     }

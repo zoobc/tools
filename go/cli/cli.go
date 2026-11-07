@@ -774,7 +774,8 @@ func runTransaction(def *zbc.TxDef, v map[string]string, o *options, e *env) (in
 		}
 	}
 	for _, p := range def.Params {
-		if p.Kind == "privkey" || p.Kind == "file" || p.Name == "recipient" {
+		// never a private key: kind privkey, and by name too, should a description ever mis-declare one
+		if p.Kind == "privkey" || strings.HasSuffix(p.Name, "privkey") || strings.HasSuffix(p.Name, "privkeys") || p.Kind == "file" || p.Name == "recipient" {
 			continue
 		}
 		if _, done := extra[p.Name]; done {

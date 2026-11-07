@@ -98,7 +98,18 @@ func PercentToBasisPoints(pct string) (uint16, error) {
 func ValidateParam(p ParamDef, value string) (string, error) {
 	switch p.Kind {
 	case "privkey":
-		if !IsHex(value, 64) {
+		keys := []string{value}
+		if p.List {
+			keys = SplitList(value)
+		}
+		ok := len(keys) > 0
+		for _, k := range keys {
+			ok = ok && IsHex(k, 64)
+		}
+		if !ok && p.List {
+			return "", Usage("%s must be private keys of 64 hex characters, comma separated", p.Name)
+		}
+		if !ok {
 			return "", Usage("%s must be 64 hex characters (a 32-byte private key)", p.Name)
 		}
 	case "address":

@@ -337,7 +337,8 @@ Exit codes:
             Body.build(def, v, bc)
         }
         for (p in def.params) {
-            if (p.kind == "privkey" || p.kind == "file" || p.name == "recipient" || extra.containsKey(p.name)) continue
+            // never a private key: kind privkey, and by name too, should a description ever mis-declare one
+            if (p.kind == "privkey" || p.name.endsWith("privkey") || p.name.endsWith("privkeys") || p.kind == "file" || p.name == "recipient" || extra.containsKey(p.name)) continue
             val value = v[p.name] ?: ""
             extra[p.name] = if (p.kind in listOf("int64", "uint64", "uint32", "uint8") && INT.matches(value)) JsonPrimitive(value.toLong()) else JsonPrimitive(value)
         }

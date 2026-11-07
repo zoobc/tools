@@ -37,7 +37,9 @@ sub validate_param {
     my ($p, $value) = @_;
     my ($kind, $name) = ($p->{kind}, $p->{name});
     if ($kind eq 'privkey') {
-        die usage("$name must be 64 hex characters (a 32-byte private key)") unless is_hex($value, 64);
+        my @keys = $p->{list} ? split_list($value) : ($value);
+        die usage($p->{list} ? "$name must be private keys of 64 hex characters, comma separated" : "$name must be 64 hex characters (a 32-byte private key)")
+            unless @keys && !grep { !is_hex($_, 64) } @keys;
     } elsif ($kind eq 'address') {
         eval { parse_address($value); 1 } or die usage("invalid $name: " . _strip($@));
     } elsif ($kind eq 'address_list') {
