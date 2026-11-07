@@ -11,6 +11,23 @@
 #define CPPHTTPLIB_VERSION "0.27.0"
 #define CPPHTTPLIB_VERSION_NUM "0x001B00"
 
+// ZOOBC PATCH (security review 2026-11-07, F1): this copy of cpp-httplib 0.27.0 carries one local
+// change, marked "ZOOBC PATCH" wherever it touches the code. Each part is opt-in; a server that
+// calls none of the three setters behaves exactly as upstream.
+//   - Server::set_request_deadlines: TOTAL deadlines for a request's line and headers, for its body,
+//     and for writing its answer (a base plus the size at a minimum rate). Upstream has only a
+//     per-read timeout, which restarts on every byte, so a client sending one header byte every few
+//     seconds held a worker thread for as long as it liked. A request whose read fails (deadline or
+//     per-read timeout) closes the connection. A send already blocked when the write deadline passes
+//     may first run out its per-write timeout. Implemented in SocketStream (plain sockets); an SSL
+//     server's streams ignore the deadlines.
+//   - Server::set_connection_admission: a check on the listening thread for every accepted
+//     connection (false = closed at once, before it takes a worker or a queue slot) and a release
+//     when an admitted connection is closed: what a per-address connection cap needs.
+//   - Server::set_listen_backlog: the listen() backlog (upstream: the CPPHTTPLIB_LISTEN_BACKLOG
+//     macro, 5, too small for a burst of connections: the kernel drops SYNs past it and the clients
+//     retry a second later).
+
 /*
  * Platform compatibility check
  */
@@ -853,6 +870,13 @@ public:
 
   virtual time_t duration() const = 0;
 
+  // ZOOBC PATCH (F1): total deadlines. Once the time point has passed, read() / write() fail.
+  // A default-constructed time point means no deadline. Streams other than SocketStream ignore them.
+  // read_failed(): a read on this stream failed (its deadline, its per-read timeout, or an error).
+  virtual void set_read_deadline(std::chrono::steady_clock::time_point) {}
+  virtual void set_write_deadline(std::chrono::steady_clock::time_point) {}
+  virtual bool read_failed() const { return false; }
+
   ssize_t write(const char *ptr);
   ssize_t write(const std::string &s);
 };
@@ -1151,6 +1175,23 @@ public:
 
   Server &set_payload_max_length(size_t length);
 
+  // ZOOBC PATCH (F1): see the note at the top of this file. 0 = no deadline (upstream behaviour).
+  // header_sec: from the first byte of a request until its headers are complete. body_sec: from then
+  // until its body is read. write_base_sec + size / write_min_bytes_per_sec: for writing an answer
+  // whose size is known (a chunked content provider has no write deadline).
+  Server &set_request_deadlines(time_t header_sec, time_t body_sec,
+                                time_t write_base_sec,
+                                size_t write_min_bytes_per_sec);
+  // ZOOBC PATCH (F1): admit(remote_addr) runs on the listening thread right after accept();
+  // false = the connection is closed at once. release(remote_addr) runs once for every admitted
+  // connection when it is closed (on a worker, or on the listening thread if the queue refused it).
+  using ConnectionAdmission = std::function<bool(const std::string &remote_addr)>;
+  using ConnectionRelease = std::function<void(const std::string &remote_addr)>;
+  Server &set_connection_admission(ConnectionAdmission admit,
+                                   ConnectionRelease release);
+  // ZOOBC PATCH (F1): the listen() backlog; call before bind/listen.
+  Server &set_listen_backlog(int backlog);
+
   bool bind_to_port(const std::string &host, int port, int socket_flags = 0);
   int bind_to_any_port(const std::string &host, int socket_flags = 0);
   bool listen_after_bind();
@@ -1184,6 +1225,14 @@ protected:
   time_t idle_interval_sec_ = CPPHTTPLIB_IDLE_INTERVAL_SECOND;
   time_t idle_interval_usec_ = CPPHTTPLIB_IDLE_INTERVAL_USECOND;
   size_t payload_max_length_ = CPPHTTPLIB_PAYLOAD_MAX_LENGTH;
+  // ZOOBC PATCH (F1)
+  time_t header_deadline_sec_ = 0;
+  time_t body_deadline_sec_ = 0;
+  time_t write_deadline_base_sec_ = 0;
+  size_t write_min_bytes_per_sec_ = 0;
+  ConnectionAdmission connection_admission_;
+  ConnectionRelease connection_release_;
+  int listen_backlog_ = CPPHTTPLIB_LISTEN_BACKLOG;
 
 private:
   using Handlers =
@@ -3371,6 +3420,14 @@ public:
   void get_local_ip_and_port(std::string &ip, int &port) const override;
   socket_t socket() const override;
   time_t duration() const override;
+  // ZOOBC PATCH (F1)
+  void set_read_deadline(std::chrono::steady_clock::time_point t) override {
+    read_deadline_ = t;
+  }
+  void set_write_deadline(std::chrono::steady_clock::time_point t) override {
+    write_deadline_ = t;
+  }
+  bool read_failed() const override { return read_failed_; }
 
 private:
   socket_t sock_;
@@ -3380,6 +3437,10 @@ private:
   time_t write_timeout_usec_;
   time_t max_timeout_msec_;
   const std::chrono::time_point<std::chrono::steady_clock> start_time_;
+  // ZOOBC PATCH (F1): time_point{} = none
+  std::chrono::steady_clock::time_point read_deadline_{};
+  std::chrono::steady_clock::time_point write_deadline_{};
+  bool read_failed_ = false;
 
   std::vector<char> read_buff_;
   size_t read_buff_off_ = 0;
@@ -7068,22 +7129,44 @@ inline bool SocketStream::is_readable() const {
   return read_buff_off_ < read_buff_content_size_;
 }
 
-inline bool SocketStream::wait_readable() const {
-  if (max_timeout_msec_ <= 0) {
-    return select_read(sock_, read_timeout_sec_, read_timeout_usec_) > 0;
+// ZOOBC PATCH (F1): false once `deadline` (if set) has passed; otherwise shortens sec/usec to the
+// time that is left before it.
+inline bool clamp_to_deadline(std::chrono::steady_clock::time_point deadline,
+                              time_t &sec, time_t &usec) {
+  if (deadline == std::chrono::steady_clock::time_point{}) { return true; }
+  const auto left = std::chrono::duration_cast<std::chrono::microseconds>(
+                        deadline - std::chrono::steady_clock::now())
+                        .count();
+  if (left <= 0) { return false; }
+  const auto want = static_cast<long long>(sec) * 1000000 + usec;
+  if (left < want) {
+    sec = static_cast<time_t>(left / 1000000);
+    usec = static_cast<time_t>(left % 1000000);
   }
+  return true;
+}
+
+inline bool SocketStream::wait_readable() const {
+  // ZOOBC PATCH (F1): the read deadline bounds every wait.
+  time_t rsec = read_timeout_sec_;
+  time_t rusec = read_timeout_usec_;
+  if (!clamp_to_deadline(read_deadline_, rsec, rusec)) { return false; }
+  if (max_timeout_msec_ <= 0) { return select_read(sock_, rsec, rusec) > 0; }
 
   time_t read_timeout_sec;
   time_t read_timeout_usec;
-  calc_actual_timeout(max_timeout_msec_, duration(), read_timeout_sec_,
-                      read_timeout_usec_, read_timeout_sec, read_timeout_usec);
+  calc_actual_timeout(max_timeout_msec_, duration(), rsec, rusec,
+                      read_timeout_sec, read_timeout_usec);
 
   return select_read(sock_, read_timeout_sec, read_timeout_usec) > 0;
 }
 
 inline bool SocketStream::wait_writable() const {
-  return select_write(sock_, write_timeout_sec_, write_timeout_usec_) > 0 &&
-         is_socket_alive(sock_);
+  // ZOOBC PATCH (F1): the write deadline bounds every wait.
+  time_t wsec = write_timeout_sec_;
+  time_t wusec = write_timeout_usec_;
+  if (!clamp_to_deadline(write_deadline_, wsec, wusec)) { return false; }
+  return select_write(sock_, wsec, wusec) > 0 && is_socket_alive(sock_);
 }
 
 inline ssize_t SocketStream::read(char *ptr, size_t size) {
@@ -7094,6 +7177,13 @@ inline ssize_t SocketStream::read(char *ptr, size_t size) {
   size = (std::min)(size,
                     static_cast<size_t>((std::numeric_limits<ssize_t>::max)()));
 #endif
+
+  // ZOOBC PATCH (F1): past the read deadline nothing more is read, buffered or not.
+  if (read_deadline_ != std::chrono::steady_clock::time_point{} &&
+      std::chrono::steady_clock::now() >= read_deadline_) {
+    read_failed_ = true;
+    return -1;
+  }
 
   if (read_buff_off_ < read_buff_content_size_) {
     auto remaining_size = read_buff_content_size_ - read_buff_off_;
@@ -7108,7 +7198,10 @@ inline ssize_t SocketStream::read(char *ptr, size_t size) {
     }
   }
 
-  if (!wait_readable()) { return -1; }
+  if (!wait_readable()) {
+    read_failed_ = true; // ZOOBC PATCH (F1)
+    return -1;
+  }
 
   read_buff_off_ = 0;
   read_buff_content_size_ = 0;
@@ -7117,6 +7210,7 @@ inline ssize_t SocketStream::read(char *ptr, size_t size) {
     auto n = read_socket(sock_, read_buff_.data(), read_buff_size_,
                          CPPHTTPLIB_RECV_FLAGS);
     if (n <= 0) {
+      if (n < 0) { read_failed_ = true; } // ZOOBC PATCH (F1)
       return n;
     } else if (n <= static_cast<ssize_t>(size)) {
       memcpy(ptr, read_buff_.data(), static_cast<size_t>(n));
@@ -7128,7 +7222,9 @@ inline ssize_t SocketStream::read(char *ptr, size_t size) {
       return static_cast<ssize_t>(size);
     }
   } else {
-    return read_socket(sock_, ptr, size, CPPHTTPLIB_RECV_FLAGS);
+    auto n = read_socket(sock_, ptr, size, CPPHTTPLIB_RECV_FLAGS);
+    if (n < 0) { read_failed_ = true; } // ZOOBC PATCH (F1)
+    return n;
   }
 }
 
@@ -7567,6 +7663,31 @@ inline Server &Server::set_payload_max_length(size_t length) {
   return *this;
 }
 
+// ZOOBC PATCH (F1)
+inline Server &Server::set_request_deadlines(time_t header_sec, time_t body_sec,
+                                             time_t write_base_sec,
+                                             size_t write_min_bytes_per_sec) {
+  header_deadline_sec_ = header_sec;
+  body_deadline_sec_ = body_sec;
+  write_deadline_base_sec_ = write_base_sec;
+  write_min_bytes_per_sec_ = write_min_bytes_per_sec;
+  return *this;
+}
+
+// ZOOBC PATCH (F1)
+inline Server &Server::set_connection_admission(ConnectionAdmission admit,
+                                                ConnectionRelease release) {
+  connection_admission_ = std::move(admit);
+  connection_release_ = std::move(release);
+  return *this;
+}
+
+// ZOOBC PATCH (F1)
+inline Server &Server::set_listen_backlog(int backlog) {
+  listen_backlog_ = backlog > 0 ? backlog : CPPHTTPLIB_LISTEN_BACKLOG;
+  return *this;
+}
+
 inline bool Server::bind_to_port(const std::string &host, int port,
                                  int socket_flags) {
   auto ret = bind_internal(host, port, socket_flags);
@@ -7718,6 +7839,18 @@ inline bool Server::write_response_core(Stream &strm, bool close_connection,
   }
 
   if (post_routing_handler_) { post_routing_handler_(req, res); }
+
+  // ZOOBC PATCH (F1): a total deadline for writing an answer of known size, so a client that reads
+  // a large answer a few bytes at a time cannot keep the worker. A chunked provider has none.
+  if (write_deadline_base_sec_ > 0 &&
+      !(res.content_provider_ && res.content_length_ == 0)) {
+    const size_t size = !res.body.empty() ? res.body.size() : res.content_length_;
+    auto budget = std::chrono::seconds(write_deadline_base_sec_);
+    if (write_min_bytes_per_sec_ > 0) {
+      budget += std::chrono::seconds(size / write_min_bytes_per_sec_);
+    }
+    strm.set_write_deadline(std::chrono::steady_clock::now() + budget);
+  }
 
   // Response line and headers
   {
@@ -7978,7 +8111,7 @@ Server::create_server_socket(const std::string &host, int port,
           output_error_log(Error::BindIPAddress, nullptr);
           return false;
         }
-        if (::listen(sock, CPPHTTPLIB_LISTEN_BACKLOG)) {
+        if (::listen(sock, listen_backlog_)) { // ZOOBC PATCH (F1)
           output_error_log(Error::Listen, nullptr);
           return false;
         }
@@ -8069,16 +8202,33 @@ inline bool Server::listen_internal() {
         break;
       }
 
+      // ZOOBC PATCH (F1): admission at accept. A refused connection is closed here, before it
+      // takes a worker or a queue slot; an admitted one is released when it is closed.
+      std::string conn_addr;
+      const bool admission = connection_admission_ && connection_release_;
+      if (admission) {
+        int conn_port = 0;
+        detail::get_remote_ip_and_port(sock, conn_addr, conn_port);
+        if (!connection_admission_(conn_addr)) {
+          detail::shutdown_socket(sock);
+          detail::close_socket(sock);
+          continue;
+        }
+      }
+
       detail::set_socket_opt_time(sock, SOL_SOCKET, SO_RCVTIMEO,
                                   read_timeout_sec_, read_timeout_usec_);
       detail::set_socket_opt_time(sock, SOL_SOCKET, SO_SNDTIMEO,
                                   write_timeout_sec_, write_timeout_usec_);
 
-      if (!task_queue->enqueue(
-              [this, sock]() { process_and_close_socket(sock); })) {
+      if (!task_queue->enqueue([this, sock, admission, conn_addr]() {
+            process_and_close_socket(sock);
+            if (admission) { connection_release_(conn_addr); }
+          })) {
         output_error_log(Error::ResourceExhaustion, nullptr);
         detail::shutdown_socket(sock);
         detail::close_socket(sock);
+        if (admission) { connection_release_(conn_addr); }
       }
     }
 
@@ -8365,6 +8515,20 @@ Server::process_request(Stream &strm, const std::string &remote_addr,
                         const std::function<void(Request &)> &setup_request) {
   std::array<char, 2048> buf{};
 
+  // ZOOBC PATCH (F1): the request line and the headers must arrive within header_deadline_sec_ of
+  // the request's first byte, however the client spaces them. With deadlines on, a request whose
+  // read failed (its deadline, a per-read timeout) ends the connection: upstream answers 400 and
+  // goes on reading the same connection, which would give a trickling client a fresh deadline for
+  // every "request" up to the keep-alive count.
+  const bool deadlines_on = header_deadline_sec_ > 0 || body_deadline_sec_ > 0;
+  if (header_deadline_sec_ > 0) {
+    strm.set_read_deadline(std::chrono::steady_clock::now() +
+                           std::chrono::seconds(header_deadline_sec_));
+  }
+  auto close_on_failed_read = detail::scope_exit([&]() {
+    if (deadlines_on && strm.read_failed()) { connection_closed = true; }
+  });
+
   detail::stream_line_reader line_reader(strm, buf.data(), buf.size());
 
   // Connection has been closed on client
@@ -8400,6 +8564,14 @@ Server::process_request(Stream &strm, const std::string &remote_addr,
     res.status = StatusCode::BadRequest_400;
     output_error_log(Error::InvalidHeaders, &req);
     return write_response(strm, close_connection, req, res);
+  }
+
+  // ZOOBC PATCH (F1): the body has its own deadline, counted from the end of the headers.
+  if (body_deadline_sec_ > 0) {
+    strm.set_read_deadline(std::chrono::steady_clock::now() +
+                           std::chrono::seconds(body_deadline_sec_));
+  } else if (header_deadline_sec_ > 0) {
+    strm.set_read_deadline(std::chrono::steady_clock::time_point{});
   }
 
   // Check if the request URI doesn't exceed the limit
