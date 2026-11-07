@@ -419,6 +419,7 @@ sub _signing_context {
 sub run_transaction {
     my ($spec, $v, $o) = @_;
     for my $p (@{ $spec->{params} }) {
+        next if $p->{name} eq 'recipient' && $spec->{recipient} eq 'required';   # the envelope's recipient is read below, with --chain
         $v->{ $p->{name} } = validate_param($p, $v->{ $p->{name} } // '') if length($v->{ $p->{name} } // '') || $p->{required};
     }
     my $sender = key_pair($v->{ $spec->{sender_key} });

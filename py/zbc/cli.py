@@ -449,6 +449,8 @@ def _signing_context(o: Options, client: Client) -> SigningContext:
 
 def run_transaction(spec: dict, v: Dict[str, str], o: Options) -> int:
     for p in spec["params"]:
+        if p["name"] == "recipient" and spec["recipient"] == "required":
+            continue   # the envelope's recipient is read below, with --chain
         if v.get(p["name"], "") != "" or p["required"]:
             v[p["name"]] = validate_param(p, v.get(p["name"], ""))
     sender = key_pair(v[spec["sender_key"]])

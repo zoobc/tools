@@ -10,7 +10,7 @@ the files from a fresh C++ build and fails if a byte differs (`.github/workflows
 | File | What a port must reproduce |
 |------|----------------------------|
 | `keys.json` | seed → public key → `ZBC_` and `ZNK_` address; BIP-39 mnemonic (+ passphrase) → SLIP-10 `m/44'/883'/i'` accounts |
-| `addresses.json` | for each input string: accepted or not, account type, full typed address bytes; `chain` entries use `--chain` |
+| `addresses.json` | for each input string: accepted or not, account type, full typed address bytes and `type_label` (the `recipient_type` the tools print, `../addresses.md` 3); `chain` entries use `--chain` |
 | `messages.json` | `ZBC-MSG-v1` sign and verify, including hex-byte messages, and `invalid` cases that must fail with the given exit code |
 | `transactions.json` | the core set: `SendZBC` (plain, message, escrow, foreign recipient, signing v1, another genesis, large fee) and `ApprovalEscrow`; unsigned bytes, digest, signature, transaction bytes, hash and submit payload |
 | `transactions-all.json` | one vector per transaction type, from each `../transactions/*.json` example, plus the liquid-payment token variant |

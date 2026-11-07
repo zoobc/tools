@@ -73,8 +73,8 @@ The canonical form is upper case with `_`. Tools print that form.
 
 `parse_address` (`cpp/cmd/tx_common.h`) tries, in order:
 
-1. `--chain <name>` given: read strictly as that chain (`zbc`, `btc`, `eth`, `sol`, `dot`, `ada`,
-   `xrp`, `trx`, `xtz`; `zbs` for a dataset object).
+1. `--chain <name>` given: read as that chain (`zbc`, `btc`, `eth`, `sol`, `dot`, `ada`,
+   `xrp`, `trx`, `xtz`; `zbs` for a dataset object), as the paragraph after this list says.
 2. `0x` + 40 hex: Ethereum (type 4). Checksum casing is not enforced.
 3. Fourth character `_` (or `-`): ZooBC text form. Prefix `ZBS` gives type 10, anything else type 0.
 4. `bc1…` / `tb1…` / `bcrt1…`: Bitcoin bech32 (types 7, 8, 9 by witness version and length).
@@ -87,13 +87,34 @@ The canonical form is upper case with `_`. Tools print that form.
 11. 32–44 characters of base58 decoding to 32 bytes: Solana (11).
 12. Exactly 64 hex characters: a raw ZooBC public key (type 0).
 
+With `--chain btc`, `ada`, `xrp`, `trx` or `xtz` the hint is a check, not a reading: the address is
+read by the steps above, and one that reads as another chain is refused by this reading. `eth`,
+`sol` and `dot` read the string as that chain only (`eth`: 40 hex, `0x` optional); `zbc` and `zbs`
+read the ZooBC text form only.
+
+When that reading fails, the tools try a second one, on the string exactly as given (not trimmed);
+the first form that applies decides, and when its string is not valid the address is refused:
+
+| The string | Read as | `recipient_type` |
+|---|---|---|
+| `0x` and 42 characters in all | 40 hex: Ethereum (4) | `ETH (compact)` |
+| starts with `1` or `3`, or `bc1` / `tb1` / `bcrt1` (any case) | a Bitcoin address only (5, 6, 7, 8, 9) | `BTC P2PKH`, `BTC P2SH`, `BTC P2WPKH`, `BTC P2WSH`, `BTC P2TR` |
+| starts with `ZBC` or `ZNK` (any case) | the ZooBC text form (section 2), type 0 | `ZBC` |
+| starts with `ZBS` (any case) | the ZooBC text form, type 10 | `DATASET` |
+| 64 hex | a raw ZooBC public key (0) | `ZBC` |
+
+So `--chain btc 0x…` is still an Ethereum account, and a bare `ZNK…` form (which detection does not
+read) is a type 0 account. `recipient_type`, which the tools print, is otherwise the account type's
+name (`ZooBC`, `Ethereum`, `Bitcoin P2PKH`, …).
+
 Anything else is a usage error (exit 2). A `ZNK_` string decodes like `ZBC_` and yields type 0;
 that is how node keys are passed to `zbc-archival-register` and friends. The tools' own sender is
 always a ZooBC account derived from the 32-byte seed.
 
 ## 4. Vectors
 
-`vectors/addresses.json` lists, for each input string, whether it is valid, the account type and
-the full typed bytes, produced by running the C++ tools. `vectors/keys.json` lists seeds with
+`vectors/addresses.json` lists, for each input string (and `--chain`, when given), whether it is
+valid, the account type, the full typed bytes and the `recipient_type` label, produced by running
+the C++ tools. `vectors/keys.json` lists seeds with
 their public keys and `ZBC_` / `ZNK_` forms, and BIP-39 wallets with their derived accounts
 (`signing.md` section 1).

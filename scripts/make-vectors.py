@@ -24,6 +24,7 @@ SEED_2 = "22" * 32
 MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
 A_V = "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX"
 A_1 = "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
+Z_V = "ZBS_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJBNBJQ"   # the vector key's bytes as a ZBS_ (dataset) address
 PUB_1 = "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"   # public key of SEED_1 (A_1 as 64 hex)
 V_SIG_1 = "4cdf8cafca5d06dd6c81c5460c9affec7eada96a63943e485b673ae33da6330570885a8b3f5dd752cbbe2b4404ae9402cdd2f6c36a09941e5d8546dbdd4ef10b"  # sign-message(SEED_1, "hello zoobc")
 REF_BLOCK = {"block_hash": "5a" * 32, "height": 1000}
@@ -185,6 +186,27 @@ ADDRESS_INPUTS = [
     "ZNK" + A_V[3:].replace("_", ""),                                       # bare form is ZooBC only behind ZBC/ZBS: bad checksum anyway
     "zbc" + A_V[3:].replace("_", "").lower()[:55] + "8",                   # bare form with a character outside base32
     A_V.replace("_", "")[:58],                                             # 58 significant characters
+    # detection reads no bare ZNK form, so these reach the reference's fallback (parse_address in tx_common.h): type 0, label "ZBC"
+    "ZNK2BFLEMTUFO2KWOQTNC6UMFPE43ICESVXDIAWXL4FECRTFSLXQ43WTXZ7", "ZNK 2BFLEMTU FO2KWOQT NC6UMFPE 43ICESVX DIAWXL4F ECRTFSLX Q43WTXZ7",
+    Z_V,                                                                    # a genuine ZBS_ address: type 10
+]
+# --chain: the hinted reading first; for btc/ada/xrp/trx/xtz an address detection reads as another chain is refused. When the
+# hinted reading fails, the reference's fallback still takes 0x+40 hex (label "ETH (compact)"), a Bitcoin address only behind
+# 1/3/bc1/tb1/bcrt1 ("BTC P2PKH" ...), ZBC/ZNK text ("ZBC"), ZBS text ("DATASET") and 64 hex ("ZBC"), on the string as given.
+CHAIN_INPUTS = [
+    ("eth", "d8da6bf26964af9d7eed9e03e53415d37aa96045"), ("zbc", "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152"),
+    ("sol", "11111111111111111111111111111111"), ("btc", "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"),
+    ("btc", "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy"), ("btc", A_1), ("btc", "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152"),
+    ("btc", "11111111111111111111111111111111"), ("btc", "11" * 32), ("btc", "  0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045\n"),
+    ("btc", "ZNK2BFLEMTUFO2KWOQTNC6UMFPE43ICESVXDIAWXL4FECRTFSLXQ43WTXZ7"), ("btc", Z_V),
+    ("trx", "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2"), ("tron", "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"),
+    ("xrp", "TJRabPrwbZy45sbavfcjinPJC18kjpRTv8"), ("ada", "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"),
+    ("xtz", "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"),
+    ("eth", A_1), ("eth", "ZNK_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43WTXZ7"), ("eth", Z_V),
+    ("eth", "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy"), ("eth", "11" * 32),
+    ("sol", "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"), ("sol", "bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3"),
+    ("dot", "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr"),
+    ("zbc", "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"), ("zbc", "11111111111111111111111111111111"), ("zbs", A_V),
 ]
 def decode_recipient(unsigned_hex):
     """Recipient field of the envelope: offset 4+1+8+36 = 49; type int32 LE then the payload."""
@@ -206,8 +228,7 @@ def addresses_vectors():
         else:
             j = json.loads(o) if o.strip().startswith("{") else {}
             out.append({"input": a, "valid": False, "exit_code": rc, "error_class": j.get("error_class")})
-    for chain, a in [("eth", "d8da6bf26964af9d7eed9e03e53415d37aa96045"), ("zbc", "5e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152"),
-                     ("sol", "11111111111111111111111111111111"), ("btc", "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045")]:
+    for chain, a in CHAIN_INPUTS:
         rc, o, e = cli("send-zbc", SEED_V, a, "1", "--chain", chain, "--fee", "1", "--timestamp", "1", "--genesis", "v1", "--offline")
         if rc == 0:
             j = json.loads(o); t, typed = decode_recipient(j["unsigned_bytes"])
@@ -218,7 +239,9 @@ def addresses_vectors():
             j = json.loads(o) if o.strip().startswith("{") else {}
             out.append({"input": a, "chain": chain, "valid": False, "exit_code": rc, "error_class": j.get("error_class")})
     return {"description": "What parse_address (addresses.md 3) makes of each input as a send-zbc recipient: valid or not, the account type and "
-                           "the full typed address bytes (4-byte type LE + payload). `chain` = the --chain option. Produced by zbc-cli send-zbc --offline.",
+                           "the full typed address bytes (4-byte type LE + payload). `chain` = the --chain option. `type_label` is the recipient_type the "
+                           "tools print (the account type's name, or the fallback reading's label, addresses.md 3); `display` is zbc-send's "
+                           "recipient. Produced by zbc-cli send-zbc --offline and zbc-send.",
             "vectors": out}
 
 # ---------------------------------------------------------------- messages ------------------

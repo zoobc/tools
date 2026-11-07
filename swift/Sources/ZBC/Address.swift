@@ -22,9 +22,12 @@ public struct ParsedAddress: Equatable {
     public let type: Int32
     public let payload: [UInt8]
     public let display: String
+    /// Set by the fallback reading, which names the type its own way ("ETH (compact)", "ZBC", ...).
+    public var label: String? = nil
     /// 4-byte type LE then the payload (36 bytes for a ZooBC account).
     public var bytes: [UInt8] { Address.typed(type, payload) }
-    public var typeName: String { AccountType.name(type) }
+    /// The recipient_type the tools print: the account type's name, or the fallback reading's label.
+    public var typeName: String { label ?? AccountType.name(type) }
 }
 
 /// The ZBC_/ZNK_/ZBS_ text form and every recipient form of spec/addresses.md.
@@ -66,6 +69,13 @@ public enum Address {
 
     public struct Invalid: Error { public let message: String }
 
+    /// The reference's fallback reading names a Bitcoin account by its script (tx_common.h get_btc_recipient_label).
+    private static let btcLabels: [Int32: String] = [1: "BTC (legacy)", 5: "BTC P2PKH", 6: "BTC P2SH", 7: "BTC P2WPKH", 8: "BTC P2WSH", 9: "BTC P2TR"]
+    /// The chain each account type is written in: a --chain btc/ada/xrp/trx/xtz reading must agree with it.
+    private static let chainOfType: [Int32: String] = [0: "zbc", 10: "zbs", 1: "btc", 5: "btc", 6: "btc", 7: "btc", 8: "btc", 9: "btc", 4: "eth",
+        11: "sol", 12: "dot", 13: "ada", 14: "xrp", 15: "trx", 16: "xtz"]
+    private static let chainNames: [String: String] = ["btc": "Bitcoin", "ada": "Cardano", "xrp": "Ripple", "trx": "Tron", "xtz": "Tezos"]
+
     private static let b32Alphabet = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".utf8)
 
     /// Shape only: PREFIX then a separator, or the bare form: 59 significant characters, ZBC/ZBS prefix, base32 body.
@@ -97,8 +107,60 @@ public enum Address {
             guard let ss = Enc.ss58Decode(a) else { throw Invalid(message: "not a valid SS58 address") }
             return ParsedAddress(type: AccountType.polkadot, payload: ss.1, display: a)
         case "zbc", "zbs": return try zbcForm(a)
-        default: return try auto(a)
+        default:
+            // btc, ada, xrp, trx, xtz: detection reads the address; the hint is a check, never a reading
+            let p = try auto(a)
+            guard chainOfType[p.type] == hint else {
+                throw Invalid(message: "not a \(chainNames[hint] ?? "matching") address: it reads as \(AccountType.name(p.type))")
+            }
+            return p
         }
+    }
+
+    private static func bech32Prefixed(_ a: String) -> Bool {
+        let low5 = String(a.prefix(5)).lowercased()
+        return low5.hasPrefix("bc1") || low5.hasPrefix("tb1") || low5.hasPrefix("bcrt1")
+    }
+
+    private static func bech32Bitcoin(_ a: String) throws -> ParsedAddress {
+        guard let sw = Enc.segwitDecode(a) else { throw Invalid(message: "invalid Bitcoin bech32 address") }
+        let (version, prog) = (sw.1, sw.2)
+        switch (version, prog.count) {
+        case (0, 20): return ParsedAddress(type: AccountType.bitcoinP2WPKH, payload: prog, display: a)
+        case (0, 32): return ParsedAddress(type: AccountType.bitcoinP2WSH, payload: prog, display: a)
+        case (1, 32): return ParsedAddress(type: AccountType.bitcoinTaproot, payload: prog, display: a)
+        default: throw Invalid(message: "unsupported Bitcoin witness program")
+        }
+    }
+
+    private static func base58Bitcoin(_ a: String) -> ParsedAddress? {
+        guard let raw = Enc.base58Decode(a), raw.count == 25, let body = Enc.base58CheckDecode(a), body.count == 21 else { return nil }
+        if body[0] == 0x00 { return ParsedAddress(type: AccountType.bitcoinP2PKH, payload: Array(body[1...]), display: a) }
+        if body[0] == 0x05 { return ParsedAddress(type: AccountType.bitcoinP2SH, payload: Array(body[1...]), display: a) }
+        return nil
+    }
+
+    /// The reference's second reading (parse_address in tx_common.h), on the string as given, when the first one fails:
+    /// nil when no form of it applies; throws when one applies and the string is not that form.
+    private static func fallback(_ s: String) throws -> ParsedAddress? {
+        if s.utf8.count == 42 && (s.hasPrefix("0x") || s.hasPrefix("0X")) {
+            guard Enc.isHex(String(s.dropFirst(2)), 40), let b = Enc.unhex(String(s.dropFirst(2))) else { throw Invalid(message: "Invalid hex character in ETH address") }
+            return ParsedAddress(type: AccountType.ethereum, payload: b, display: s, label: "ETH (compact)")
+        }
+        if s.hasPrefix("1") || s.hasPrefix("3") || bech32Prefixed(s) {
+            let found: ParsedAddress?
+            if s.hasPrefix("1") || s.hasPrefix("3") { found = base58Bitcoin(s) } else { found = try bech32Bitcoin(s) }
+            guard let p = found else { throw Invalid(message: "Failed to decode BTC address") }
+            return ParsedAddress(type: p.type, payload: p.payload, display: s, label: btcLabels[p.type])
+        }
+        let up = s.uppercased()
+        if up.hasPrefix("ZBC") || up.hasPrefix("ZNK") || up.hasPrefix("ZBS") {
+            guard let d = decode(s) else { throw Invalid(message: "Address checksum validation failed") }
+            return up.hasPrefix("ZBS") ? ParsedAddress(type: AccountType.dataset, payload: d.1, display: s, label: "DATASET")
+                : ParsedAddress(type: AccountType.zoobc, payload: d.1, display: s, label: "ZBC")
+        }
+        if Enc.isHex(s, 64), let key = Enc.unhex(s) { return ParsedAddress(type: AccountType.zoobc, payload: key, display: encode(key, prefix: "ZBC")!, label: "ZBC") }
+        return nil
     }
 
     private static func auto(_ a: String) throws -> ParsedAddress {
@@ -107,23 +169,8 @@ public enum Address {
             return ParsedAddress(type: AccountType.ethereum, payload: Enc.unhex(String(a.dropFirst(2)))!, display: a)
         }
         if looksZbc(a) { return try zbcForm(a) }
-        let low5 = String(a.prefix(5)).lowercased()
-        if low5.hasPrefix("bc1") || low5.hasPrefix("tb1") || low5.hasPrefix("bcrt1") {
-            guard let sw = Enc.segwitDecode(a) else { throw Invalid(message: "invalid Bitcoin bech32 address") }
-            let (version, prog) = (sw.1, sw.2)
-            switch (version, prog.count) {
-            case (0, 20): return ParsedAddress(type: AccountType.bitcoinP2WPKH, payload: prog, display: a)
-            case (0, 32): return ParsedAddress(type: AccountType.bitcoinP2WSH, payload: prog, display: a)
-            case (1, 32): return ParsedAddress(type: AccountType.bitcoinTaproot, payload: prog, display: a)
-            default: throw Invalid(message: "unsupported Bitcoin witness program")
-            }
-        }
-        if (u[0] == UInt8(ascii: "1") || u[0] == UInt8(ascii: "3")) && u.count >= 26 && u.count <= 35 {
-            if let raw = Enc.base58Decode(a), raw.count == 25, let body = Enc.base58CheckDecode(a), body.count == 21 {
-                if body[0] == 0x00 { return ParsedAddress(type: AccountType.bitcoinP2PKH, payload: Array(body[1...]), display: a) }
-                if body[0] == 0x05 { return ParsedAddress(type: AccountType.bitcoinP2SH, payload: Array(body[1...]), display: a) }
-            }
-        }
+        if bech32Prefixed(a) { return try bech32Bitcoin(a) }
+        if (u[0] == UInt8(ascii: "1") || u[0] == UInt8(ascii: "3")) && u.count >= 26 && u.count <= 35, let p = base58Bitcoin(a) { return p }
         if u.count > 5 && String(a.prefix(5)).lowercased() == "addr1" {
             if let d = Enc.bech32DecodePlain(a), d.0 == "addr", d.1.count == 29, d.1[0] == 0x61 { return ParsedAddress(type: AccountType.cardano, payload: Array(d.1[1...]), display: a) }
             throw Invalid(message: "invalid Cardano address (expected a mainnet enterprise addr1… address)")
@@ -146,18 +193,23 @@ public enum Address {
         throw Invalid(message: "unrecognised address. Supported: ZooBC (ZBC_/ZBS_), Bitcoin, Ethereum, Solana, Polkadot, Cardano, Ripple, Tron, Tezos")
     }
 
-    /// Read a recipient in the order of spec/addresses.md section 3; `chain` forces one reading (--chain).
+    /// Read a recipient as spec/addresses.md section 3 says; `chain` forces one reading (--chain). When the reading fails,
+    /// the fallback the reference keeps still takes 0x+40 hex, a Bitcoin address, ZBC/ZNK/ZBS text and 64 hex, and
+    /// `typeName` is then its label ("ETH (compact)", "BTC P2PKH", "ZBC", "DATASET").
     public static func parse(_ text: String, chain: String = "") throws -> ParsedAddress {
         let a = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if a.isEmpty { throw Invalid(message: "empty address") }
-        if chain.isEmpty { return try auto(a) }
-        guard let hint = chains[chain.lowercased()] else { throw Invalid(message: "unknown chain \(chain)") }
-        do { return try hinted(a, hint) } catch let e as Invalid {
-            let up = a.uppercased(), low = a.lowercased()
-            let plain = (a.utf8.count == 42 && (a.hasPrefix("0x") || a.hasPrefix("0X"))) || up.hasPrefix("ZBC") || up.hasPrefix("ZNK") || up.hasPrefix("ZBS")
-                || a.hasPrefix("1") || a.hasPrefix("3") || low.hasPrefix("bc1") || low.hasPrefix("tb1") || low.hasPrefix("bcrt1") || a.utf8.count == 64
-            if !plain { throw e }
+        var hint: String? = nil
+        if !chain.isEmpty {
+            guard let h = chains[chain.lowercased()] else { throw Invalid(message: "unknown chain \(chain)") }
+            hint = h
+        }
+        do {
+            if let h = hint { return try hinted(a, h) }
             return try auto(a)
+        } catch let e as Invalid {
+            guard let p = try fallback(text) else { throw e }
+            return p
         }
     }
 

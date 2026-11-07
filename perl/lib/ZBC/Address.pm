@@ -25,6 +25,13 @@ my %CHAINS = (zbc => 'zbc', zoobc => 'zbc', btc => 'btc', bitcoin => 'btc', eth 
               sol => 'sol', solana => 'sol', dot => 'dot', polkadot => 'dot', substrate => 'dot', ada => 'ada', cardano => 'ada',
               xrp => 'xrp', ripple => 'xrp', trx => 'trx', tron => 'trx', xtz => 'xtz', tezos => 'xtz', zbs => 'zbs', dataset => 'zbs');
 
+# The reference's fallback reading names a Bitcoin account by its script (tx_common.h get_btc_recipient_label).
+my %BTC_LABELS = (1 => 'BTC (legacy)', 5 => 'BTC P2PKH', 6 => 'BTC P2SH', 7 => 'BTC P2WPKH', 8 => 'BTC P2WSH', 9 => 'BTC P2TR');
+# The chain each account type is written in: a --chain btc/ada/xrp/trx/xtz reading must agree with it.
+my %CHAIN_OF_TYPE = (0 => 'zbc', 10 => 'zbs', 1 => 'btc', 5 => 'btc', 6 => 'btc', 7 => 'btc', 8 => 'btc', 9 => 'btc', 4 => 'eth',
+                     11 => 'sol', 12 => 'dot', 13 => 'ada', 14 => 'xrp', 15 => 'trx', 16 => 'xtz');
+my %CHAIN_NAMES = (btc => 'Bitcoin', ada => 'Cardano', xrp => 'Ripple', trx => 'Tron', xtz => 'Tezos');
+
 sub account_type_name { my ($t) = @_; return $TYPE_NAMES{$t} // "type $t"; }
 
 # Payload length by account type, as the node parses an envelope.
@@ -61,13 +68,15 @@ sub decode_zbc_address {
 }
 
 package ZBC::Address::Parsed;
-# What parse_address returns: type, payload, display (the text as given, or the ZBC_ form of a raw key).
-sub new { my ($class, $type, $payload, $display) = @_; return bless { type => $type, payload => $payload, display => $display }, $class; }
+# What parse_address returns: type, payload, display (the text as given, or the ZBC_ form of a raw key), and the label the
+# fallback reading gives the type ("ETH (compact)", "ZBC", ...), when that reading made it.
+sub new { my ($class, $type, $payload, $display, $label) = @_; return bless { type => $type, payload => $payload, display => $display, label => $label }, $class; }
 sub type      { $_[0]->{type} }
 sub payload   { $_[0]->{payload} }
 sub display   { $_[0]->{display} }
 sub bytes     { ZBC::Address::typed_address($_[0]->{type}, $_[0]->{payload}) }
-sub type_name { ZBC::Address::account_type_name($_[0]->{type}) }
+# The recipient_type the tools print: the account type's name, or the fallback reading's label.
+sub type_name { $_[0]->{label} // ZBC::Address::account_type_name($_[0]->{type}) }
 
 package ZBC::Address;
 
@@ -104,7 +113,61 @@ sub _hinted {
         return ZBC::Address::Parsed->new(POLKADOT, $id, $a);
     }
     return _zbc_form($a) if $hint eq 'zbc' || $hint eq 'zbs';
-    return _auto($a);
+    # btc, ada, xrp, trx, xtz: detection reads the address; the hint is a check, never a reading
+    my $p = _auto($a);
+    die "not a $CHAIN_NAMES{$hint} address: it reads as " . account_type_name($p->type) unless ($CHAIN_OF_TYPE{$p->type} // '') eq $hint;
+    return $p;
+}
+
+sub _bech32_prefixed { my ($a) = @_; return lc(substr $a, 0, 5) =~ /^(bc1|tb1|bcrt1)/ ? 1 : 0; }
+
+sub _bech32_bitcoin {
+    my ($a) = @_;
+    my ($hrp, $version, $prog) = segwit_decode($a);
+    die "invalid Bitcoin bech32 address" unless defined $hrp;
+    return ZBC::Address::Parsed->new(BITCOIN_P2WPKH, $prog, $a) if $version == 0 && length($prog) == 20;
+    return ZBC::Address::Parsed->new(BITCOIN_P2WSH, $prog, $a) if $version == 0 && length($prog) == 32;
+    return ZBC::Address::Parsed->new(BITCOIN_TAPROOT, $prog, $a) if $version == 1 && length($prog) == 32;
+    die "unsupported Bitcoin witness program";
+}
+
+# A base58check Bitcoin address (P2PKH 0x00, P2SH 0x05), or undef.
+sub _base58_bitcoin {
+    my ($a) = @_;
+    my $raw = base58_decode($a);
+    return undef unless defined $raw && length($raw) == 25;
+    my $body = base58check_decode($a);
+    return undef unless defined $body && length($body) == 21;
+    my $v = ord substr $body, 0, 1;
+    return ZBC::Address::Parsed->new(BITCOIN_P2PKH, substr($body, 1), $a) if $v == 0x00;
+    return ZBC::Address::Parsed->new(BITCOIN_P2SH, substr($body, 1), $a) if $v == 0x05;
+    return undef;
+}
+
+# The reference's second reading (parse_address in tx_common.h), on the string as given, when the first one fails:
+# undef when no form of it applies; dies when one applies and the string is not that form.
+sub _fallback {
+    my ($s) = @_;
+    if (length($s) == 42 && substr($s, 0, 2) =~ /^0[xX]$/) {
+        die "Invalid hex character in ETH address" unless is_hex(substr($s, 2), 40);
+        return ZBC::Address::Parsed->new(ETHEREUM, from_hex(substr $s, 2), $s, 'ETH (compact)');
+    }
+    if (substr($s, 0, 1) =~ /^[13]$/ || _bech32_prefixed($s)) {
+        my $p = substr($s, 0, 1) =~ /^[13]$/ ? _base58_bitcoin($s) : _bech32_bitcoin($s);
+        die "Failed to decode BTC address" unless $p;
+        return ZBC::Address::Parsed->new($p->type, $p->payload, $s, $BTC_LABELS{$p->type});
+    }
+    my $up = uc $s;
+    if ($up =~ /^(ZBC|ZNK|ZBS)/) {
+        my ($prefix, $payload) = decode_zbc_address($s);
+        die "Address checksum validation failed" unless defined $prefix;
+        return $up =~ /^ZBS/ ? ZBC::Address::Parsed->new(DATASET, $payload, $s, 'DATASET') : ZBC::Address::Parsed->new(ZOOBC, $payload, $s, 'ZBC');
+    }
+    if (is_hex($s, 64)) {
+        my $key = from_hex($s);
+        return ZBC::Address::Parsed->new(ZOOBC, $key, encode_zbc_address($key, 'ZBC'), 'ZBC');
+    }
+    return undef;
 }
 
 sub _auto {
@@ -113,25 +176,10 @@ sub _auto {
         return ZBC::Address::Parsed->new(ETHEREUM, from_hex(substr $a, 2), $a);
     }
     return _zbc_form($a) if _looks_zbc($a);
-    my $low5 = lc substr $a, 0, 5;
-    if ($low5 =~ /^(bc1|tb1|bcrt1)/) {
-        my ($hrp, $version, $prog) = segwit_decode($a);
-        die "invalid Bitcoin bech32 address" unless defined $hrp;
-        return ZBC::Address::Parsed->new(BITCOIN_P2WPKH, $prog, $a) if $version == 0 && length($prog) == 20;
-        return ZBC::Address::Parsed->new(BITCOIN_P2WSH, $prog, $a) if $version == 0 && length($prog) == 32;
-        return ZBC::Address::Parsed->new(BITCOIN_TAPROOT, $prog, $a) if $version == 1 && length($prog) == 32;
-        die "unsupported Bitcoin witness program";
-    }
+    return _bech32_bitcoin($a) if _bech32_prefixed($a);
     if (substr($a, 0, 1) =~ /[13]/ && length($a) >= 26 && length($a) <= 35) {
-        my $raw = base58_decode($a);
-        if (defined $raw && length($raw) == 25) {
-            my $body = base58check_decode($a);
-            if (defined $body && length($body) == 21) {
-                my $v = ord substr $body, 0, 1;
-                return ZBC::Address::Parsed->new(BITCOIN_P2PKH, substr($body, 1), $a) if $v == 0x00;
-                return ZBC::Address::Parsed->new(BITCOIN_P2SH, substr($body, 1), $a) if $v == 0x05;
-            }
-        }
+        my $p = _base58_bitcoin($a);
+        return $p if $p;
     }
     if (length($a) > 5 && lc(substr $a, 0, 5) eq 'addr1') {
         my ($hrp, $data) = bech32_decode_plain($a);
@@ -168,24 +216,25 @@ sub _auto {
     die "unrecognised address. Supported: ZooBC (ZBC_/ZBS_), Bitcoin, Ethereum, Solana, Polkadot, Cardano, Ripple, Tron, Tezos";
 }
 
-# Read a recipient in the order of spec/addresses.md section 3; `chain` forces one reading (--chain).
+# Read a recipient as spec/addresses.md section 3 says; `chain` forces one reading (--chain). When the reading fails, the
+# fallback the reference keeps still takes 0x+40 hex, a Bitcoin address, ZBC/ZNK/ZBS text and 64 hex, and type_name is
+# then its label ("ETH (compact)", "BTC P2PKH", "ZBC", "DATASET").
 sub parse_address {
     my ($text, $chain) = @_;
-    (my $a = $text // '') =~ s/^\s+|\s+$//g;
+    $text //= '';
+    (my $a = $text) =~ s/^\s+|\s+$//g;
     die "empty address" if $a eq '';
+    my $hint;
     if (defined $chain && $chain ne '') {
-        my $hint = $CHAINS{lc $chain};
+        $hint = $CHAINS{lc $chain};
         die "unknown chain $chain" unless defined $hint;
-        my $parsed = eval { _hinted($a, $hint) };
-        return $parsed if $parsed;
-        my $err = $@;
-        my $up = uc $a;
-        my $plain = (length($a) == 42 && substr($a, 0, 2) =~ /^0[xX]$/) || $up =~ /^(ZBC|ZNK|ZBS)/ || substr($a, 0, 1) =~ /[13]/
-                 || lc(substr $a, 0, 5) =~ /^(bc1|tb1|bcrt1)/ || length($a) == 64;
-        die $err unless $plain;
-        return _auto($a);
     }
-    return _auto($a);
+    my $parsed = eval { defined $hint ? _hinted($a, $hint) : _auto($a) };
+    return $parsed if $parsed;
+    my $err = $@;
+    my $fallback = _fallback($text);
+    die $err unless $fallback;
+    return $fallback;
 }
 
 # A registry key parameter: 64 hex (optionally 0x) or a ZNK_/ZBG_/ZBR_/ZBC_ text address; 32 bytes.

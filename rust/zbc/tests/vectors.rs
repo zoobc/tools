@@ -66,6 +66,7 @@ fn addresses() {
             let p = r.unwrap_or_else(|e| panic!("{input}: {e}"));
             assert_eq!(p.account_type as i64, v["account_type"].as_i64().unwrap(), "{input}");
             assert_eq!(hex::encode(p.bytes()), s(v, "address_bytes"), "{input}");
+            assert_eq!(p.type_name(), s(v, "type_label"), "{input} ({chain}): label");
         } else {
             assert!(r.is_err(), "{input} accepted, reference refuses it");
         }

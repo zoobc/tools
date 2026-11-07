@@ -16,6 +16,13 @@ final class Address
         'sol' => 'sol', 'solana' => 'sol', 'dot' => 'dot', 'polkadot' => 'dot', 'substrate' => 'dot', 'ada' => 'ada', 'cardano' => 'ada',
         'xrp' => 'xrp', 'ripple' => 'xrp', 'trx' => 'trx', 'tron' => 'trx', 'xtz' => 'xtz', 'tezos' => 'xtz', 'zbs' => 'zbs', 'dataset' => 'zbs'];
 
+    /** The reference's fallback reading names a Bitcoin account by its script (tx_common.h get_btc_recipient_label). */
+    private const BTC_LABELS = [1 => 'BTC (legacy)', 5 => 'BTC P2PKH', 6 => 'BTC P2SH', 7 => 'BTC P2WPKH', 8 => 'BTC P2WSH', 9 => 'BTC P2TR'];
+    /** The chain each account type is written in: a --chain btc/ada/xrp/trx/xtz reading must agree with it. */
+    private const CHAIN_OF_TYPE = [0 => 'zbc', 10 => 'zbs', 1 => 'btc', 5 => 'btc', 6 => 'btc', 7 => 'btc', 8 => 'btc', 9 => 'btc', 4 => 'eth', 11 => 'sol',
+        12 => 'dot', 13 => 'ada', 14 => 'xrp', 15 => 'trx', 16 => 'xtz'];
+    private const CHAIN_NAMES = ['btc' => 'Bitcoin', 'ada' => 'Cardano', 'xrp' => 'Ripple', 'trx' => 'Tron', 'xtz' => 'Tezos'];
+
     public static function typeName(int $t): string { return self::NAMES[$t] ?? "type $t"; }
     public static function typed(int $t, string $payload): string { return Encoding::le32($t) . $payload; }
 
@@ -83,32 +90,77 @@ final class Address
             case 'zbc': case 'zbs':
                 return self::zbcForm($a);
         }
-        return self::auto($a);
+        // btc, ada, xrp, trx, xtz: detection reads the address; the hint is a check, never a reading
+        $p = self::auto($a);
+        if ((self::CHAIN_OF_TYPE[$p->type] ?? '') !== $hint) {
+            throw new \InvalidArgumentException('not a ' . self::CHAIN_NAMES[$hint] . ' address: it reads as ' . self::typeName($p->type));
+        }
+        return $p;
+    }
+
+    private static function bech32Bitcoin(string $a): ParsedAddress
+    {
+        $d = Encoding::segwitDecode($a);
+        if ($d === null) { throw new \InvalidArgumentException('invalid Bitcoin bech32 address'); }
+        [, $version, $prog] = $d;
+        if ($version === 0 && strlen($prog) === 20) { return new ParsedAddress(self::BITCOIN_P2WPKH, $prog, $a); }
+        if ($version === 0 && strlen($prog) === 32) { return new ParsedAddress(self::BITCOIN_P2WSH, $prog, $a); }
+        if ($version === 1 && strlen($prog) === 32) { return new ParsedAddress(self::BITCOIN_TAPROOT, $prog, $a); }
+        throw new \InvalidArgumentException('unsupported Bitcoin witness program');
+    }
+
+    private static function base58Bitcoin(string $a): ?ParsedAddress
+    {
+        $raw = Encoding::base58Decode($a);
+        if ($raw !== null && strlen($raw) === 25) {
+            $body = Encoding::base58CheckDecode($a);
+            if ($body !== null && strlen($body) === 21) {
+                if ($body[0] === "\x00") { return new ParsedAddress(self::BITCOIN_P2PKH, substr($body, 1), $a); }
+                if ($body[0] === "\x05") { return new ParsedAddress(self::BITCOIN_P2SH, substr($body, 1), $a); }
+            }
+        }
+        return null;
+    }
+
+    private static function bech32Prefixed(string $a): bool
+    {
+        $low5 = strtolower(substr($a, 0, 5));
+        return str_starts_with($low5, 'bc1') || str_starts_with($low5, 'tb1') || str_starts_with($low5, 'bcrt1');
+    }
+
+    /**
+     * The reference's second reading (parse_address in tx_common.h), on the string as given, when the first one fails:
+     * null when no form of it applies; throws when one applies and the string is not that form.
+     */
+    private static function fallback(string $s): ?ParsedAddress
+    {
+        if (strlen($s) === 42 && preg_match('/^0[xX]/', $s)) {
+            if (!Encoding::isHex(substr($s, 2), 40)) { throw new \InvalidArgumentException('Invalid hex character in ETH address'); }
+            return new ParsedAddress(self::ETHEREUM, hex2bin(substr($s, 2)), $s, 'ETH (compact)');
+        }
+        if ($s !== '' && ($s[0] === '1' || $s[0] === '3' || self::bech32Prefixed($s))) {
+            $p = ($s[0] === '1' || $s[0] === '3') ? self::base58Bitcoin($s) : self::bech32Bitcoin($s);
+            if ($p === null) { throw new \InvalidArgumentException('Failed to decode BTC address'); }
+            return new ParsedAddress($p->type, $p->payload, $s, self::BTC_LABELS[$p->type]);
+        }
+        $up = strtoupper($s);
+        if (str_starts_with($up, 'ZBC') || str_starts_with($up, 'ZNK') || str_starts_with($up, 'ZBS')) {
+            $d = self::decode($s);
+            if ($d === null) { throw new \InvalidArgumentException('Address checksum validation failed'); }
+            return str_starts_with($up, 'ZBS') ? new ParsedAddress(self::DATASET, $d[1], $s, 'DATASET') : new ParsedAddress(self::ZOOBC, $d[1], $s, 'ZBC');
+        }
+        if (Encoding::isHex($s, 64)) { $key = hex2bin($s); return new ParsedAddress(self::ZOOBC, $key, self::encode($key, 'ZBC'), 'ZBC'); }
+        return null;
     }
 
     private static function auto(string $a): ParsedAddress
     {
         if (strlen($a) === 42 && preg_match('/^0[xX]/', $a) && Encoding::isHex(substr($a, 2), 40)) { return new ParsedAddress(self::ETHEREUM, hex2bin(substr($a, 2)), $a); }
         if (self::looksZbc($a)) { return self::zbcForm($a); }
-        $low5 = strtolower(substr($a, 0, 5));
-        if (str_starts_with($low5, 'bc1') || str_starts_with($low5, 'tb1') || str_starts_with($low5, 'bcrt1')) {
-            $d = Encoding::segwitDecode($a);
-            if ($d === null) { throw new \InvalidArgumentException('invalid Bitcoin bech32 address'); }
-            [, $version, $prog] = $d;
-            if ($version === 0 && strlen($prog) === 20) { return new ParsedAddress(self::BITCOIN_P2WPKH, $prog, $a); }
-            if ($version === 0 && strlen($prog) === 32) { return new ParsedAddress(self::BITCOIN_P2WSH, $prog, $a); }
-            if ($version === 1 && strlen($prog) === 32) { return new ParsedAddress(self::BITCOIN_TAPROOT, $prog, $a); }
-            throw new \InvalidArgumentException('unsupported Bitcoin witness program');
-        }
+        if (self::bech32Prefixed($a)) { return self::bech32Bitcoin($a); }
         if (($a[0] === '1' || $a[0] === '3') && strlen($a) >= 26 && strlen($a) <= 35) {
-            $raw = Encoding::base58Decode($a);
-            if ($raw !== null && strlen($raw) === 25) {
-                $body = Encoding::base58CheckDecode($a);
-                if ($body !== null && strlen($body) === 21) {
-                    if ($body[0] === "\x00") { return new ParsedAddress(self::BITCOIN_P2PKH, substr($body, 1), $a); }
-                    if ($body[0] === "\x05") { return new ParsedAddress(self::BITCOIN_P2SH, substr($body, 1), $a); }
-                }
-            }
+            $p = self::base58Bitcoin($a);
+            if ($p !== null) { return $p; }
         }
         if (strlen($a) > 5 && strtolower(substr($a, 0, 5)) === 'addr1') {
             $d = Encoding::bech32DecodePlain($a);
@@ -140,19 +192,18 @@ final class Address
         throw new \InvalidArgumentException('unrecognised address. Supported: ZooBC (ZBC_/ZBS_), Bitcoin, Ethereum, Solana, Polkadot, Cardano, Ripple, Tron, Tezos');
     }
 
-    /** Read a recipient in the order of spec/addresses.md section 3; $chain forces one reading (--chain). Throws InvalidArgumentException. */
+    /**
+     * Read a recipient as spec/addresses.md section 3 says; $chain forces one reading (--chain). Throws InvalidArgumentException.
+     * When the reading fails, the fallback the reference keeps still takes 0x+40 hex, a Bitcoin address, ZBC/ZNK/ZBS text and
+     * 64 hex, and typeName() is then its label ("ETH (compact)", "BTC P2PKH", "ZBC", "DATASET").
+     */
     public static function parse(string $text, string $chain = ''): ParsedAddress
     {
         $a = trim($text);
         if ($a === '') { throw new \InvalidArgumentException('empty address'); }
-        if ($chain === '') { return self::auto($a); }
-        $hint = self::CHAINS[strtolower($chain)] ?? throw new \InvalidArgumentException("unknown chain $chain");
-        try { return self::hinted($a, $hint); } catch (\InvalidArgumentException $e) {
-            $up = strtoupper($a); $low = strtolower($a);
-            $plain = (strlen($a) === 42 && preg_match('/^0[xX]/', $a)) || str_starts_with($up, 'ZBC') || str_starts_with($up, 'ZNK') || str_starts_with($up, 'ZBS')
-                || $a[0] === '1' || $a[0] === '3' || str_starts_with($low, 'bc1') || str_starts_with($low, 'tb1') || str_starts_with($low, 'bcrt1') || strlen($a) === 64;
-            if (!$plain) { throw $e; }
-            return self::auto($a);
+        $hint = $chain === '' ? null : (self::CHAINS[strtolower($chain)] ?? throw new \InvalidArgumentException("unknown chain $chain"));
+        try { return $hint === null ? self::auto($a) : self::hinted($a, $hint); } catch (\InvalidArgumentException $e) {
+            return self::fallback($text) ?? throw $e;
         }
     }
 

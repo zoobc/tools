@@ -111,6 +111,8 @@ pub struct ParsedAddress {
     pub account_type: i32,
     pub payload: Vec<u8>,
     pub display: String,
+    /// Set by the fallback reading, which names the type its own way ("ETH (compact)", "ZBC", ...).
+    pub label: Option<String>,
 }
 
 impl ParsedAddress {
@@ -118,8 +120,54 @@ impl ParsedAddress {
     pub fn bytes(&self) -> Vec<u8> {
         typed_address(self.account_type, &self.payload)
     }
+    /// The recipient_type the tools print: the account type's name, or the fallback reading's label.
     pub fn type_name(&self) -> String {
-        account_type_name(self.account_type)
+        self.label.clone().unwrap_or_else(|| account_type_name(self.account_type))
+    }
+}
+
+fn pa(account_type: i32, payload: Vec<u8>, display: impl Into<String>) -> ParsedAddress {
+    ParsedAddress { account_type, payload, display: display.into(), label: None }
+}
+
+/// The reference's fallback reading names a Bitcoin account by its script (tx_common.h get_btc_recipient_label).
+fn btc_label(t: i32) -> &'static str {
+    match t {
+        BITCOIN_P2PKH => "BTC P2PKH",
+        BITCOIN_P2SH => "BTC P2SH",
+        BITCOIN_P2WPKH => "BTC P2WPKH",
+        BITCOIN_P2WSH => "BTC P2WSH",
+        BITCOIN_TAPROOT => "BTC P2TR",
+        BITCOIN => "BTC (legacy)",
+        _ => "BTC",
+    }
+}
+
+/// The chain each account type is written in: a --chain btc/ada/xrp/trx/xtz reading must agree with it.
+fn chain_of_type(t: i32) -> &'static str {
+    match t {
+        ZOOBC => "zbc",
+        DATASET => "zbs",
+        BITCOIN | BITCOIN_P2PKH | BITCOIN_P2SH | BITCOIN_P2WPKH | BITCOIN_P2WSH | BITCOIN_TAPROOT => "btc",
+        ETHEREUM => "eth",
+        SOLANA => "sol",
+        POLKADOT => "dot",
+        CARDANO => "ada",
+        RIPPLE => "xrp",
+        TRON => "trx",
+        TEZOS => "xtz",
+        _ => "",
+    }
+}
+
+fn chain_name(hint: &str) -> &'static str {
+    match hint {
+        "btc" => "Bitcoin",
+        "ada" => "Cardano",
+        "xrp" => "Ripple",
+        "trx" => "Tron",
+        "xtz" => "Tezos",
+        _ => "matching",
     }
 }
 
@@ -155,7 +203,76 @@ fn looks_zbc(a: &str) -> bool {
 fn zbc_form(a: &str) -> Result<ParsedAddress, String> {
     let (prefix, payload) = decode_zbc_address(a).ok_or("invalid ZooBC address checksum")?;
     let t = if prefix == "ZBS" { DATASET } else { ZOOBC };
-    Ok(ParsedAddress { account_type: t, payload, display: a.to_string() })
+    Ok(pa(t, payload, a))
+}
+
+fn bech32_prefixed(a: &str) -> bool {
+    let low5: String = a.chars().take(5).collect::<String>().to_lowercase();
+    low5.starts_with("bc1") || low5.starts_with("tb1") || low5.starts_with("bcrt1")
+}
+
+fn bech32_bitcoin(a: &str) -> Result<ParsedAddress, String> {
+    let (_, version, prog) = segwit_decode(a).ok_or("invalid Bitcoin bech32 address")?;
+    match (version, prog.len()) {
+        (0, 20) => Ok(pa(BITCOIN_P2WPKH, prog, a)),
+        (0, 32) => Ok(pa(BITCOIN_P2WSH, prog, a)),
+        (1, 32) => Ok(pa(BITCOIN_TAPROOT, prog, a)),
+        _ => Err("unsupported Bitcoin witness program".into()),
+    }
+}
+
+fn base58_bitcoin(a: &str) -> Option<ParsedAddress> {
+    let raw = base58_decode(a, BITCOIN_ALPHABET)?;
+    if raw.len() != 25 {
+        return None;
+    }
+    let body = base58check_decode(a, BITCOIN_ALPHABET)?;
+    match (body.len(), body.first()) {
+        (21, Some(0x00)) => Some(pa(BITCOIN_P2PKH, body[1..].to_vec(), a)),
+        (21, Some(0x05)) => Some(pa(BITCOIN_P2SH, body[1..].to_vec(), a)),
+        _ => None,
+    }
+}
+
+/// The reference's second reading (parse_address in tx_common.h), on the string as given, when the first one fails:
+/// None when no form of it applies; Some(Err) when one applies and the string is not that form.
+fn fallback(s: &str) -> Option<Result<ParsedAddress, String>> {
+    let labelled = |mut p: ParsedAddress, label: &str| {
+        p.label = Some(label.to_string());
+        p
+    };
+    if s.len() == 42 && (s.starts_with("0x") || s.starts_with("0X")) {
+        if !is_hex(&s[2..], 40) {
+            return Some(Err("invalid hex character in ETH address".into()));
+        }
+        return Some(Ok(labelled(pa(ETHEREUM, hex::decode(&s[2..]).unwrap(), s), "ETH (compact)")));
+    }
+    let bitcoin = |p: ParsedAddress| {
+        let label = btc_label(p.account_type);
+        labelled(p, label)
+    };
+    if s.starts_with('1') || s.starts_with('3') {
+        return Some(base58_bitcoin(s).map(bitcoin).ok_or_else(|| "failed to decode BTC address".into()));
+    }
+    if bech32_prefixed(s) {
+        return Some(bech32_bitcoin(s).map(bitcoin));
+    }
+    let up = s.to_uppercase();
+    if up.starts_with("ZBC") || up.starts_with("ZNK") || up.starts_with("ZBS") {
+        let Some((_, payload)) = decode_zbc_address(s) else {
+            return Some(Err("address checksum validation failed".into()));
+        };
+        return Some(Ok(if up.starts_with("ZBS") {
+            labelled(pa(DATASET, payload, s), "DATASET")
+        } else {
+            labelled(pa(ZOOBC, payload, s), "ZBC")
+        }));
+    }
+    if is_hex(s, 64) {
+        let key = hex::decode(s).unwrap();
+        return Some(encode_zbc_address(&key, "ZBC").map(|d| labelled(pa(ZOOBC, key, d), "ZBC")));
+    }
+    None
 }
 
 fn parse_hinted(a: &str, hint: &str) -> Result<ParsedAddress, String> {
@@ -165,57 +282,48 @@ fn parse_hinted(a: &str, hint: &str) -> Result<ParsedAddress, String> {
             if !is_hex(h, 40) {
                 return Err("not a 20-byte Ethereum address".into());
             }
-            Ok(ParsedAddress { account_type: ETHEREUM, payload: hex::decode(h).unwrap(), display: a.to_string() })
+            Ok(pa(ETHEREUM, hex::decode(h).unwrap(), a))
         }
         "sol" => match base58_decode(a, BITCOIN_ALPHABET) {
-            Some(d) if d.len() == 32 => Ok(ParsedAddress { account_type: SOLANA, payload: d, display: a.to_string() }),
+            Some(d) if d.len() == 32 => Ok(pa(SOLANA, d, a)),
             _ => Err("not a 32-byte Solana address".into()),
         },
         "dot" => match ss58_decode(a) {
-            Some((_, id)) => Ok(ParsedAddress { account_type: POLKADOT, payload: id, display: a.to_string() }),
+            Some((_, id)) => Ok(pa(POLKADOT, id, a)),
             None => Err("not a valid SS58 address".into()),
         },
         "zbc" | "zbs" => zbc_form(a),
-        _ => parse_auto(a),
+        // btc, ada, xrp, trx, xtz: detection reads the address; the hint is a check, never a reading
+        _ => {
+            let p = parse_auto(a)?;
+            if chain_of_type(p.account_type) != hint {
+                return Err(format!("not a {} address: it reads as {}", chain_name(hint), account_type_name(p.account_type)));
+            }
+            Ok(p)
+        }
     }
 }
 
 fn parse_auto(a: &str) -> Result<ParsedAddress, String> {
     let b = a.as_bytes();
     if a.len() == 42 && (a.starts_with("0x") || a.starts_with("0X")) && is_hex(&a[2..], 40) {
-        return Ok(ParsedAddress { account_type: ETHEREUM, payload: hex::decode(&a[2..]).unwrap(), display: a.to_string() });
+        return Ok(pa(ETHEREUM, hex::decode(&a[2..]).unwrap(), a));
     }
     if looks_zbc(a) {
         return zbc_form(a);
     }
-    let low5: String = a.chars().take(5).collect::<String>().to_lowercase();
-    if low5.starts_with("bc1") || low5.starts_with("tb1") || low5.starts_with("bcrt1") {
-        let (_, version, prog) = segwit_decode(a).ok_or("invalid Bitcoin bech32 address")?;
-        return match (version, prog.len()) {
-            (0, 20) => Ok(ParsedAddress { account_type: BITCOIN_P2WPKH, payload: prog, display: a.to_string() }),
-            (0, 32) => Ok(ParsedAddress { account_type: BITCOIN_P2WSH, payload: prog, display: a.to_string() }),
-            (1, 32) => Ok(ParsedAddress { account_type: BITCOIN_TAPROOT, payload: prog, display: a.to_string() }),
-            _ => Err("unsupported Bitcoin witness program".into()),
-        };
+    if bech32_prefixed(a) {
+        return bech32_bitcoin(a);
     }
     if (b[0] == b'1' || b[0] == b'3') && (26..=35).contains(&a.len()) {
-        if let Some(raw) = base58_decode(a, BITCOIN_ALPHABET) {
-            if raw.len() == 25 {
-                if let Some(body) = base58check_decode(a, BITCOIN_ALPHABET) {
-                    if body.len() == 21 && body[0] == 0x00 {
-                        return Ok(ParsedAddress { account_type: BITCOIN_P2PKH, payload: body[1..].to_vec(), display: a.to_string() });
-                    }
-                    if body.len() == 21 && body[0] == 0x05 {
-                        return Ok(ParsedAddress { account_type: BITCOIN_P2SH, payload: body[1..].to_vec(), display: a.to_string() });
-                    }
-                }
-            }
+        if let Some(p) = base58_bitcoin(a) {
+            return Ok(p);
         }
     }
     if a.len() > 5 && a[..5].to_lowercase() == "addr1" {
         if let Some((hrp, bytes)) = bech32_decode_plain(a) {
             if hrp == "addr" && bytes.len() == 29 && bytes[0] == 0x61 {
-                return Ok(ParsedAddress { account_type: CARDANO, payload: bytes[1..].to_vec(), display: a.to_string() });
+                return Ok(pa(CARDANO, bytes[1..].to_vec(), a));
             }
         }
         return Err("invalid Cardano address (expected a mainnet enterprise addr1… address)".into());
@@ -223,7 +331,7 @@ fn parse_auto(a: &str) -> Result<ParsedAddress, String> {
     if b[0] == b'T' && a.len() == 34 {
         if let Some(body) = base58check_decode(a, BITCOIN_ALPHABET) {
             if body.len() == 21 && body[0] == 0x41 {
-                return Ok(ParsedAddress { account_type: TRON, payload: body[1..].to_vec(), display: a.to_string() });
+                return Ok(pa(TRON, body[1..].to_vec(), a));
             }
         }
         return Err("invalid Tron address".into());
@@ -231,7 +339,7 @@ fn parse_auto(a: &str) -> Result<ParsedAddress, String> {
     if b[0] == b'r' && (25..=35).contains(&a.len()) {
         if let Some(body) = base58check_decode(a, RIPPLE_ALPHABET) {
             if body.len() == 21 && body[0] == 0x00 {
-                return Ok(ParsedAddress { account_type: RIPPLE, payload: body[1..].to_vec(), display: a.to_string() });
+                return Ok(pa(RIPPLE, body[1..].to_vec(), a));
             }
         }
         return Err("invalid Ripple address".into());
@@ -239,53 +347,49 @@ fn parse_auto(a: &str) -> Result<ParsedAddress, String> {
     if a.starts_with("tz1") {
         if let Some(body) = base58check_decode(a, BITCOIN_ALPHABET) {
             if body.len() == 23 && body[..3] == [0x06, 0xa1, 0x9f] {
-                return Ok(ParsedAddress { account_type: TEZOS, payload: body[3..].to_vec(), display: a.to_string() });
+                return Ok(pa(TEZOS, body[3..].to_vec(), a));
             }
         }
         return Err("invalid Tezos address".into());
     }
     if let Some((_, id)) = ss58_decode(a) {
         if id.len() == 32 {
-            return Ok(ParsedAddress { account_type: POLKADOT, payload: id, display: a.to_string() });
+            return Ok(pa(POLKADOT, id, a));
         }
     }
     if (32..=44).contains(&a.len()) {
         if let Some(d) = base58_decode(a, BITCOIN_ALPHABET) {
             if d.len() == 32 {
-                return Ok(ParsedAddress { account_type: SOLANA, payload: d, display: a.to_string() });
+                return Ok(pa(SOLANA, d, a));
             }
         }
     }
     if is_hex(a, 64) {
         let key = hex::decode(a).unwrap();
         let display = encode_zbc_address(&key, "ZBC")?;
-        return Ok(ParsedAddress { account_type: ZOOBC, payload: key, display });
+        return Ok(pa(ZOOBC, key, display));
     }
     Err("unrecognised address. Supported: ZooBC (ZBC_/ZBS_), Bitcoin, Ethereum, Solana, Polkadot, Cardano, Ripple, Tron, Tezos".into())
 }
 
-/// Read a recipient in the order of spec/addresses.md section 3; `chain` forces one reading (--chain).
+/// Read a recipient as spec/addresses.md section 3 says; `chain` forces one reading (--chain). When the reading fails,
+/// the fallback the reference keeps still takes 0x+40 hex, a Bitcoin address, ZBC/ZNK/ZBS text and 64 hex, and
+/// `type_name` is then its label ("ETH (compact)", "BTC P2PKH", "ZBC", "DATASET").
 pub fn parse_address(text: &str, chain: &str) -> Result<ParsedAddress, String> {
     let a = text.trim();
     if a.is_empty() {
         return Err("empty address".into());
     }
-    if !chain.is_empty() {
+    let first = if chain.is_empty() {
+        parse_auto(a)
+    } else {
         let hint = chain_of(chain).ok_or_else(|| format!("unknown chain {chain}"))?;
-        return match parse_hinted(a, hint) {
-            Ok(p) => Ok(p),
-            Err(e) => {
-                let up = a.to_uppercase();
-                let low = a.to_lowercase();
-                let plain = (a.len() == 42 && (a.starts_with("0x") || a.starts_with("0X")))
-                    || up.starts_with("ZBC") || up.starts_with("ZNK") || up.starts_with("ZBS")
-                    || a.starts_with('1') || a.starts_with('3')
-                    || low.starts_with("bc1") || low.starts_with("tb1") || low.starts_with("bcrt1") || a.len() == 64;
-                if plain { parse_auto(a) } else { Err(e) }
-            }
-        };
+        parse_hinted(a, hint)
+    };
+    match first {
+        Ok(p) => Ok(p),
+        Err(e) => fallback(text).unwrap_or(Err(e)),
     }
-    parse_auto(a)
 }
 
 /// A registry key parameter: 64 hex (optionally 0x) or a ZNK_/ZBG_/ZBR_/ZBC_ text address; 32 bytes.

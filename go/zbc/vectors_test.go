@@ -86,8 +86,9 @@ func TestAddresses(t *testing.T) {
 		if valid, _ := v["valid"].(bool); valid {
 			want, _ := v["address_bytes"].(string)
 			typ, _ := v["account_type"].(float64)
-			if err != nil || p.Type != int(typ) || hex.EncodeToString(p.Bytes()) != want {
-				t.Errorf("%q: got type %d %s err %v", input, p.Type, hex.EncodeToString(p.Bytes()), err)
+			label, _ := v["type_label"].(string)
+			if err != nil || p.Type != int(typ) || hex.EncodeToString(p.Bytes()) != want || p.TypeName() != label {
+				t.Errorf("%q (%s): got type %d %s %q err %v", input, chain, p.Type, hex.EncodeToString(p.Bytes()), p.TypeName(), err)
 			}
 		} else if err == nil {
 			t.Errorf("%q: accepted, reference refuses it", input)

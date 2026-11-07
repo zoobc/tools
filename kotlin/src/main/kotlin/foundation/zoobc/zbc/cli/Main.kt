@@ -313,7 +313,10 @@ Exit codes:
     }
 
     private fun runTransaction(def: TxDef, v: MutableMap<String, String>, o: Options, io: Io): Int {
-        for (p in def.params) { val cur = v[p.name] ?: ""; if (cur.isNotEmpty() || p.required) v[p.name] = Body.validateParam(p, cur) }
+        for (p in def.params) {
+            if (p.name == "recipient" && def.recipient == "required") continue   // the envelope's recipient is read below, with --chain
+            val cur = v[p.name] ?: ""; if (cur.isNotEmpty() || p.required) v[p.name] = Body.validateParam(p, cur)
+        }
         val sender = try { KeyPair.fromHex(v[def.sender_key]!!) } catch (e: IllegalArgumentException) { throw ToolError.usage(e.message ?: "bad key") }
         val client = Client(o.api, o.timeout)
         val ctx = signingContext(o, client, io)

@@ -57,6 +57,7 @@ test("addresses.json: every input is read exactly as the reference reads it", ()
       const p = parseAddress(v.input, v.chain ?? "");
       assert.equal(p.type, v.account_type, v.input);
       assert.equal(bytesToHex(p.bytes), v.address_bytes, v.input);
+      assert.equal(p.typeName, v.type_label, `${v.input} (${v.chain ?? ""}): label`);
     } else {
       assert.throws(() => parseAddress(v.input, v.chain ?? ""), v.input);
     }

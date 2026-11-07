@@ -8,8 +8,10 @@ namespace Zoobc\Zbc;
 /** A recipient as the envelope carries it. */
 final class ParsedAddress
 {
-    public function __construct(public readonly int $type, public readonly string $payload, public readonly string $display) {}
+    /** $label: set by the fallback reading, which names the type its own way ("ETH (compact)", "ZBC", ...). */
+    public function __construct(public readonly int $type, public readonly string $payload, public readonly string $display, public readonly ?string $label = null) {}
     /** 4-byte type LE then the payload (36 bytes for a ZooBC account). */
     public function bytes(): string { return Address::typed($this->type, $this->payload); }
-    public function typeName(): string { return Address::typeName($this->type); }
+    /** The recipient_type the tools print: the account type's name, or the fallback reading's label. */
+    public function typeName(): string { return $this->label ?? Address::typeName($this->type); }
 }

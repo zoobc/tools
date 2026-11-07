@@ -326,7 +326,10 @@ public enum Cli {
 
     static func runTransaction(_ def: TxDef, _ vIn: [String: String], _ o: Options, _ io: Io) throws -> Int {
         var v = vIn
-        for p in def.params { let cur = v[p.name] ?? ""; if !cur.isEmpty || p.required { v[p.name] = try Body.validateParam(p, cur) } }
+        for p in def.params {
+            if p.name == "recipient" && def.recipient == "required" { continue }   // the envelope's recipient is read below, with --chain
+            let cur = v[p.name] ?? ""; if !cur.isEmpty || p.required { v[p.name] = try Body.validateParam(p, cur) }
+        }
         let sender: KeyPair
         do { sender = try KeyPair(hex: v[def.sender_key] ?? "") } catch let e as Address.Invalid { throw ToolError.usage(e.message) }
         let client = Client(api: o.api, timeoutSeconds: o.timeout)

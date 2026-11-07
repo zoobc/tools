@@ -517,6 +517,9 @@ fn signing_context(o: &Options, client: &Client, io: &Io) -> Result<SigningConte
 
 fn run_transaction(def: &TxDef, v: &mut Params, o: &Options, io: &mut Io) -> Result<i32, ToolError> {
     for p in &def.params {
+        if p.name == "recipient" && def.recipient == "required" {
+            continue; // the envelope's recipient is read below, with --chain
+        }
         let cur = v.get(&p.name).cloned().unwrap_or_default();
         if !cur.is_empty() || p.required {
             v.insert(p.name.clone(), validate_param(p, &cur)?);

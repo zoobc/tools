@@ -47,6 +47,7 @@ final class VectorsTests: XCTestCase {
             if v["valid"] as? Bool == true {
                 let p = try Address.parse(input, chain: chain)
                 XCTAssertEqual(Int64(p.type), i64(v["account_type"]), input); XCTAssertEqual(Enc.hex(p.bytes), s(v, "address_bytes"), input)
+                XCTAssertEqual(p.typeName, s(v, "type_label"), "\(input) (\(chain)): label")
             } else {
                 XCTAssertThrowsError(try Address.parse(input, chain: chain), input)
             }

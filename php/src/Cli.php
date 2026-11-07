@@ -330,7 +330,10 @@ TXT;
 
     private static function runTransaction(array $def, array $v, array $o, Io $io): int
     {
-        foreach ($def['params'] as $p) { $cur = $v[$p['name']] ?? ''; if ($cur !== '' || $p['required']) { $v[$p['name']] = Body::validateParam($p, $cur); } }
+        foreach ($def['params'] as $p) {
+            if ($p['name'] === 'recipient' && $def['recipient'] === 'required') { continue; }   // the envelope's recipient is read below, with --chain
+            $cur = $v[$p['name']] ?? ''; if ($cur !== '' || $p['required']) { $v[$p['name']] = Body::validateParam($p, $cur); }
+        }
         try { $sender = KeyPair::fromHex($v[$def['sender_key']] ?? ''); } catch (\InvalidArgumentException $e) { throw ToolError::usage($e->getMessage()); }
         $client = new Client($o['api'], $o['timeout']);
         $ctx = self::signingContext($o, $client, $io);

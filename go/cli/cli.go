@@ -695,6 +695,9 @@ func signingContext(o *options, c *zbc.Client, e *env) (zbc.SigningContext, erro
 
 func runTransaction(def *zbc.TxDef, v map[string]string, o *options, e *env) (int, error) {
 	for _, p := range def.Params {
+		if p.Name == "recipient" && def.Recipient == "required" {
+			continue // the envelope's recipient is read below, with --chain
+		}
 		if v[p.Name] != "" || p.Required {
 			val, err := zbc.ValidateParam(p, v[p.Name])
 			if err != nil {

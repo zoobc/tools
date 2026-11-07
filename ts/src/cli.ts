@@ -334,7 +334,10 @@ async function resolveSigningContext(o: Options, client: Client): Promise<Signin
 }
 
 async function runTransaction(def: TxDef, v: Record<string, string>, o: Options): Promise<number> {
-  for (const p of def.params) if (v[p.name] !== "" || p.required) v[p.name] = validateParam(p, v[p.name]);
+  for (const p of def.params) {
+    if (p.name === "recipient" && def.recipient === "required") continue;   // the envelope's recipient is read below, with --chain
+    if (v[p.name] !== "" || p.required) v[p.name] = validateParam(p, v[p.name]);
+  }
   const sender: KeyPair = keyPairFromSeed(v[def.sender_key]);
   const client = new Client({ api: o.api, timeoutSeconds: o.timeout });
   const ctx = await resolveSigningContext(o, client);

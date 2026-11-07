@@ -49,7 +49,7 @@ foreach ($d['wallets'] as $w) {
 // addresses.json
 foreach ($load('addresses.json')['vectors'] as $v) {
     $input = $v['input']; $chain = $v['chain'] ?? '';
-    try { $p = Address::parse($input, $chain); $ok = $v['valid'] && $p->type === $v['account_type'] && bin2hex($p->bytes()) === $v['address_bytes']; $detail = $v['valid'] ? bin2hex($p->bytes()) : 'accepted, reference refuses it'; }
+    try { $p = Address::parse($input, $chain); $ok = $v['valid'] && $p->type === $v['account_type'] && bin2hex($p->bytes()) === $v['address_bytes'] && $p->typeName() === $v['type_label']; $detail = $v['valid'] ? bin2hex($p->bytes()) . ' ' . $p->typeName() : 'accepted, reference refuses it'; }
     catch (InvalidArgumentException $e) { $ok = !$v['valid']; $detail = $e->getMessage(); }
     check("address $input $chain", $ok, $detail);
 }

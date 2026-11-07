@@ -911,6 +911,25 @@ var ZBC = (() => {
   function accountTypeName(t) {
     return TYPE_NAMES[t] ?? `type ${t}`;
   }
+  var BTC_LABELS = { 1: "BTC (legacy)", 5: "BTC P2PKH", 6: "BTC P2SH", 7: "BTC P2WPKH", 8: "BTC P2WSH", 9: "BTC P2TR" };
+  var CHAIN_OF_TYPE = {
+    0: "zbc",
+    10: "zbs",
+    1: "btc",
+    5: "btc",
+    6: "btc",
+    7: "btc",
+    8: "btc",
+    9: "btc",
+    4: "eth",
+    11: "sol",
+    12: "dot",
+    13: "ada",
+    14: "xrp",
+    15: "trx",
+    16: "xtz"
+  };
+  var CHAIN_NAMES = { btc: "Bitcoin", ada: "Cardano", xrp: "Ripple", trx: "Tron", xtz: "Tezos" };
   function payloadLength(t) {
     switch (t) {
       case 1:
@@ -962,8 +981,8 @@ var ZBC = (() => {
     const d = decodeZbcAddress(text);
     return d !== null && (prefix === void 0 || d.prefix === prefix.toUpperCase());
   }
-  function typed(type, payload, display) {
-    return { type, payload, bytes: new ByteWriter().u32(type).bytes(payload).finish(), typeName: accountTypeName(type), display };
+  function typed(type, payload, display, label) {
+    return { type, payload, bytes: new ByteWriter().u32(type).bytes(payload).finish(), typeName: label ?? accountTypeName(type), display };
   }
   function typedAddress(type, payload) {
     return new ByteWriter().u32(type).bytes(payload).finish();
@@ -1001,17 +1020,35 @@ var ZBC = (() => {
     if (a === "") throw new Error("empty address");
     const hint = chain ? chainOf(chain) : null;
     if (chain && !hint) throw new Error(`unknown chain ${chain}`);
-    if (hint) {
-      try {
-        return parseHinted(a, hint);
-      } catch (e) {
-        const up = a.toUpperCase();
-        const plain = a.length === 42 && (a.startsWith("0x") || a.startsWith("0X")) || up.startsWith("ZBC") || up.startsWith("ZNK") || up.startsWith("ZBS") || a[0] === "1" || a[0] === "3" || /^(bc1|tb1|bcrt1)/i.test(a) || a.length === 64;
-        if (!plain) throw e;
-        return parseAddress(a);
-      }
+    try {
+      return hint ? parseHinted(a, hint) : parseAuto(a);
+    } catch (e) {
+      const p = fallback(input);
+      if (!p) throw e;
+      return p;
     }
-    return parseAuto(a);
+  }
+  function fallback(s) {
+    if ((s.startsWith("0x") || s.startsWith("0X")) && s.length === 42) {
+      if (!isHex(s.slice(2), 40)) throw new Error("Invalid hex character in ETH address");
+      return typed(AccountType.Ethereum, hexToBytes(s.slice(2)), s, "ETH (compact)");
+    }
+    if (s[0] === "1" || s[0] === "3" || /^(bc1|tb1|bcrt1)/i.test(s)) {
+      const p = s[0] === "1" || s[0] === "3" ? base58Bitcoin(s) : bech32Bitcoin(s);
+      if (!p) throw new Error("Failed to decode BTC address");
+      return typed(p.type, p.payload, s, BTC_LABELS[p.type]);
+    }
+    const up = s.toUpperCase();
+    if (up.startsWith("ZBC") || up.startsWith("ZNK") || up.startsWith("ZBS")) {
+      const d = decodeZbcAddress(s);
+      if (!d) throw new Error("Address checksum validation failed");
+      return up.startsWith("ZBS") ? typed(AccountType.DataSet, d.payload, s, "DATASET") : typed(AccountType.ZooBC, d.payload, s, "ZBC");
+    }
+    if (isHex(s, 64)) {
+      const key = hexToBytes(s);
+      return typed(AccountType.ZooBC, key, encodeZbcAddress(key, "ZBC"), "ZBC");
+    }
+    return null;
   }
   function parseHinted(a, hint) {
     if (hint === "eth") {
@@ -1030,7 +1067,9 @@ var ZBC = (() => {
       return typed(AccountType.Polkadot, ss.accountId, a);
     }
     if (hint === "zbc" || hint === "zbs") return zbcForm(a);
-    return parseAuto(a);
+    const p = parseAuto(a);
+    if (CHAIN_OF_TYPE[p.type] !== hint) throw new Error(`not a ${CHAIN_NAMES[hint]} address: it reads as ${accountTypeName(p.type)}`);
+    return p;
   }
   function looksZbc(a) {
     if (a.length > 4 && (a[3] === "_" || a[3] === "-")) return true;
@@ -1040,24 +1079,10 @@ var ZBC = (() => {
   function parseAuto(a) {
     if (a.length === 42 && (a.startsWith("0x") || a.startsWith("0X")) && isHex(a.slice(2), 40)) return typed(AccountType.Ethereum, hexToBytes(a.slice(2)), a);
     if (looksZbc(a)) return zbcForm(a);
-    const low5 = a.slice(0, 5).toLowerCase();
-    if (low5.startsWith("bc1") || low5.startsWith("tb1") || low5.startsWith("bcrt1")) {
-      const d = segwitDecode(a);
-      if (!d) throw new Error("invalid Bitcoin bech32 address");
-      if (d.version === 0 && d.program.length === 20) return typed(AccountType.BitcoinP2WPKH, d.program, a);
-      if (d.version === 0 && d.program.length === 32) return typed(AccountType.BitcoinP2WSH, d.program, a);
-      if (d.version === 1 && d.program.length === 32) return typed(AccountType.BitcoinTaproot, d.program, a);
-      throw new Error("unsupported Bitcoin witness program");
-    }
+    if (/^(bc1|tb1|bcrt1)/i.test(a)) return bech32Bitcoin(a);
     if ((a[0] === "1" || a[0] === "3") && a.length >= 26 && a.length <= 35) {
-      const raw = base58Decode(a);
-      if (raw && raw.length === 25) {
-        const body = base58CheckDecode(a);
-        if (body && body.length === 21) {
-          if (body[0] === 0) return typed(AccountType.BitcoinP2PKH, body.slice(1), a);
-          if (body[0] === 5) return typed(AccountType.BitcoinP2SH, body.slice(1), a);
-        }
-      }
+      const p = base58Bitcoin(a);
+      if (p) return p;
     }
     if (a.length > 5 && a.slice(0, 5).toLowerCase() === "addr1") {
       const d = bech32DecodePlain(a);
@@ -1092,6 +1117,25 @@ var ZBC = (() => {
       return typed(AccountType.ZooBC, key, encodeZbcAddress(key, "ZBC"));
     }
     throw new Error("unrecognised address. Supported: ZooBC (ZBC_/ZBS_), Bitcoin, Ethereum, Solana, Polkadot, Cardano, Ripple, Tron, Tezos");
+  }
+  function bech32Bitcoin(a) {
+    const d = segwitDecode(a);
+    if (!d) throw new Error("invalid Bitcoin bech32 address");
+    if (d.version === 0 && d.program.length === 20) return typed(AccountType.BitcoinP2WPKH, d.program, a);
+    if (d.version === 0 && d.program.length === 32) return typed(AccountType.BitcoinP2WSH, d.program, a);
+    if (d.version === 1 && d.program.length === 32) return typed(AccountType.BitcoinTaproot, d.program, a);
+    throw new Error("unsupported Bitcoin witness program");
+  }
+  function base58Bitcoin(a) {
+    const raw = base58Decode(a);
+    if (raw && raw.length === 25) {
+      const body = base58CheckDecode(a);
+      if (body && body.length === 21) {
+        if (body[0] === 0) return typed(AccountType.BitcoinP2PKH, body.slice(1), a);
+        if (body[0] === 5) return typed(AccountType.BitcoinP2SH, body.slice(1), a);
+      }
+    }
+    return null;
   }
   function zbcForm(a) {
     const d = decodeZbcAddress(a);

@@ -57,6 +57,7 @@ class VectorsTest {
             if (v["valid"]!!.jsonPrimitive.booleanOrNull == true) {
                 val p = Address.parse(input, chain)
                 assertEquals(v["account_type"]!!.jsonPrimitive.content.toInt(), p.type, input); assertEquals(s(v, "address_bytes"), Encoding.bytesToHex(p.bytes), input)
+                assertEquals(s(v, "type_label"), p.typeName, "$input ($chain): label")
             } else assertFails(input) { Address.parse(input, chain) }
         }
     }

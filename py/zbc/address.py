@@ -76,11 +76,20 @@ def decode_zbc_address(text: str) -> Optional[Tuple[str, bytes]]:
     return prefix, payload
 
 
+# The reference's fallback reading names a Bitcoin account by its script (tx_common.h get_btc_recipient_label).
+BTC_LABELS = {1: "BTC (legacy)", 5: "BTC P2PKH", 6: "BTC P2SH", 7: "BTC P2WPKH", 8: "BTC P2WSH", 9: "BTC P2TR"}
+# The chain each account type is written in: a --chain btc/ada/xrp/trx/xtz reading must agree with it.
+CHAIN_OF_TYPE = {0: "zbc", 10: "zbs", 1: "btc", 5: "btc", 6: "btc", 7: "btc", 8: "btc", 9: "btc", 4: "eth", 11: "sol", 12: "dot",
+                 13: "ada", 14: "xrp", 15: "trx", 16: "xtz"}
+CHAIN_NAMES = {"btc": "Bitcoin", "ada": "Cardano", "xrp": "Ripple", "trx": "Tron", "xtz": "Tezos"}
+
+
 @dataclass
 class ParsedAddress:
     type: int
     payload: bytes
     display: str
+    label: Optional[str] = None   # set by the fallback reading, which names the type its own way
 
     @property
     def bytes(self) -> bytes:
@@ -88,7 +97,8 @@ class ParsedAddress:
 
     @property
     def type_name(self) -> str:
-        return account_type_name(self.type)
+        """The recipient_type the tools print: the account type's name, or the fallback reading's label."""
+        return self.label if self.label is not None else account_type_name(self.type)
 
 
 def _zbc_form(a: str) -> ParsedAddress:
@@ -116,7 +126,11 @@ def _hinted(a: str, hint: str) -> ParsedAddress:
         return ParsedAddress(POLKADOT, ss[1], a)
     if hint in ("zbc", "zbs"):
         return _zbc_form(a)
-    return _auto(a)
+    # btc, ada, xrp, trx, xtz: detection reads the address; the hint is a check, never a reading
+    p = _auto(a)
+    if CHAIN_OF_TYPE.get(p.type) != hint:
+        raise ValueError("not a %s address: it reads as %s" % (CHAIN_NAMES[hint], account_type_name(p.type)))
+    return p
 
 
 _B32 = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567")
@@ -130,33 +144,43 @@ def _looks_zbc(a: str) -> bool:
     return len(n) == 59 and n[:3] in ("ZBC", "ZBS") and all(c in _B32 for c in n[3:])
 
 
+def _bech32_bitcoin(a: str) -> ParsedAddress:
+    d = segwit_decode(a)
+    if d is None:
+        raise ValueError("invalid Bitcoin bech32 address")
+    _, version, prog = d
+    if version == 0 and len(prog) == 20:
+        return ParsedAddress(BITCOIN_P2WPKH, prog, a)
+    if version == 0 and len(prog) == 32:
+        return ParsedAddress(BITCOIN_P2WSH, prog, a)
+    if version == 1 and len(prog) == 32:
+        return ParsedAddress(BITCOIN_TAPROOT, prog, a)
+    raise ValueError("unsupported Bitcoin witness program")
+
+
+def _base58_bitcoin(a: str) -> Optional[ParsedAddress]:
+    raw = base58_decode(a)
+    if raw is not None and len(raw) == 25:
+        body = base58check_decode(a)
+        if body is not None and len(body) == 21:
+            if body[0] == 0x00:
+                return ParsedAddress(BITCOIN_P2PKH, body[1:], a)
+            if body[0] == 0x05:
+                return ParsedAddress(BITCOIN_P2SH, body[1:], a)
+    return None
+
+
 def _auto(a: str) -> ParsedAddress:
     if len(a) == 42 and a[:2] in ("0x", "0X") and is_hex(a[2:], 40):
         return ParsedAddress(ETHEREUM, bytes.fromhex(a[2:]), a)
     if _looks_zbc(a):
         return _zbc_form(a)
-    low5 = a[:5].lower()
-    if low5.startswith(("bc1", "tb1", "bcrt1")):
-        d = segwit_decode(a)
-        if d is None:
-            raise ValueError("invalid Bitcoin bech32 address")
-        _, version, prog = d
-        if version == 0 and len(prog) == 20:
-            return ParsedAddress(BITCOIN_P2WPKH, prog, a)
-        if version == 0 and len(prog) == 32:
-            return ParsedAddress(BITCOIN_P2WSH, prog, a)
-        if version == 1 and len(prog) == 32:
-            return ParsedAddress(BITCOIN_TAPROOT, prog, a)
-        raise ValueError("unsupported Bitcoin witness program")
+    if a[:5].lower().startswith(("bc1", "tb1", "bcrt1")):
+        return _bech32_bitcoin(a)
     if a[0] in "13" and 26 <= len(a) <= 35:
-        raw = base58_decode(a)
-        if raw is not None and len(raw) == 25:
-            body = base58check_decode(a)
-            if body is not None and len(body) == 21:
-                if body[0] == 0x00:
-                    return ParsedAddress(BITCOIN_P2PKH, body[1:], a)
-                if body[0] == 0x05:
-                    return ParsedAddress(BITCOIN_P2SH, body[1:], a)
+        p = _base58_bitcoin(a)
+        if p is not None:
+            return p
     if len(a) > 5 and a[:5].lower() == "addr1":
         d = bech32_decode_plain(a)
         if d is not None and d[0] == "addr" and len(d[1]) == 29 and d[1][0] == 0x61:
@@ -190,25 +214,51 @@ def _auto(a: str) -> ParsedAddress:
     raise ValueError("unrecognised address. Supported: ZooBC (ZBC_/ZBS_), Bitcoin, Ethereum, Solana, Polkadot, Cardano, Ripple, Tron, Tezos")
 
 
+def _fallback(s: str) -> Optional[ParsedAddress]:
+    """The reference's second reading (parse_address in tx_common.h), on the string as given, when the first one fails.
+
+    None when no form of it applies; ValueError when one applies and the string is not that form."""
+    if s[:2] in ("0x", "0X") and len(s) == 42:
+        if not is_hex(s[2:], 40):
+            raise ValueError("Invalid hex character in ETH address")
+        return ParsedAddress(ETHEREUM, bytes.fromhex(s[2:]), s, "ETH (compact)")
+    if s[:1] in ("1", "3") or s[:5].lower().startswith(("bc1", "tb1", "bcrt1")):
+        p = _bech32_bitcoin(s) if s[0] not in "13" else _base58_bitcoin(s)
+        if p is None:
+            raise ValueError("Failed to decode BTC address")
+        p.label = BTC_LABELS[p.type]
+        return p
+    up = s.upper()
+    if up.startswith(("ZBC", "ZNK", "ZBS")):
+        d = decode_zbc_address(s)
+        if d is None:
+            raise ValueError("Address checksum validation failed")
+        return ParsedAddress(DATASET, d[1], s, "DATASET") if up.startswith("ZBS") else ParsedAddress(ZOOBC, d[1], s, "ZBC")
+    if is_hex(s, 64):
+        return ParsedAddress(ZOOBC, bytes.fromhex(s), encode_zbc_address(bytes.fromhex(s), "ZBC"), "ZBC")
+    return None
+
+
 def parse_address(text: str, chain: str = "") -> ParsedAddress:
-    """Read a recipient in the order of spec/addresses.md section 3; `chain` forces one reading (--chain)."""
+    """Read a recipient as spec/addresses.md section 3 says; `chain` forces one reading (--chain).
+
+    When the reading fails, the fallback the reference keeps still takes 0x+40 hex, a Bitcoin address, ZBC/ZNK/ZBS
+    text and 64 hex, and `type_name` is then its label ("ETH (compact)", "BTC P2PKH", "ZBC", "DATASET")."""
     a = text.strip()
     if not a:
         raise ValueError("empty address")
+    hint = None
     if chain:
         hint = CHAINS.get(chain.lower())
         if hint is None:
             raise ValueError("unknown chain %s" % chain)
-        try:
-            return _hinted(a, hint)
-        except ValueError:
-            up = a.upper()
-            plain = ((len(a) == 42 and a[:2] in ("0x", "0X")) or up.startswith(("ZBC", "ZNK", "ZBS")) or a[0] in "13"
-                     or a[:5].lower().startswith(("bc1", "tb1", "bcrt1")) or len(a) == 64)
-            if not plain:
-                raise
-            return _auto(a)
-    return _auto(a)
+    try:
+        return _hinted(a, hint) if hint else _auto(a)
+    except ValueError:
+        p = _fallback(text)
+        if p is None:
+            raise
+        return p
 
 
 def parse_key32(text: str) -> bytes:

@@ -63,7 +63,7 @@ class Vectors(unittest.TestCase):
         for v in load("addresses.json")["vectors"]:
             if v["valid"]:
                 p = zbc.parse_address(v["input"], v.get("chain", ""))
-                self.assertEqual((p.type, p.bytes.hex()), (v["account_type"], v["address_bytes"]), v["input"])
+                self.assertEqual((p.type, p.bytes.hex(), p.type_name), (v["account_type"], v["address_bytes"], v["type_label"]), v["input"])
             else:
                 with self.assertRaises(ValueError, msg=v["input"]):
                     zbc.parse_address(v["input"], v.get("chain", ""))

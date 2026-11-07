@@ -93,7 +93,7 @@ subtest 'keys.json: seeds and wallets' => sub {
 subtest 'addresses.json: every recipient form' => sub {
     for my $v (@{ load('addresses.json')->{vectors} }) {
         my $p = eval { parse_address(bytes_of($v->{input}), bytes_of($v->{chain} // '')) };
-        if ($v->{valid}) { ok($p, "$v->{input} parses") and is_deeply([$p->type, to_hex($p->bytes)], [$v->{account_type}, $v->{address_bytes}], "$v->{input}: type and bytes"); }
+        if ($v->{valid}) { ok($p, "$v->{input} parses") and is_deeply([$p->type, to_hex($p->bytes), $p->type_name], [$v->{account_type}, $v->{address_bytes}, $v->{type_label}], "$v->{input}: type, bytes and label"); }
         else { ok(!$p, "$v->{input} is rejected"); }
     }
 };
