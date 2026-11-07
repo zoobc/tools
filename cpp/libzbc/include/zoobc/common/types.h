@@ -79,7 +79,7 @@ enum class TransactionType : uint32_t {
     RegisterRelay             = 48,     // announce a relay a gateway runs (voice/video/data passthrough): relay_key + gateway_key + domain + url
     UnregisterRelay           = 49,     // withdraw a relay announcement (owner only)
     SetTransactPolicy         = 50,     // set the sender's per-account umbrella opt-out bitmask (bidirectional refusal)
-    SetConsensusParam         = 51,     // a registry node votes to change an ECONOMIC consensus parameter; applied at a 2/3 registry supermajority (docs: param_governance.h)
+    SetConsensusParam         = 51,     // a registry node votes to change an ECONOMIC consensus parameter; at the cycle end the value becomes the average of the counted registry nodes' votes, silent ones at today's value, each limited to its step (param_governance.h CountAverage)
     // ---- Paid longevity: keep a transaction's payload retrievable past the prune horizon --------
     // Nodes prune transactions below snapshot N-1. That is correct behaviour and stays — the answer
     // for data someone wants kept is to PAY for it, not to switch pruning off. FundLongevity
@@ -117,6 +117,12 @@ enum class TransactionType : uint32_t {
     // 1 .. roll_call_blocks, once per seat. A seat that has not answered is not drawn from block 2 and leaves the
     // registry at the window's last block (never below three seats).
     RollCall                  = 61,
+    // A registered node that voted both ways on one spine block candidate (owner decision 2026-11-04, A7): its spine
+    // signature on the candidate's signed header bytes and its non-signing statement on the same candidate. Fee-free
+    // duty from a registered node's key; charges the voter one miss once per (node, spine height) (rule
+    // spine_equivocation_report). Signing two different candidates at one height is NOT reportable: a node freed by
+    // non-signing statements may sign a new candidate.
+    SpineEquivocationReport   = 62,
     QueueAttendance           = 59,     // a QUEUED node proves it is online: body = block_height(4 LE) | block_hash(32) of a block at most 120 blocks old; signed by the node key; fee drained from the node's stake (owner decision 2026-10-19, rule queue_attendance)
     NodeRegistrationUpdate    = 258,    // UpdateNodeRegistrationTransaction [2,1,0,0]
     RemoveAccountDataset      = 259,    // RemoveAccountDatasetTransaction [3,1,0,0]
@@ -188,7 +194,7 @@ inline bool IsFeeFreeDutyType(TransactionType t) {
            t == TransactionType::AttestEvent ||
            t == TransactionType::SetConsensusParam || t == TransactionType::FeeVoteCommitment ||
            t == TransactionType::FeeVoteReveal || t == TransactionType::EquivocationReport ||
-           t == TransactionType::RollCall;
+           t == TransactionType::RollCall || t == TransactionType::SpineEquivocationReport;
 }
 // The duty lane (TransactionPool): one pending per duty object per node, one per node per block,
 // admitted over capacity, never evicted. The liveness attestation and the five fee-free duties.
@@ -200,7 +206,7 @@ inline bool IsNodeSignedType(TransactionType t) {
     return t == TransactionType::SubmitStorageProof || t == TransactionType::SubmitStorageProofBatch ||
            t == TransactionType::SetConsensusParam ||
            t == TransactionType::QueueAttendance || t == TransactionType::EquivocationReport ||
-           t == TransactionType::RollCall;
+           t == TransactionType::RollCall || t == TransactionType::SpineEquivocationReport;
 }
 
 // Umbrella categories for the per-account transact policy (SetTransactPolicy). FIXED SET — baked in
@@ -254,6 +260,7 @@ inline TxCategory TransactionCategoryOf(TransactionType t) {
         case TransactionType::DeclineEscrowRequest: case TransactionType::MultiSignature:
             return TxCategory::EscrowMultisig;
         case TransactionType::QueueAttendance: case TransactionType::EquivocationReport: case TransactionType::RollCall:
+        case TransactionType::SpineEquivocationReport:
         case TransactionType::NodeRegistration: case TransactionType::NodeRegistrationUpdate:
         case TransactionType::RemoveNodeRegistration: case TransactionType::ClaimNodeRegistration:
         case TransactionType::RegisterGateway: case TransactionType::GatewayHeartbeat:
@@ -382,6 +389,7 @@ inline const char* TransactionTypeToString(TransactionType type) {
         case TransactionType::QueueAttendance: return "QueueAttendanceTransaction";
         case TransactionType::EquivocationReport: return "EquivocationReportTransaction";
         case TransactionType::RollCall: return "RollCallTransaction";
+        case TransactionType::SpineEquivocationReport: return "SpineEquivocationReportTransaction";
         case TransactionType::TransferDataset: return "TransferDatasetTransaction";
         case TransactionType::SetDatasetPolicy: return "SetDatasetPolicyTransaction";
         case TransactionType::AcceptDataset: return "AcceptDatasetTransaction";

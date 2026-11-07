@@ -37,6 +37,7 @@ enum class ErrorCode {
     ConnectionLost       = 202,
     NetworkTimeout       = 203,
     InvalidProtocol      = 204,
+    PeerTableLimit       = 205,   // the peer table stores no more entries from that host (or at all): nothing was added
 
     // Crypto errors (300-399)
     CryptoError          = 300,

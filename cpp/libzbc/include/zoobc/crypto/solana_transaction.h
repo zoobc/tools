@@ -15,6 +15,7 @@ struct SolanaTransfer {
     bool ok = false;
     std::vector<uint8_t> from;   // 32-byte ed25519 pubkey (fee payer / source)
     std::vector<uint8_t> to;     // 32-byte ed25519 pubkey (destination)
+    std::vector<uint8_t> recent_blockhash;
     uint64_t lamports = 0;
     std::string error;
 };

@@ -316,6 +316,10 @@ bool TransactionUtil::BareAccountsRefused() {
     return consensus::RuleClock::Active("typed_accounts_only", consensus::kHeightUnknown);
 }
 
+bool TransactionUtil::FullKeyFormRefused(const std::vector<uint8_t>& a, uint32_t at_height) {
+    return IsFullKeyAccountForm(a) && consensus::RuleClock::Active("canonical_account_forms", at_height);
+}
+
 Result<std::vector<uint8_t>> TransactionUtil::GetTransactionBytes(
     const model::Transaction& tx, bool include_signature) {
 
@@ -612,19 +616,12 @@ Result<model::Transaction> TransactionUtil::ParseTransactionBytes(
         if (tx.sender_account_address.size() >= ACCOUNT_TYPE_SIZE) {
             sender_account_type = ReadInt32LE(tx.sender_account_address.data());
         }
-        // Bitcoin signatures are VARIABLE length: [2B pubkey_len][pubkey][ECDSA sig]
-        // (e.g. 2+33+64 = 99 for a compressed key + compact sig). A fixed GetSignatureLength()
-        // truncates them, mangling the round-trip (serialize at submit -> re-parse on mempool
-        // admission), so BTC-signed txs were silently dropped before mining. The signature is the
-        // final envelope field, so for BTC types it occupies all remaining bytes.
-        bool is_btc_sender =
-            sender_account_type == ACCOUNT_TYPE_BTC ||
-            sender_account_type == ACCOUNT_TYPE_BTC_P2PKH ||
-            sender_account_type == ACCOUNT_TYPE_BTC_P2SH ||
-            sender_account_type == ACCOUNT_TYPE_BTC_P2WPKH ||
-            sender_account_type == ACCOUNT_TYPE_BTC_P2WSH ||
-            sender_account_type == ACCOUNT_TYPE_BTC_P2TR;
-        uint32_t sig_length = is_btc_sender
+        // A carried-key signature has no one length: [2B pubkey_len][pubkey][ECDSA sig], 2+33+64 = 99 for a
+        // compressed key. It is the final envelope field, so for those types it occupies all remaining bytes
+        // (SignatureRunsToEnd). A fixed length cut it on the round trip (serialize at submit -> re-parse on mempool
+        // admission, relay, block load): first for Bitcoin, then for Ripple, which had no case and read 64, as Tron
+        // read 64 of its 65 (GetSignatureLength).
+        uint32_t sig_length = SignatureRunsToEnd(sender_account_type)
             ? (offset <= tx_bytes.size() ? static_cast<uint32_t>(tx_bytes.size() - offset) : 0u)
             : GetSignatureLength(sender_account_type);
 
@@ -635,6 +632,16 @@ Result<model::Transaction> TransactionUtil::ParseTransactionBytes(
             tx_bytes.begin() + offset,
             tx_bytes.begin() + offset + sig_length);
         offset += sig_length;
+        // E2 (security review 2026-11-07): the signature ends the bytes. A fixed-length one used to be read and
+        // anything after it ignored, while the hash below is taken over every byte received: a copy of anyone's
+        // pending transaction with bytes appended parsed, verified (the signature covers the re-serialised fields)
+        // and carried a new hash, so the P2P intake staged, relayed and paid a receipt for each copy. A signature
+        // that runs to the end already ends them. Signed bytes are only ever the canonical form (GetTransactionBytes
+        // writes nothing after the signature); the unsigned form (multisig inner bytes) is not checked here.
+        if (offset != tx_bytes.size()) {
+            return Error{ErrorCode::ValidationError,
+                         "Trailing bytes after the signature (" + std::to_string(tx_bytes.size() - offset) + ")"};
+        }
     }
 
     // Compute and attach TransactionHash and Transaction ID (Go-compatible behavior)
@@ -777,39 +784,52 @@ uint32_t TransactionUtil::GetAccountPublicKeyLength(int32_t account_type) {
             return BTC_ADDRESS20_SIZE;  // 20 bytes (HASH160 address, verifies like BTC)
         case ACCOUNT_TYPE_TRON:
             return ETH_ADDRESS_SIZE;    // 20 bytes (Keccak address, verifies like ETH)
+        case ACCOUNT_TYPE_DATASET:
+            return PUBLIC_KEY_SIZE;  // 32 bytes (the creating transaction's hash; ZBS_)
         default:
             return PUBLIC_KEY_SIZE;  // Default to 32 bytes
     }
 }
 
 uint32_t TransactionUtil::GetSignatureLength(int32_t account_type) {
-    // Go: common/accounttype/*.go GetSignatureLength()
-    // Reference: common/constant/signature.go
+    // Go: common/accounttype/*.go GetSignatureLength(), common/constant/signature.go, for the four Go types; the
+    // rest are what crypto::Signature::VerifySignature requires of each (see the header).
     switch (account_type) {
         case ACCOUNT_TYPE_ZBC:
-            return ZBC_SIGNATURE_LENGTH;  // 64 bytes (Ed25519)
+        case ACCOUNT_TYPE_SOLANA:      // ed25519, verified as a ZBC key
+        case ACCOUNT_TYPE_POLKADOT:    // sr25519
+        case ACCOUNT_TYPE_BTC_P2TR:    // bare BIP-340 Schnorr against the output key
+            return ZBC_SIGNATURE_LENGTH;  // 64 bytes
+        // Tron verifies exactly like Ethereum, recovering the key from r‖s‖v. It had no case and read 64, so the
+        // recovery byte was cut the first time a Tron transaction was parsed from bytes and it never verified.
+        case ACCOUNT_TYPE_ETH:
+        case ACCOUNT_TYPE_TRON:
+            return ETH_SIGNATURE_LENGTH;  // 65 bytes (ECDSA + recovery)
+        // Tezos: [2-byte LE pubkey length = 32] + 32-byte ed25519 pubkey + 64-byte signature.
+        // The address is a hash, so the key has to travel with the signature; this is the same
+        // envelope Bitcoin and Ripple use, with a fixed 32-byte key.
+        case ACCOUNT_TYPE_TEZOS:
+        case ACCOUNT_TYPE_CARDANO:
+            return 2 + PUBLIC_KEY_SIZE + ZBC_SIGNATURE_LENGTH;  // 98 bytes: [32,0] + key + ed25519 sig
+        // The carried-key form, one length per key form (99 compressed, 131 uncompressed): ParseTransactionBytes
+        // takes the rest of the envelope (SignatureRunsToEnd). Ripple verifies exactly like Bitcoin (HASH160
+        // address); it had no case and read 64, cutting every Ripple signature.
         case ACCOUNT_TYPE_BTC:
         case ACCOUNT_TYPE_BTC_P2PKH:
         case ACCOUNT_TYPE_BTC_P2SH:
         case ACCOUNT_TYPE_BTC_P2WPKH:
-        case ACCOUNT_TYPE_BTC_P2WSH:
-        case ACCOUNT_TYPE_BTC_P2TR:
-            return BTC_SIGNATURE_LENGTH;  // 32 bytes (ECDSA compact)
-        case ACCOUNT_TYPE_ETH:
-            return ETH_SIGNATURE_LENGTH;  // 65 bytes (ECDSA + recovery)
+        case ACCOUNT_TYPE_RIPPLE:
+        case ACCOUNT_TYPE_BTC_P2WSH:   // a script hash: cannot sign
+            return 0;
         case ACCOUNT_TYPE_ESTONIA_EID:
-            return ZBC_SIGNATURE_LENGTH;  // 64 bytes (same as ZBC)
-        case ACCOUNT_TYPE_POLKADOT:
-            return ZBC_SIGNATURE_LENGTH;  // 64 bytes (sr25519 / ed25519 signature)
-        // Tezos: [2-byte LE pubkey length = 32] + 32-byte ed25519 pubkey + 64-byte signature.
-        // The address is a hash, so the key has to travel with the signature; this is the same
-        // envelope Bitcoin and Ripple already use, with a fixed 32-byte key.
-        case ACCOUNT_TYPE_TEZOS:
-        case ACCOUNT_TYPE_CARDANO:
-            return 2 + PUBLIC_KEY_SIZE + ZBC_SIGNATURE_LENGTH;  // 98 bytes: [32,0] + key + ed25519 sig
+            return ESTONIA_EID_SIGNATURE_LENGTH;  // 96, as Go and crypto::Signature::GetSignatureSize; no verifier
         default:
-            return ZBC_SIGNATURE_LENGTH;  // Default to ZBC signature
+            return ZBC_SIGNATURE_LENGTH;  // Empty, DataSet, unknown: none can send
     }
+}
+
+bool TransactionUtil::SignatureRunsToEnd(int32_t account_type) {
+    return GetSignatureLength(account_type) == 0 || account_type == ACCOUNT_TYPE_BTC_P2TR;
 }
 
 uint32_t TransactionUtil::GetProofOfOwnershipMessageSize(int32_t account_type) {
@@ -817,16 +837,6 @@ uint32_t TransactionUtil::GetProofOfOwnershipMessageSize(int32_t account_type) {
     // For ZBC: (4 + 32) + 32 + 4 = 72 bytes
     uint32_t account_address_size = ACCOUNT_TYPE_SIZE + GetAccountPublicKeyLength(account_type);
     return account_address_size + BLOCK_HASH_SIZE + HEIGHT_SIZE;
-}
-
-uint32_t TransactionUtil::GetProofOfOwnershipSize(int32_t account_type, bool with_signature) {
-    // Go: message := accountAddressSize + constant.BlockHash + constant.Height
-    //     if withSignature { return message + signatureLength }
-    uint32_t message_size = GetProofOfOwnershipMessageSize(account_type);
-    if (with_signature) {
-        return message_size + GetSignatureLength(account_type);  // 72 + 64 = 136 for ZBC
-    }
-    return message_size;
 }
 
 // ============================================================================
@@ -979,6 +989,34 @@ Result<model::EquivocationReportTransactionBody> TransactionUtil::ParseEquivocat
         s.assign(body_bytes.begin() + off, body_bytes.begin() + off + 64); off += 64;
     }
     if (off != body_bytes.size()) return Error{ErrorCode::ValidationError, "EquivocationReport: trailing bytes"};
+    return body;
+}
+
+// SpineEquivocationReport (type 62): spine_height(4) | node key(32) | len(4) | header | spine signature(64) | statement signature(64).
+std::vector<uint8_t> TransactionUtil::GetSpineEquivocationReportBodyBytes(const model::SpineEquivocationReportTransactionBody& body) {
+    std::vector<uint8_t> b;
+    WriteUint32LE(b, body.spine_height);
+    b.insert(b.end(), body.node_public_key.begin(), body.node_public_key.end());
+    WriteUint32LE(b, static_cast<uint32_t>(body.header.size()));
+    b.insert(b.end(), body.header.begin(), body.header.end());
+    b.insert(b.end(), body.spine_signature.begin(), body.spine_signature.end());
+    b.insert(b.end(), body.statement_signature.begin(), body.statement_signature.end());
+    return b;
+}
+
+Result<model::SpineEquivocationReportTransactionBody> TransactionUtil::ParseSpineEquivocationReportBodyBytes(const std::vector<uint8_t>& body_bytes) {
+    model::SpineEquivocationReportTransactionBody body;
+    if (body_bytes.size() < 4 + 32 + 4) return Error{ErrorCode::ValidationError, "SpineEquivocationReport body too short"};
+    size_t off = 0;
+    body.spine_height = ReadUint32LE(body_bytes.data()); off += 4;
+    body.node_public_key.assign(body_bytes.begin() + off, body_bytes.begin() + off + 32); off += 32;
+    const uint32_t len = ReadUint32LE(body_bytes.data() + off); off += 4;
+    if (len == 0 || len > 4096) return Error{ErrorCode::ValidationError, "SpineEquivocationReport header length out of range"};
+    if (body_bytes.size() != off + len + 64 + 64)
+        return Error{ErrorCode::ValidationError, "SpineEquivocationReport: the body must be the header and two 64-byte signatures, nothing more"};
+    body.header.assign(body_bytes.begin() + off, body_bytes.begin() + off + len); off += len;
+    body.spine_signature.assign(body_bytes.begin() + off, body_bytes.begin() + off + 64); off += 64;
+    body.statement_signature.assign(body_bytes.begin() + off, body_bytes.begin() + off + 64);
     return body;
 }
 

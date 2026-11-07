@@ -45,11 +45,13 @@ int main(int argc, char* argv[]) {
             {"owner_address", owner_addr}
         };
 
-        std::vector<uint8_t> empty_recipient;
+        auto notice = build_claim_notice(params.api_url, node_kp.Value().public_key, owner_kp.Value().public_key);
+        if (!notice.IsOk()) { emit_error(notice.GetError().ToString()); return 1; }
+        params.message_text = notice.Value().message;
         return run_transaction(
             params, config.tx_type,
             owner_kp.Value().public_key,
-            empty_recipient,
+            notice.Value().recipient,
             body_bytes,
             owner_kp.Value(),
             KeyType::ZBC,

@@ -92,9 +92,10 @@ Result<std::vector<uint8_t>> ControlConsentDigest(const std::vector<uint8_t>& cu
 
 // Verify `proof` as `signer`'s consent to `digest`. Kind 1 recomputes the multisig address from the
 // listed participants, threshold and nonce and requires it to be `signer`, then counts distinct
-// participants whose signature verifies.
+// participants whose signature verifies. From rule eth_signature_canonical_v at `at_height` every
+// signature in the proof by an Ethereum- or Tron-typed key is the 27/28 form, or the proof is refused.
 Result<void> VerifyConsent(const std::vector<uint8_t>& digest, const ConsentProof& proof,
-                           const std::vector<uint8_t>& signer);
+                           const std::vector<uint8_t>& signer, uint32_t at_height);
 
 // Address types that can never sign, so can never consent: Empty (2), Estonia eID (3, no verifier),
 // P2WSH (8, a script hash) and the ZBS_ dataset address (10).

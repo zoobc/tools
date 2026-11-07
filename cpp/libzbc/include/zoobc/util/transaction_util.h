@@ -75,8 +75,8 @@ public:
 
     // Signature lengths for different account types (Go: common/constant/signature.go)
     static constexpr uint32_t ZBC_SIGNATURE_LENGTH = 64;      // Ed25519
-    static constexpr uint32_t BTC_SIGNATURE_LENGTH = 32;      // ECDSA compact
     static constexpr uint32_t ETH_SIGNATURE_LENGTH = 65;      // ECDSA + recovery byte
+    static constexpr uint32_t ESTONIA_EID_SIGNATURE_LENGTH = 96;   // Go's EstoniaEidSignatureLength (no verifier here)
 
     // Address sizes for different account types (without type prefix)
     static constexpr uint32_t ETH_ADDRESS_SIZE = 20;          // ETH address (last 20 bytes of Keccak256(pubkey))
@@ -107,6 +107,7 @@ public:
 
     // Parse transaction bytes into Transaction struct
     // This matches Go's ParseTransactionBytes(transactionBytes, sign bool)
+    // With has_signature, the signature must end the bytes: anything after it is an error (E2, review 2026-11-07).
     static Result<model::Transaction> ParseTransactionBytes(
         const std::vector<uint8_t>& tx_bytes, bool has_signature);
 
@@ -214,6 +215,24 @@ public:
         counterparty.assign(body.begin() + 44, body.end());
         return true;
     }
+
+    // Rule canonical_account_forms (0.6.1): the full-key form of an Ethereum or Tron account (type + 64-byte key) or of
+    // a Bitcoin legacy, P2PKH or P2WPKH account (type + 33- or 65-byte key). AccountState stores it, but the
+    // transaction bytes carry only the 20-byte form of these types (GetAccountPublicKeyLength), so no transaction can
+    // ever be sent from it: money or a duty given to it is stranded. FullKeyFormRefused is the one check, asked
+    // wherever a transaction names an account, with the block's height.
+    static bool IsFullKeyAccountForm(const std::vector<uint8_t>& a) {
+        if (a.size() < ACCOUNT_TYPE_SIZE) return false;
+        const int32_t t = ReadInt32LE(a.data());
+        const size_t n = a.size() - ACCOUNT_TYPE_SIZE;
+        if (t == ACCOUNT_TYPE_ETH || t == ACCOUNT_TYPE_TRON) return n == 64;
+        if (t == ACCOUNT_TYPE_BTC || t == ACCOUNT_TYPE_BTC_P2PKH || t == ACCOUNT_TYPE_BTC_P2WPKH) return n == 33 || n == 65;
+        return false;
+    }
+    static bool FullKeyFormRefused(const std::vector<uint8_t>& a, uint32_t at_height);
+    static constexpr const char* kFullKeyFormRefused =
+        "a full-key account form (an Ethereum or Tron key, a Bitcoin key) is not an account: no transaction can be sent "
+        "from it; name the 20-byte address (rule canonical_account_forms)";
 
     static bool IsSigningAccountType(int32_t t) {
         switch (t) {
@@ -365,6 +384,9 @@ public:
     static std::vector<uint8_t> GetEquivocationReportBodyBytes(const std::vector<uint8_t>& header1, const std::vector<uint8_t>& signature1,
                                                                const std::vector<uint8_t>& header2, const std::vector<uint8_t>& signature2);
     static Result<model::EquivocationReportTransactionBody> ParseEquivocationReportBodyBytes(const std::vector<uint8_t>& body_bytes);
+    // SpineEquivocationReport (type 62, rule spine_equivocation_report)
+    static std::vector<uint8_t> GetSpineEquivocationReportBodyBytes(const model::SpineEquivocationReportTransactionBody& body);
+    static Result<model::SpineEquivocationReportTransactionBody> ParseSpineEquivocationReportBodyBytes(const std::vector<uint8_t>& body_bytes);
     static Result<model::UpdateNodeRegistrationTransactionBody> ParseUpdateNodeRegistrationBodyBytes(
         const std::vector<uint8_t>& body_bytes);
 
@@ -460,20 +482,30 @@ public:
     // Reference: originals/zoobc-core-develop/common/util/proofOfOwnership.go
     // ========================================================================
 
-    // Get size of proof of ownership based on account type
-    // For ZBC: message (72) + signature (64) = 136 bytes
-    static uint32_t GetProofOfOwnershipSize(int32_t account_type, bool with_signature);
-
-    // Get proof of ownership message size based on account type
+    // Get proof of ownership message size based on account type. The proof's signature is always the node key's
+    // 64-byte ed25519 one, whatever the owner's type (TransactionValidator::ParseRawProofOfOwnership).
     // For ZBC: account_addr (36) + block_hash (32) + height (4) = 72 bytes
     static uint32_t GetProofOfOwnershipMessageSize(int32_t account_type);
 
     // Get public key length for account type (32 for ZBC)
     static uint32_t GetAccountPublicKeyLength(int32_t account_type);
 
-    // Get signature length for account type
-    // ZBC: 64 bytes (Ed25519), BTC: 32 bytes (ECDSA), ETH: 65 bytes (ECDSA + recovery)
+    // The envelope signature of a sender of this type (the last field of a signed transaction), exactly as its
+    // verifier (crypto::Signature::VerifySignature) takes it:
+    //   64  ed25519 (ZBC, Solana), sr25519 (Polkadot), bare BIP-340 Schnorr (Taproot)
+    //   65  secp256k1 r‖s‖v, the key recovered against the Keccak address (Ethereum, Tron)
+    //   98  [32,0] ‖ 32-byte ed25519 key ‖ 64-byte signature, the address being a key hash (Cardano, Tezos)
+    //   0   no one length: [2-byte LE key length][33- or 65-byte secp256k1 key][64-byte compact ECDSA], the
+    //       address being a HASH160 (Bitcoin legacy, P2PKH, P2SH, P2WPKH, Ripple), so 99 or 131 bytes; also
+    //       P2WSH, a script hash that cannot sign
+    //   96  Estonia eID (Go's length; nothing verifies it, so it cannot send)
+    // Empty, DataSet and unknown types, none of which can send, get 64.
     static uint32_t GetSignatureLength(int32_t account_type);
+
+    // Whether ParseTransactionBytes takes every byte left as the signature of a sender of this type rather than
+    // GetSignatureLength bytes: the carried-key types above (length 0), and Taproot, which always parsed so (its
+    // verifier refuses anything but 64, so a longer one fails there instead of being cut).
+    static bool SignatureRunsToEnd(int32_t account_type);
 
     // ========================================================================
     // SetupAccountDataset body: PropertyLen(4) + Property + ValueLen(4) + Value, exactly what the parser reads

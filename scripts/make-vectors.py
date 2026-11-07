@@ -325,6 +325,13 @@ class FakeNode(BaseHTTPRequestHandler):
         body = None
         if self.path.endswith("/api/v1/blocks/latest"): body = REF_BLOCK
         elif self.path.endswith("/api/v1/node/info"): body = {"signing_version": 2, "genesis_hash": GENESIS}
+        # claim-node (node 0.6.1, rule claim_notifies_owner): the tool reads the registry to learn the node's owner. The
+        # example's node key (node_privkey 22..22) is registered to the vector key itself (SEED_V), so the claim is the
+        # owner's own and carries no notice: the recorded bytes are unchanged.
+        elif self.path.endswith("/api/v1/nodes"): body = {"nodes": [{
+            "node_public_key": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+            "account_address": "000000005e8eb28dccaa94a992f7169fa67966207d96aa55df7d24d2d6ec1f538c9f2152",
+            "registration_status": 0}]}
         if body is None:
             self.send_response(404); self.end_headers(); return
         data = json.dumps(body).encode()

@@ -14,8 +14,8 @@ int main(int argc, char* argv[]) {
     config.params = {
         {"Node private key",     "node_privkey",      "Node's private key (64 hex chars)",  "", true, nullptr},
         {"Owner private key",    "owner_privkey",     "Owner's private key (64 hex chars)", "", true, nullptr},
-        {"New locked balance",   "new_locked_balance", "New total locked balance (atomic units); never lower than the current one (a genesis seat's is 0)", "", true, nullptr},
-        {"New node private key", "new_node_privkey",  "Optional: rotate the seat to this node key (64 hex chars); the proof is signed by it (rule node_key_rotation). It takes effect 120 blocks after the block that includes it: keep the node on the old key until then", "", false, nullptr},
+        {"New locked balance",   "new_locked_balance", "New total locked balance (atomic units); never lower than the current one (a genesis registry node's is 0)", "", true, nullptr},
+        {"New node private key", "new_node_privkey",  "Optional: rotate the registered node to this node key (64 hex chars); the proof is signed by it (rule node_key_rotation). It takes effect 120 blocks after the block that includes it: keep the node on the old key until then", "", false, nullptr},
     };
 
     ParsedParams params;
@@ -38,7 +38,7 @@ int main(int argc, char* argv[]) {
         // stake of 0. Without a new key the update must name a stake to raise to.
         const bool rotating = params.values.size() > 3 && !params.values[3].empty();
         if (locked_balance < 0) { emit_error("Locked balance must not be negative"); return 1; }
-        if (locked_balance == 0 && !rotating) { emit_error("Locked balance must be positive (or give a new node key to rotate the seat)"); return 1; }
+        if (locked_balance == 0 && !rotating) { emit_error("Locked balance must be positive (or give a new node key to rotate the node)"); return 1; }
 
         // Rule node_key_rotation (20 F4): with a fourth key the seat moves to it; the proof is the
         // NEW key's (the old one may be lost or stolen) and the body names old key + new key.

@@ -672,6 +672,20 @@ std::vector<uint8_t> RlpWrapList(const std::vector<uint8_t>& payload) {
     return result;
 }
 
+std::vector<uint8_t> RlpEncodeItem(const RlpItem& item) {
+    if (!item.is_list) return RlpEncode(item.data);
+    std::vector<uint8_t> payload;
+    for (const auto& child : item.items) {
+        auto encoded = RlpEncodeItem(child);
+        payload.insert(payload.end(), encoded.begin(), encoded.end());
+    }
+    return RlpWrapList(payload);
+}
+
+bool MinimalRlpUint(const std::vector<uint8_t>& bytes, size_t max_size) {
+    return bytes.size() <= max_size && (bytes.empty() || bytes[0] != 0);
+}
+
 }  // anonymous namespace
 
 // Divide a big-endian wei amount by 1e10 (wei->atomic) at full precision, rejecting
@@ -694,6 +708,14 @@ Result<int64_t> EthereumSignature::WeiToAtomicZbc(const std::vector<uint8_t>& we
         return Error{ErrorCode::ValidationError, "Ethereum transaction value too large (exceeds max ZBC amount)"};
     }
     return static_cast<int64_t>(quotient);
+}
+
+int64_t EthereumSignature::SignedCarrierFeeAtomic(const ParsedTransaction& tx) {
+    constexpr uint64_t kWeiPerAtomic = 10000000000ULL;
+    constexpr int64_t kOverflowFallbackAtomic = 100000000LL;
+    if (tx.gas_limit != 0 && tx.gas_price > UINT64_MAX / tx.gas_limit)
+        return kOverflowFallbackAtomic;
+    return static_cast<int64_t>((tx.gas_price * tx.gas_limit) / kWeiPerAtomic);
 }
 
 Result<EthereumSignature::ParsedTransaction> EthereumSignature::ParseSignedTransaction(
@@ -812,6 +834,94 @@ Result<EthereumSignature::ParsedTransaction> EthereumSignature::ParseSignedTrans
     tx.signature.push_back(recovery_id + 27);
 
     return tx;
+}
+
+Result<std::vector<uint8_t>> EthereumSignature::CanonicalSignedTransaction(
+    const std::vector<uint8_t>& raw_tx) {
+    const bool typed = !raw_tx.empty() && (raw_tx[0] == 0x01 || raw_tx[0] == 0x02);
+    const uint8_t type = typed ? raw_tx[0] : 0;
+    std::vector<uint8_t> envelope = typed
+        ? std::vector<uint8_t>(raw_tx.begin() + 1, raw_tx.end()) : raw_tx;
+    auto decoded = DecodeRlpItem(envelope, 0);
+    if (decoded.IsErr()) return Error{decoded.GetError()};
+    const auto& root = decoded.Value().first;
+    if (decoded.Value().second != envelope.size() || RlpEncodeItem(root) != envelope)
+        return Error{ErrorCode::InvalidArgument,
+                     "Ethereum transaction must be one minimally encoded RLP value"};
+    auto parsed = ParseSignedTransaction(raw_tx);
+    if (parsed.IsErr()) return Error{parsed.GetError()};
+    const auto& tx = parsed.Value();
+
+    const size_t access_index = type == 2 ? 8 : (type == 1 ? 7 : root.items.size());
+    for (size_t i = 0; i < root.items.size(); ++i) {
+        if (i != access_index && root.items[i].is_list)
+            return Error{ErrorCode::InvalidArgument, "Ethereum scalar field is an RLP list"};
+    }
+    std::vector<size_t> integers;
+    size_t value_index, r_index, s_index, y_index = root.items.size();
+    if (type == 2) {
+        integers = {0, 1, 2, 3, 4, 9};
+        value_index = 6; y_index = 9; r_index = 10; s_index = 11;
+    } else if (type == 1) {
+        integers = {0, 1, 2, 3, 8};
+        value_index = 5; y_index = 8; r_index = 9; s_index = 10;
+    } else {
+        integers = {0, 1, 2, 6};
+        value_index = 4; r_index = 7; s_index = 8;
+    }
+    for (size_t i : integers) {
+        if (!MinimalRlpUint(root.items[i].data, sizeof(uint64_t)))
+            return Error{ErrorCode::InvalidArgument, "Ethereum integer is not minimally encoded"};
+    }
+    if (!MinimalRlpUint(root.items[value_index].data, SIZE_MAX) ||
+        !MinimalRlpUint(root.items[r_index].data, 32) ||
+        !MinimalRlpUint(root.items[s_index].data, 32))
+        return Error{ErrorCode::InvalidArgument, "Ethereum integer is not minimally encoded"};
+    if (typed && RlpToUint64(root.items[y_index].data) > 1)
+        return Error{ErrorCode::InvalidArgument, "Ethereum typed transaction yParity must be 0 or 1"};
+
+    std::vector<uint8_t> payload;
+    auto add = [&](const std::vector<uint8_t>& encoded) {
+        payload.insert(payload.end(), encoded.begin(), encoded.end());
+    };
+    auto addUint = [&](uint64_t value) { add(RlpEncode(RlpEncodeUint(value))); };
+    auto addSignatureUint = [&](size_t offset) {
+        std::vector<uint8_t> bytes(tx.signature.begin() + offset, tx.signature.begin() + offset + 32);
+        while (!bytes.empty() && bytes[0] == 0) bytes.erase(bytes.begin());
+        add(RlpEncode(bytes));
+    };
+    if (typed) {
+        addUint(tx.chain_id);
+        addUint(tx.nonce);
+        if (type == 2) {
+            addUint(tx.max_priority_fee_per_gas);
+            addUint(tx.gas_price);
+        } else {
+            addUint(tx.gas_price);
+        }
+        addUint(tx.gas_limit);
+        add(RlpEncode(tx.to));
+        add(RlpEncode(tx.value_be));
+        add(RlpEncode(tx.data));
+        payload.push_back(0xc0);
+        addUint(tx.signature[64] - 27);
+    } else {
+        addUint(tx.nonce);
+        addUint(tx.gas_price);
+        addUint(tx.gas_limit);
+        add(RlpEncode(tx.to));
+        add(RlpEncode(tx.value_be));
+        add(RlpEncode(tx.data));
+        const uint64_t recovery = tx.signature[64] - 27;
+        addUint(tx.chain_id == 0 ? 27 + recovery : tx.chain_id * 2 + 35 + recovery);
+    }
+    addSignatureUint(0);
+    addSignatureUint(32);
+    auto canonical = RlpWrapList(payload);
+    if (typed) canonical.insert(canonical.begin(), type);
+    if (canonical != raw_tx)
+        return Error{ErrorCode::InvalidArgument, "Ethereum transaction is not canonically encoded"};
+    return canonical;
 }
 
 Result<std::vector<uint8_t>> EthereumSignature::RecoverPublicKeyFromRawTx(

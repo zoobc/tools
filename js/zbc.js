@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2024-2026 ZooBC Foundation and Roberto Capodieci
-// ZooBC tools 0.2.1, built from ts/ by scripts/bundle.mjs. Defines the global ZBC. Do not edit.
+// ZooBC tools 0.2.2, built from ts/ by scripts/bundle.mjs. Defines the global ZBC. Do not edit.
 "use strict";
 var ZBC = (() => {
   var __defProp = Object.defineProperty;

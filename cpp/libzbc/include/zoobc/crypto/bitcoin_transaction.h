@@ -48,6 +48,12 @@ struct BitcoinTransfer {
 
 // Structural parse of a Bitcoin tx (legacy or segwit-serialized). Bounds-checked; never throws.
 BitcoinTx ParseBitcoinTx(const std::vector<uint8_t>& raw);
+// The transaction id: double-SHA256 of the legacy serialization, excluding segwit marker and witnesses.
+std::vector<uint8_t> BitcoinTxid(const BitcoinTx& tx);
+// The canonical serialization of a parsed transaction: minimal CompactSize lengths, the segwit marker and the witness
+// stacks when tx.segwit. A carrier is accepted only when this equals the message it carries (rule foreign_carrier_bound):
+// the parser also accepts non-minimal CompactSize, which keeps the txid (the once-only id) while changing the bytes.
+std::vector<uint8_t> SerializeBitcoinTx(const BitcoinTx& tx);
 
 // BIP-143 sighash preimage for input idx. script_code is the raw script WITHOUT its length prefix
 // (this function serializes the CompactSize length). The 32-byte sighash is DoubleSHA256(preimage).

@@ -42,6 +42,7 @@ SolanaTransfer ParseAndVerifySolanaTransfer(const std::vector<uint8_t>& raw) {
     std::vector<std::vector<uint8_t>> keys;
     for (uint32_t i = 0; i < nkey; i++) { std::vector<uint8_t> k; if (!Take(raw, off, 32, k)) return fail("truncated account keys"); keys.push_back(std::move(k)); }
     std::vector<uint8_t> blockhash; if (!Take(raw, off, 32, blockhash)) return fail("truncated blockhash");
+    r.recent_blockhash = blockhash;
 
     uint32_t nix = 0;
     if (!ShortVec(raw, off, nix)) return fail("bad instruction count");

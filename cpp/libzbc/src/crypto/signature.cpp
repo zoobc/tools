@@ -202,8 +202,9 @@ bool Signature::IsValidSignatureSize(
             account_type == AccountType::BTCP2WPKHAccount ||
             account_type == AccountType::BTCP2WSHAccount) {
             // BTC: [2 bytes pubkey len] + [pubkey] + [signature]
-            // Minimum: 2 + 33 + 32 = 67 bytes (compressed key, compact sig)
-            return signature.size() >= 67;
+            // Minimum: 2 + 33 + 64 = 99 bytes (compressed key, 64-byte compact sig: BitcoinSignature::Verify takes
+            // nothing else). It said 67 (a 32-byte sig): anything shorter than 99 failed further in, never verified.
+            return signature.size() >= 99;
         }
         return !signature.empty();
     }

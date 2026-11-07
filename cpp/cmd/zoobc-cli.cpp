@@ -983,8 +983,9 @@ static std::map<std::string, Cmd> registry() {
             auto poown=build_proof_of_ownership(owner_kp.Value(), node_kp.Value(), params.api_url); if(!poown.IsOk()){ emit_error(poown.GetError().ToString()); return 1; }
             auto body=TransactionUtil::GetClaimNodeRegistrationBodyBytes(node_kp.Value().public_key, poown.Value());
             json extra={{"node_znk",zoobc::crypto::ZoobcAddress::Encode(node_kp.Value().public_key,"ZNK")}};
-            std::vector<uint8_t> er;
-            return run_transaction(params,(uint32_t)TT::ClaimNodeRegistration,owner_kp.Value().public_key,er,body,owner_kp.Value(),KeyType::ZBC,extra,emit_error,"SUCCESS: node claim submitted!"); }};
+            auto notice=build_claim_notice(params.api_url,node_kp.Value().public_key,owner_kp.Value().public_key); if(!notice.IsOk()){ emit_error(notice.GetError().ToString()); return 1; }
+            params.message_text=notice.Value().message;
+            return run_transaction(params,(uint32_t)TT::ClaimNodeRegistration,owner_kp.Value().public_key,notice.Value().recipient,body,owner_kp.Value(),KeyType::ZBC,extra,emit_error,"SUCCESS: node claim submitted!"); }};
     // ---- multisig (custom handler: inner tx + signatures) ----
     m["multisig"] = {"N-of-M multisig SendZBC (inner tx + participant signatures)", (uint32_t)TT::MultiSignature, false,
         { PK(), P("Participants","participants","comma-separated participant ZBC addresses"),

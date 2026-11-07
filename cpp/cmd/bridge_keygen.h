@@ -5,6 +5,13 @@
 // Shared by zbc-bridge-keygen and its test so the "same seed always regenerates the same
 // keys" recovery guarantee is verifiable. Pure functions of the node seed (SHA3 domain
 // separation per chain); no wall-clock, no randomness.
+//
+// Custody ceremony (security review 2026-11-07, H-6): every member generates its OWN node seed on its
+// own machine (zbc-bridge-keygen), keeps the private keys there, and hands over only its public record
+// (memberPublicJson); the custody multisig is built from the collected public records
+// (zbc-bridge-multisig --pubkeys). No process ever holds two members' keys. nodeSeedFromMaster (every
+// member's seed from one master) makes the k-of-n custody 1-of-1 and is for tests only
+// (--insecure-single-dealer).
 #pragma once
 #include <cstdint>
 #include <string>
@@ -102,7 +109,7 @@ inline std::string base58(const std::vector<uint8_t>& data){
     return out.empty()? std::string("1") : out;
 }
 
-struct ChainKey { std::string chain, address, privkey_hex; std::vector<uint8_t> pubkey{}; };
+struct ChainKey { std::string chain, address, privkey_hex; std::vector<uint8_t> pubkey{}; };   // pubkey: every chain
 struct NodeSigners { std::string zbc_owner, backup_seed; std::vector<ChainKey> chains; };
 
 // ==================== Derivable k-of-n custody multisig addresses ====================
@@ -158,6 +165,14 @@ inline std::string cardano_native_multisig(std::vector<std::vector<uint8_t>> pub
     return bech32_encode("addr", convertbits(raw));
 }
 
+// Cardano (ed25519): Shelley enterprise address = bech32("addr", 0x61 || blake2b-224(pubkey)).
+inline std::string cardanoAddress(const std::vector<uint8_t>& pub){
+    std::vector<uint8_t> raw{0x61};
+    auto kh = blake2b(pub, 28);
+    raw.insert(raw.end(), kh.begin(), kh.end());
+    return bech32_encode("addr", convertbits(raw));
+}
+
 // Derive one node's signer set (ethereum/bitcoin/solana) + its ZBC owner address, from a
 // 32-byte node seed. `eth`/`btc` are reused across calls (each holds a secp256k1 context).
 inline NodeSigners deriveNode(const std::vector<uint8_t>& node_seed,
@@ -167,7 +182,7 @@ inline NodeSigners deriveNode(const std::vector<uint8_t>& node_seed,
     {
         std::vector<uint8_t> pk = derive(node_seed, "ethereum");
         auto pub = eth.GetPublicKeyFromPrivateKey(pk);
-        if(pub.IsOk()) ns.chains.push_back({"ethereum", eth.GetAddressFromPublicKey("", pub.Value()), toHex(pk)});
+        if(pub.IsOk()) ns.chains.push_back({"ethereum", eth.GetAddressFromPublicKey("", pub.Value()), toHex(pk), pub.Value()});
     }
     {
         std::vector<uint8_t> pk = derive(node_seed, "bitcoin");
@@ -178,7 +193,7 @@ inline NodeSigners deriveNode(const std::vector<uint8_t>& node_seed,
         std::vector<uint8_t> seed = derive(node_seed, "solana");
         std::vector<uint8_t> pub(32), sk(64);
         crypto_sign_ed25519_seed_keypair(pub.data(), sk.data(), seed.data());
-        ns.chains.push_back({"solana", base58(pub), toHex(seed)});
+        ns.chains.push_back({"solana", base58(pub), toHex(seed), pub});
     }
     // Tron (secp256k1, Ethereum-style): addr = Base58Check(0x41 || keccak256(uncompressed_pubkey)[12:]).
     {
@@ -189,7 +204,7 @@ inline NodeSigners deriveNode(const std::vector<uint8_t>& node_seed,
             if(k.IsOk()){
                 std::vector<uint8_t> payload{0x41};
                 payload.insert(payload.end(), k.Value().end()-20, k.Value().end());
-                ns.chains.push_back({"tron", base58check(payload, BTC_B58), toHex(pk)});
+                ns.chains.push_back({"tron", base58check(payload, BTC_B58), toHex(pk), pub.Value()});
             }
         }
     }
@@ -202,7 +217,7 @@ inline NodeSigners deriveNode(const std::vector<uint8_t>& node_seed,
             if(h.IsOk()){
                 std::vector<uint8_t> payload{0x00};
                 payload.insert(payload.end(), h.Value().begin(), h.Value().end());
-                ns.chains.push_back({"ripple", base58check(payload, XRP_B58), toHex(pk)});
+                ns.chains.push_back({"ripple", base58check(payload, XRP_B58), toHex(pk), pub.Value()});
             }
         }
     }
@@ -214,17 +229,14 @@ inline NodeSigners deriveNode(const std::vector<uint8_t>& node_seed,
         std::vector<uint8_t> payload{6,161,159};
         auto pkh = blake2b(pub, 20);
         payload.insert(payload.end(), pkh.begin(), pkh.end());
-        ns.chains.push_back({"tezos", base58check(payload, BTC_B58), toHex(seed)});
+        ns.chains.push_back({"tezos", base58check(payload, BTC_B58), toHex(seed), pub});
     }
     // Cardano (ed25519): Shelley enterprise address = bech32("addr", 0x61 || blake2b-224(pubkey)).
     {
         std::vector<uint8_t> seed = derive(node_seed, "cardano");
         std::vector<uint8_t> pub(32), sk(64);
         crypto_sign_ed25519_seed_keypair(pub.data(), sk.data(), seed.data());
-        std::vector<uint8_t> raw{0x61};
-        auto kh = blake2b(pub, 28);
-        raw.insert(raw.end(), kh.begin(), kh.end());
-        ns.chains.push_back({"cardano", bech32_encode("addr", convertbits(raw)), toHex(seed), pub});
+        ns.chains.push_back({"cardano", cardanoAddress(pub), toHex(seed), pub});
     }
     // Polkadot (ed25519): SS58 address of the 32-byte pubkey, network prefix 0. Polkadot's default
     // is sr25519, but ed25519 is a fully supported account type (self-consistent: ed25519 key ->
@@ -244,7 +256,21 @@ inline NodeSigners deriveNode(const std::vector<uint8_t>& node_seed,
     return ns;
 }
 
-// node_seed for index i from an optional master seed (deterministic) — else caller passes random.
+// The public record a member hands to the custody coordinator: its ZBC owner address and, per chain, the
+// signer address and public key. No private key and no seed (zbc-bridge-keygen --public-out).
+inline constexpr const char* MEMBER_FORMAT = "zbc-bridge-member-v1";
+inline std::string memberPublicJson(const NodeSigners& n){
+    std::string o = std::string("{\"format\":\"") + MEMBER_FORMAT + "\",\"zbc_owner\":\"" + n.zbc_owner + "\",\"signers\":{";
+    for(size_t k=0;k<n.chains.size();k++){
+        const auto& c = n.chains[k];
+        if(k) o += ",";
+        o += "\"" + c.chain + "\":{\"address\":\"" + c.address + "\",\"pubkey\":\"" + toHex(c.pubkey) + "\"}";
+    }
+    return o + "}}";
+}
+
+// TESTS ONLY (--insecure-single-dealer): node_seed for index i from ONE master seed, so whoever holds the
+// master holds every member's key. A real custody is built from per-member public records instead.
 inline std::vector<uint8_t> nodeSeedFromMaster(const std::vector<uint8_t>& master, int i){
     std::vector<uint8_t> idx{(uint8_t)(i>>24),(uint8_t)(i>>16),(uint8_t)(i>>8),(uint8_t)i};
     return derive(master, std::string(idx.begin(), idx.end()));

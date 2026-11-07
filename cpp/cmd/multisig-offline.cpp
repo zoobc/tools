@@ -423,7 +423,7 @@ struct Package {
 std::string display_account(const std::vector<uint8_t>& account, const std::string& hint) {
     if (account.size() == 36 && read_u32le(account) == static_cast<uint32_t>(TU::ACCOUNT_TYPE_ZBC))
         return zoobc::crypto::ZoobcAddress::Encode(std::vector<uint8_t>(account.begin() + 4, account.end()), "ZBC");
-    if (!hint.empty()) {
+    if (!hint.empty() && printable_ascii(hint)) {   // the hint is the package's text: shown only if it is plain
         auto r = parse_address(hint);
         if (r.IsOk() && r.Value().address == account) return hint;
     }
@@ -536,12 +536,13 @@ void print_details(std::ostream& o, const Package& p) {
       << p.participants.size() << ", nonce " << p.nonce << ")\n"
       << "  Participants:\n";
     for (size_t i = 0; i < p.participants.size(); ++i)
-        o << "    " << (i + 1) << ". " << p.participants[i].display << "  [" << p.participants[i].type_label << "]\n";
+        o << "    " << (i + 1) << ". " << shown(p.participants[i].display) << "  [" << p.participants[i].type_label << "]\n";
     o << "  Transaction:       " << d.value("transaction_type_name", "") << " (type " << d.value("transaction_type", 0u) << ")\n";
-    if (d.contains("recipient")) o << "  Recipient:         " << d["recipient"].get<std::string>() << "\n";
+    if (d.contains("recipient")) o << "  Recipient:         " << shown(d["recipient"].get<std::string>()) << "\n";
     if (d.contains("amount")) o << "  Amount:            " << d["amount_zbc"].get<std::string>() << "  (" << d["amount"].get<int64_t>() << " atomic)\n";
     o << "  Inner fee (max):   " << d["inner_fee_zbc"].get<std::string>() << "  (paid by the multisig account)\n";
-    if (d.contains("message")) o << "  Message:           " << d["message"].get<std::string>() << "\n";
+    // the inner transaction's message bytes, chosen by whoever prepared the package: escaped unless plain (H-1)
+    if (d.contains("message")) o << "  Message:           " << shown(d["message"].get<std::string>()) << "\n";
     if (!d.contains("amount")) o << "  Body (hex):        " << d["body_hex"].get<std::string>() << "\n";
     o << "  Digest to sign:    " << bytes_to_hex(p.digest) << "\n";
 }
@@ -702,9 +703,9 @@ int cmd_sign(const Args& a) {
 
     // Show what is being signed. The details come from the bytes, not from the package's text.
     std::ostream& o = a.json_output ? std::cerr : std::cout;
-    o << "ZooBC multisig signing request (" << a.positional[0] << ")\n";
+    o << "ZooBC multisig signing request (" << shown(a.positional[0]) << ")\n";
     print_details(o, p);
-    o << "  Signing as:        " << me->display << "  (participant " << (idx + 1) << " of " << p.participants.size() << ")\n";
+    o << "  Signing as:        " << shown(me->display) << "  (participant " << (idx + 1) << " of " << p.participants.size() << ")\n";
     if (!a.yes) {
         if (!is_stdin_terminal()) refuse(exit_code::USAGE, "sign: stdin is not a terminal; review the details above and pass --yes to sign");
         std::cerr << "Sign this transaction? Type 'yes' to sign: " << std::flush;
@@ -872,7 +873,7 @@ int cmd_submit(const Args& a) {
         json out = {{"success", false}, {"http_code", r.http_code}, {"error", text}, {"exit_code", code},
                     {"error_class", exit_code::name(code)}, {"api_response", r.response_json}};
         if (a.json_output) std::cout << out.dump(2) << "\n";
-        else std::cerr << "FAILED (" << exit_code::name(code) << "): HTTP " << r.http_code << ": " << text << "\n";
+        else std::cerr << "FAILED (" << exit_code::name(code) << "): HTTP " << r.http_code << ": " << shown(text) << "\n";
         return code;
     }
     if (a.json_output) {
@@ -881,7 +882,7 @@ int cmd_submit(const Args& a) {
                     {"note", "accepted for the pool (HTTP " + std::to_string(r.http_code) + "); check /api/v1/transactions/<hash> for inclusion"}};
         std::cout << out.dump(2) << "\n";
     } else {
-        std::cout << "Submitted: " << s.value("transaction_hash", "") << " (HTTP " << r.http_code << ")\n";
+        std::cout << "Submitted: " << shown(s.value("transaction_hash", "")) << " (HTTP " << r.http_code << ")\n";
     }
     return 0;
 }

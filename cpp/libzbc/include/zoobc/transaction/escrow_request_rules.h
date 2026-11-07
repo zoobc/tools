@@ -38,9 +38,10 @@ class AccountState;
 Result<std::vector<uint8_t>> CoSignerSigningDigest(const model::Transaction& tx);
 
 // Stateless shape of a multi-party escrow envelope (from `escrow_request`): it must carry a
-// co-signature or a request link (or both); a co-signature must verify against the recipient; a
-// request link is only valid on SendZBC. No-op (Ok) for a transaction without multi_party.
-Result<void> ValidateMultiPartyEscrow(const model::Transaction& tx);
+// co-signature or a request link (or both); a co-signature must verify against the recipient (by an
+// Ethereum- or Tron-typed recipient, in the 27/28 form from rule eth_signature_canonical_v at
+// `at_height`); a request link is only valid on SendZBC. No-op (Ok) for a transaction without multi_party.
+Result<void> ValidateMultiPartyEscrow(const model::Transaction& tx, uint32_t at_height);
 
 // The latest version of an escrow request, if it exists. j70: a read that fails sets `*fault` (when given) and
 // returns nothing; the executor's callers pass one and fail the block, never read the fault as "no request".

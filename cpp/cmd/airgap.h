@@ -96,12 +96,9 @@ inline bool is_hex(const std::string& s) {
     return true;
 }
 // Printable means ASCII 0x20-0x7E and at most 512 bytes: shown as text. Anything else is shown by length and
-// SHA-256, so a terminal never interprets bytes from a file it is asked to trust.
-inline bool printable(const std::string& s) {
-    if (s.size() > 512) return false;
-    for (unsigned char c : s) if (c < 0x20 || c > 0x7e) return false;
-    return true;
-}
+// SHA-256, so a terminal never interprets bytes from a file it is asked to trust. Strings that are not part of the
+// summary (the note, a file name, a node's answer) go through shown() / escape_text() (tx_common.h) instead.
+inline bool printable(const std::string& s) { return plain_text(s); }
 inline std::string sha256_hex(const std::string& s) {
     auto h = zoobc::crypto::Hash::SHA256(std::vector<uint8_t>(s.begin(), s.end()));
     return h.IsOk() ? hexs(h.Value()) : std::string();
@@ -120,7 +117,7 @@ inline const std::map<uint32_t, std::string>& type_names() {
         {41,"SubmitStorageProof"},{42,"TransferDataset"},{43,"SetDatasetPolicy"},{44,"AcceptDataset"},{45,"DeleteDataset"},
         {46,"RegisterArchival"},{47,"UnregisterArchival"},{48,"RegisterRelay"},{49,"UnregisterRelay"},{50,"SetTransactPolicy"},
         {51,"SetConsensusParam"},{52,"FundLongevity"},{53,"CancelLongevity"},{54,"SetSplitPolicy"},{55,"LinkAccount"},{56,"UnlinkAccount"},
-        {57,"SetMemberPermissions"},{58,"TransferGroupControl"},{59,"QueueAttendance"},{60,"EquivocationReport"},{61,"RollCall"},
+        {57,"SetMemberPermissions"},{58,"TransferGroupControl"},{59,"QueueAttendance"},{60,"EquivocationReport"},{61,"RollCall"},{62,"SpineEquivocationReport"},
         {257,"SendZBCBatch"},{258,"NodeRegistrationUpdate"},{259,"RemoveAccountDataset"},{260,"EscrowRequest"},{262,"LiquidPaymentStop"},
         {263,"FeeVoteReveal"},{264,"DFSUpdateFile"},{267,"TransferTokenBatch"},{296,"FundStoredFile"},{297,"SubmitStorageProofBatch"},
         {309,"CloseLongevity"},{514,"RemoveNodeRegistration"},{516,"DeclineEscrowRequest"},{520,"DFSDeleteFile"},{770,"ClaimNodeRegistration"},
@@ -191,7 +188,7 @@ inline json decode_body(uint32_t type, const std::vector<uint8_t>& body) {
         switch (type) {
         case 1: out["amount"] = zbc_amount(r.i64()); break;
         case 3: case 259: {
-            out["property"] = r.str(r.u32());
+            text_field(out, "property", r.str(r.u32()));   // raw before (H-1): a property could redraw the screen
             text_field(out, "value", r.str(r.u32()));
             break; }
         case 10: {
@@ -408,7 +405,7 @@ inline std::vector<Loaded> load_files(const std::vector<std::string>& args, cons
         } else if (fs::is_regular_file(a, ec)) {
             paths.push_back(a);
         } else {
-            refuse(exit_code::USAGE, "no such file or folder: " + a);
+            refuse(exit_code::USAGE, "no such file or folder: " + shown(a));
         }
         for (const auto& p : paths) {
             std::ifstream f(p);
@@ -417,9 +414,9 @@ inline std::vector<Loaded> load_files(const std::vector<std::string>& args, cons
             const std::string fmt = (d.is_object() && d.contains("format") && d["format"].is_string()) ? d["format"].get<std::string>() : "";
             if (fmt == want_format) { out.push_back({p, d}); continue; }
             if (folder) continue;   // a folder holds other files too (drafts, the other kind): skip them
-            if (fmt == UNSIGNED_FORMAT) refuse(exit_code::USAGE, p + " is UNSIGNED: sign it on the offline computer first (zbc-cli sign-tx)");
-            if (fmt == SIGNED_FORMAT) refuse(exit_code::USAGE, p + " is already SIGNED: send it with zbc-cli submit");
-            refuse(exit_code::USAGE, p + " is not a " + want_format + " file");
+            if (fmt == UNSIGNED_FORMAT) refuse(exit_code::USAGE, shown(p) + " is UNSIGNED: sign it on the offline computer first (zbc-cli sign-tx)");
+            if (fmt == SIGNED_FORMAT) refuse(exit_code::USAGE, shown(p) + " is already SIGNED: send it with zbc-cli submit");
+            refuse(exit_code::USAGE, shown(p) + " is not a " + want_format + " file");
         }
     }
     if (args.size() > 1) from_folder = true;
@@ -448,24 +445,25 @@ struct Checked {
 inline Checked check_unsigned(const Loaded& l, const std::string& expect_genesis) {
     Checked c; c.path = l.path; c.doc = l.doc;
     const json& d = l.doc;
+    const std::string where = shown(l.path);   // the online machine names the files
     if (!d.contains("signing_version") || !d["signing_version"].is_number_integer() || d["signing_version"].get<int>() != 2)
-        refuse(exit_code::VERIFY_FAILED, l.path + ": signing_version is not 2; this signer signs chain-bound transactions only");
-    c.genesis = hex_field(d, "chain_genesis", l.path, 32);
+        refuse(exit_code::VERIFY_FAILED, where + ": signing_version is not 2; this signer signs chain-bound transactions only");
+    c.genesis = hex_field(d, "chain_genesis", where, 32);
     if (!expect_genesis.empty() && lower(expect_genesis) != hexs(c.genesis))
-        refuse(exit_code::VERIFY_FAILED, l.path + ": the file is for chain " + hexs(c.genesis) + ", not the chain you named (" +
+        refuse(exit_code::VERIFY_FAILED, where + ": the file is for chain " + hexs(c.genesis) + ", not the chain you named (" +
                                          lower(expect_genesis) + "); not signing");
-    c.bytes = hex_field(d, "unsigned_tx_hex", l.path);
+    c.bytes = hex_field(d, "unsigned_tx_hex", where);
     try { c.tx = parse_exact(c.bytes); }
-    catch (const Refusal& r) { refuse(r.code, l.path + ": " + r.what()); }
+    catch (const Refusal& r) { refuse(r.code, where + ": " + r.what()); }
     if (!d.contains("tx_type") || !d["tx_type"].is_number_integer() || d["tx_type"].get<uint32_t>() != static_cast<uint32_t>(c.tx.transaction_type))
-        refuse(exit_code::VERIFY_FAILED, l.path + ": tx_type does not match the bytes (they are " + type_name(static_cast<uint32_t>(c.tx.transaction_type)) + ")");
-    if (lower(str_field(d, "sender_account_address", l.path)) != hexs(c.tx.sender_account_address))
-        refuse(exit_code::VERIFY_FAILED, l.path + ": sender_account_address does not match the bytes");
-    if (hex_field(d, "digest", l.path, 32) != digest_for(c.bytes, c.genesis))
-        refuse(exit_code::VERIFY_FAILED, l.path + ": the digest does not match the bytes and the chain (tampered file?); not signing");
+        refuse(exit_code::VERIFY_FAILED, where + ": tx_type does not match the bytes (they are " + type_name(static_cast<uint32_t>(c.tx.transaction_type)) + ")");
+    if (lower(str_field(d, "sender_account_address", where)) != hexs(c.tx.sender_account_address))
+        refuse(exit_code::VERIFY_FAILED, where + ": sender_account_address does not match the bytes");
+    if (hex_field(d, "digest", where, 32) != digest_for(c.bytes, c.genesis))
+        refuse(exit_code::VERIFY_FAILED, where + ": the digest does not match the bytes and the chain (tampered file?); not signing");
     c.summary = summarize(c.tx);
     if (!d.contains("summary") || d["summary"] != c.summary)
-        refuse(exit_code::VERIFY_FAILED, l.path + ": the summary in the file does not match what the bytes say (tampered file?); not signing.\n"
+        refuse(exit_code::VERIFY_FAILED, where + ": the summary in the file does not match what the bytes say (tampered file?); not signing.\n"
                                          "  the bytes say: " + c.summary.dump());
     return c;
 }
@@ -539,14 +537,14 @@ inline zoobc::crypto::KeyPair key_pair(std::string k) {
 
 inline void print_summary(std::ostream& o, const json& s, const std::string& indent) {
     auto line = [&](const std::string& k, const std::string& v) {
-        o << indent << k << std::string(k.size() < 18 ? 18 - k.size() : 1, ' ') << v << "\n";
+        o << indent << k << std::string(k.size() < 18 ? 18 - k.size() : 1, ' ') << shown(v) << "\n";
     };
     const char* order[] = {"transaction", "sender", "recipient", "fee", "survival", "timestamp", "valid_until", "message", "message_hex"};
     for (const char* k : order)
         if (s.contains(k)) line(k, s[k].is_string() ? s[k].get<std::string>() : s[k].dump());
     if (s.contains("escrow")) for (auto& [k, v] : s["escrow"].items()) line("escrow " + k, v.is_string() ? v.get<std::string>() : v.dump());
     if (s.contains("body")) for (auto& [k, v] : s["body"].items()) {
-        if (v.is_array()) { line(k, std::to_string(v.size()) + " item(s)"); for (const auto& e : v) o << indent << "  - " << e.dump() << "\n"; }
+        if (v.is_array()) { line(k, std::to_string(v.size()) + " item(s)"); for (const auto& e : v) o << indent << "  - " << shown(e.dump(-1, ' ', false, json::error_handler_t::replace)) << "\n"; }
         else line(k, v.is_string() ? v.get<std::string>() : v.dump());
     }
 }
@@ -600,14 +598,14 @@ inline int sign_tx_command(int argc, char** argv) {
         o << "Air-gap signing: " << txs.size() << " transaction(s)\n";
         for (size_t i = 0; i < txs.size(); ++i) {
             const auto& c = txs[i];
-            o << "\n[" << (i + 1) << "] " << std::filesystem::path(c.path).filename().string() << "\n";
+            o << "\n[" << (i + 1) << "] " << shown(std::filesystem::path(c.path).filename().string()) << "\n";
             o << "    chain genesis     " << hexs(c.genesis) << "\n";
             print_summary(o, c.summary, "    ");
             if (wallet_notice(c.tx).present)
                 o << "    + the wallet update notice in this value is signed too, by this key: its empty \"sig\" gets\n"
-                     "      Ed25519 over \"" << wallet_notice(c.tx).canon << "\"\n";
+                     "      Ed25519 over \"" << shown(wallet_notice(c.tx).canon) << "\"\n";
             if (c.doc.contains("note") && c.doc["note"].is_string() && !c.doc["note"].get<std::string>().empty())
-                o << "    note (from the online machine, NOT checked): " << c.doc["note"].get<std::string>() << "\n";
+                o << "    note (from the online machine, NOT checked): " << shown(c.doc["note"].get<std::string>()) << "\n";
             const int64_t now = static_cast<int64_t>(std::time(nullptr));
             if (c.tx.timestamp + expiry_window(c.tx) < now)
                 o << "    !! by this computer's clock (" << utc(now) << ") it is already past valid_until: the chain will refuse it\n";
@@ -619,7 +617,7 @@ inline int sign_tx_command(int argc, char** argv) {
         std::vector<const Checked*> mine;
         for (const auto& c : txs) {
             if (c.tx.sender_account_address == me) mine.push_back(&c);
-            else o << "  " << std::filesystem::path(c.path).filename().string() << ": not this key's (its sender is "
+            else o << "  " << shown(std::filesystem::path(c.path).filename().string()) << ": not this key's (its sender is "
                    << account(c.tx.sender_account_address) << "); left alone\n";
         }
         if (mine.empty())
@@ -657,16 +655,16 @@ inline int sign_tx_command(int argc, char** argv) {
             std::ofstream f(out);
             f << d.dump(2) << "\n";
             if (!f) refuse(exit_code::INTERNAL, "cannot write " + out);
-            o << "  signed: " << out << "\n";
+            o << "  signed: " << shown(out) << "\n";
             written.push_back(out);
         }
-        std::cout << json{{"success", true}, {"signed", written}, {"signer", me_zbc}}.dump(2) << std::endl;
+        std::cout << json{{"success", true}, {"signed", written}, {"signer", me_zbc}}.dump(2, ' ', false, json::error_handler_t::replace) << std::endl;
         return exit_code::OK;
     } catch (const Refusal& r) {
-        std::cerr << "REFUSED: " << r.what() << std::endl;
+        std::cerr << "REFUSED: " << escape_text(r.what(), true) << std::endl;
         return r.code;
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        std::cerr << "Error: " << escape_text(e.what(), true) << std::endl;
         return exit_code::INTERNAL;
     }
 }
@@ -728,7 +726,7 @@ inline int submit_command(int argc, char** argv) {
     auto finish = [&](int code, const std::string& err) {
         json out = {{"success", code == exit_code::OK}, {"api", api}, {"results", results}};
         if (code != exit_code::OK) { out["exit_code"] = code; out["error_class"] = exit_code::name(code); out["error"] = err; }
-        std::cout << out.dump(2) << std::endl;
+        std::cout << out.dump(2, ' ', false, json::error_handler_t::replace) << std::endl;
         return code;
     };
     struct Ready { std::string path; json payload; std::string hash, label; std::vector<uint8_t> genesis; };
@@ -740,17 +738,18 @@ inline int submit_command(int argc, char** argv) {
         for (const auto& l : files) {
             const json& d = l.doc;
             Ready r; r.path = l.path;
-            r.genesis = hex_field(d, "chain_genesis", l.path, 32);
-            const auto bytes = hex_field(d, "unsigned_tx_hex", l.path);
-            const auto sig = hex_field(d, "signature", l.path, 64);
+            const std::string where = shown(l.path);
+            r.genesis = hex_field(d, "chain_genesis", where, 32);
+            const auto bytes = hex_field(d, "unsigned_tx_hex", where);
+            const auto sig = hex_field(d, "signature", where, 64);
             zoobc::model::Transaction tx;
-            try { tx = parse_exact(bytes); } catch (const Refusal& e) { refuse(e.code, l.path + ": " + e.what()); }
+            try { tx = parse_exact(bytes); } catch (const Refusal& e) { refuse(e.code, where + ": " + e.what()); }
             const auto& s = tx.sender_account_address;
-            if (s.size() != 36 || s[0] || s[1] || s[2] || s[3]) refuse(exit_code::VERIFY_FAILED, l.path + ": not a ZBC_ sender; not sent");
+            if (s.size() != 36 || s[0] || s[1] || s[2] || s[3]) refuse(exit_code::VERIFY_FAILED, where + ": not a ZBC_ sender; not sent");
             auto v = Signature::Verify(digest_for(bytes, r.genesis), sig, std::vector<uint8_t>(s.begin() + 4, s.end()));
-            if (v.IsErr() || !v.Value()) refuse(exit_code::VERIFY_FAILED, l.path + ": the signature does not verify against the bytes; not sent");
+            if (v.IsErr() || !v.Value()) refuse(exit_code::VERIFY_FAILED, where + ": the signature does not verify against the bytes; not sent");
             if (!d.contains("payload") || d["payload"] != payload_of(tx, sig))
-                refuse(exit_code::VERIFY_FAILED, l.path + ": the payload is not the signed transaction; not sent");
+                refuse(exit_code::VERIFY_FAILED, where + ": the payload is not the signed transaction; not sent");
             std::vector<uint8_t> full(bytes); full.insert(full.end(), sig.begin(), sig.end());
             auto h = zoobc::crypto::Hash::SHA3_256(full);
             r.hash = h.IsOk() ? hexs(h.Value()) : "";
@@ -765,23 +764,23 @@ inline int submit_command(int argc, char** argv) {
         const std::string node_gen = lower(info.body.value("genesis_hash", std::string()));
         for (const auto& r : todo)
             if (hexs(r.genesis) != node_gen)
-                refuse(exit_code::VERIFY_FAILED, r.path + " is for chain " + hexs(r.genesis) + ", the node at " + api +
-                                                 " serves " + (node_gen.empty() ? std::string("an unknown chain") : node_gen) + "; nothing was sent");
+                refuse(exit_code::VERIFY_FAILED, shown(r.path) + " is for chain " + hexs(r.genesis) + ", the node at " + api +
+                                                 " serves " + (node_gen.empty() ? std::string("an unknown chain") : shown(node_gen)) + "; nothing was sent");
     } catch (const Refusal& r) {
-        std::cerr << "REFUSED: " << r.what() << std::endl;
+        std::cerr << "REFUSED: " << escape_text(r.what(), true) << std::endl;
         return finish(r.code, r.what());
     }
 
     for (size_t i = 0; i < todo.size(); ++i) {
         const auto& r = todo[i];
-        std::cerr << "[" << (i + 1) << "/" << todo.size() << "] " << std::filesystem::path(r.path).filename().string()
+        std::cerr << "[" << (i + 1) << "/" << todo.size() << "] " << shown(std::filesystem::path(r.path).filename().string())
                   << ": " << r.label << "\n";
         auto sr = submit_transaction(api, r.payload.dump());
         json row = {{"file", r.path}, {"transaction_hash", r.hash}};
         if (!sr.ok && sr.http_code == 0) {
             const int code = classify_transport_error(sr.transport_error);
             row["status"] = "not sent"; results.push_back(row);
-            std::cerr << "  cannot reach " << api << ": " << sr.response_body << "\n";
+            std::cerr << "  cannot reach " << shown(api) << ": " << shown(sr.response_body) << "\n";
             return finish(code, "cannot reach " + api + ": " + sr.response_body);
         }
         if (!sr.ok) {
@@ -790,7 +789,7 @@ inline int submit_command(int argc, char** argv) {
                 text = sr.response_json["error"].get<std::string>();
             const int code = classify_node_error(sr.http_code, text);
             row["status"] = "refused"; row["http_code"] = sr.http_code; row["error"] = text; results.push_back(row);
-            std::cerr << "  REFUSED by the node (HTTP " << sr.http_code << "): " << text << "\n  nothing after it was sent\n";
+            std::cerr << "  REFUSED by the node (HTTP " << sr.http_code << "): " << shown(text) << "\n  nothing after it was sent\n";
             return finish(code, text);
         }
         row["status"] = "accepted";
@@ -812,7 +811,7 @@ inline int submit_command(int argc, char** argv) {
             if (!in_block) {
                 const std::string err = why.empty() ? "not in a block after " + std::to_string(wait_seconds) + " s; nothing after it was sent"
                                                     : "the node dropped it: " + why + "; nothing after it was sent";
-                std::cerr << "  " << err << "\n";
+                std::cerr << "  " << shown(err) << "\n";
                 return finish(why.empty() ? exit_code::TIMEOUT : exit_code::REJECTED, err);
             }
         } else {

@@ -59,5 +59,17 @@ struct DecodedAddress {
 /// error — never a coin-flip between two chains.
 Result<DecodedAddress> DecodeAddress(const std::string& address, AddressChain hint = AddressChain::Auto);
 
+/// Why a bridge withdrawal cannot be paid at `destination` (the text after "ZBW1|") on `chain` (the coin's chain in the
+/// genesis bridge_coin table); empty when it can. One rule for the chain (rule bridge_withdrawal_credit: refused at
+/// admission, a block carrying one is invalid) and for the keeper (tools/bridge.cpp), a pure function of the two strings:
+///   every chain      not empty, printable ASCII, no space and no '|' (the keepers' attestation value splits at '|')
+///   ethereum, bsc    an optional 0x and 40 hex digits: the 20-byte address the keeper signs a release to; in mixed
+///                    case the EIP-55 checksum must match (all lower or all upper case is plain hex)
+///   bitcoin          an address the custody's release builder can pay (BitcoinSignature::DecodeAddressWithType, as
+///                    tools/btc_txmaker.h address_to_script_pubkey reads it)
+///   solana           base58 of a 32-byte key
+/// A chain the code has no release format for (polkadot, cardano, ripple, tron, tezos) gets the first line only.
+std::string BridgeDestinationProblem(const std::string& chain, const std::string& destination);
+
 }  // namespace crypto
 }  // namespace zoobc

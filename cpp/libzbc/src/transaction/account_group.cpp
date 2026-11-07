@@ -10,9 +10,11 @@
 
 #include "zoobc/common/chain_identity.h"
 #include "zoobc/common/constants.h"
+#include "zoobc/consensus/rule_activation.h"
 #include "zoobc/crypto/hash.h"
 #include "zoobc/crypto/signature.h"
 #include "zoobc/transaction/account_state.h"
+#include "zoobc/transaction/eth_signature_canonical.h"
 #include "zoobc/transaction/multisignature_service.h"
 #include "zoobc/util/transaction_util.h"
 
@@ -214,7 +216,12 @@ Result<std::vector<uint8_t>> ControlConsentDigest(const std::vector<uint8_t>& cu
 }
 
 Result<void> VerifyConsent(const std::vector<uint8_t>& digest, const ConsentProof& proof,
-                           const std::vector<uint8_t>& signer) {
+                           const std::vector<uint8_t>& signer, uint32_t at_height) {
+    // Rule eth_signature_canonical_v: every consent signature by an Ethereum- or Tron-typed key is the 27/28 form.
+    if (proof.kind == 0 || proof.kind == 2) {
+        if (!CanonicalForeignRecoveryId(signer, proof.signature, at_height))
+            return bad(std::string("the consent signature: ") + kEthRecoveryIdRefused);
+    }
     if (proof.kind == 0) {
         auto v = crypto::Signature::VerifySignature(digest, proof.signature, signer);
         if (v.IsErr() || !v.Value())
@@ -225,9 +232,19 @@ Result<void> VerifyConsent(const std::vector<uint8_t>& digest, const ConsentProo
         // An Ethereum wallet (MetaMask) will not sign a bare 32-byte hash; it signs through
         // personal_sign, which hashes "\x19Ethereum Signed Message:\n32" || digest. Only for an
         // Ethereum-typed address, where that is genuinely how its key signs.
-        if (signer.size() < 4 || util::TransactionUtil::ExtractAccountType(signer) != util::TransactionUtil::ACCOUNT_TYPE_ETH)
-            return bad("consent proof kind 2 (personal_sign) is for an Ethereum address");
-        static const std::string kPrefix = std::string("\x19") + "Ethereum Signed Message:\n32";
+        // Rule canonical_account_forms: a Tron wallet signs the same way with its own prefix. TronWeb's
+        // signMessageV2 hashes keccak256("\x19TRON Signed Message:\n" || decimal length || message) and its v1
+        // signString keccak256("\x19TRON Signed Message:\n32" || message): for a 32-byte digest both are
+        // "\x19TRON Signed Message:\n32" || digest, recovered with v 27/28 like Ethereum's.
+        const int32_t signer_type = signer.size() < 4 ? -1 : util::TransactionUtil::ExtractAccountType(signer);
+        const bool tron = signer_type == util::TransactionUtil::ACCOUNT_TYPE_TRON &&
+                          consensus::RuleClock::Active("canonical_account_forms", at_height);
+        if (signer_type != util::TransactionUtil::ACCOUNT_TYPE_ETH && !tron)
+            return bad("consent proof kind 2 (personal_sign) is for an Ethereum address (or, under rule "
+                       "canonical_account_forms, a Tron one)");
+        static const std::string kEthPrefix = std::string("\x19") + "Ethereum Signed Message:\n32";
+        static const std::string kTronPrefix = std::string("\x19") + "TRON Signed Message:\n32";
+        const std::string& kPrefix = tron ? kTronPrefix : kEthPrefix;
         std::vector<uint8_t> payload(kPrefix.begin(), kPrefix.end());
         payload.insert(payload.end(), digest.begin(), digest.end());
         auto v = crypto::Signature::VerifySignature(payload, proof.signature, signer);
@@ -245,16 +262,28 @@ Result<void> VerifyConsent(const std::vector<uint8_t>& digest, const ConsentProo
     for (const auto& [a, s] : proof.participants) {
         (void)s;
         if (!seen.insert(a).second) return bad("multisig consent: duplicate participant");
+        // Rule canonical_account_forms: a full-key participant could never sign the multisig's transactions (the
+        // MultiSignature body reads the 20-byte form), so the account it helps name could never spend.
+        if (util::TransactionUtil::FullKeyFormRefused(a, at_height))
+            return bad(std::string("multisig consent: a participant: ") + util::TransactionUtil::kFullKeyFormRefused);
         addrs.push_back(a);
     }
-    const auto derived = MultisignatureService::GenerateMultisigAddress(addrs, proof.multisig_nonce,
-                                                                        proof.minimum_signatures);
+    auto derived = MultisignatureService::GenerateMultisigAddress(addrs, proof.multisig_nonce,
+                                                                  proof.minimum_signatures);
+    // Rule canonical_account_forms: the multisig account is the typed 00000000 || hash the chain stores (and a
+    // MultiSignature sends from); the bare 32-byte hash is no account under typed_accounts_only, so compared bare it
+    // never equalled the typed member and no multisig could consent. Below typed_accounts_only both forms
+    // canonicalize to the typed one, so this compares the same thing there.
+    if (derived.size() == 32 && consensus::RuleClock::Active("canonical_account_forms", at_height))
+        derived = util::TransactionUtil::BuildAccountAddress(util::TransactionUtil::ACCOUNT_TYPE_ZBC, derived);
     if (derived.empty() ||
         AccountState::CanonicalAccountKey(derived) != AccountState::CanonicalAccountKey(signer))
         return bad("multisig consent: the participants, threshold and nonce do not hash to the consenting address");
     uint32_t valid = 0;
     for (const auto& [a, s] : proof.participants) {
         if (s.empty()) continue;
+        if (!CanonicalForeignRecoveryId(a, s, at_height))
+            return bad(std::string("multisig consent: a participant signature: ") + kEthRecoveryIdRefused);
         auto v = crypto::Signature::VerifySignature(digest, s, a);
         if (v.IsOk() && v.Value()) valid++;
     }

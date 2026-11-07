@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cstring>
 
+#include "zoobc/crypto/bitcoin_signature.h"
 #include "zoobc/crypto/bitcoin_transaction.h"
 #include "zoobc/crypto/hash.h"
 #include "zoobc/crypto/slip10.h"
@@ -191,6 +192,38 @@ static bool bech32_plain_decode(const std::string& in, std::string& hrp_out, std
     return true;
 }
 
+// The chain an account type is written in, for a hint the detected address must agree with.
+static AddressChain ChainOfType(int32_t t) {
+    switch (t) {
+        case AT::ACCOUNT_TYPE_ZBC:        return AddressChain::ZooBC;
+        case AT::ACCOUNT_TYPE_DATASET:    return AddressChain::DataSet;
+        case AT::ACCOUNT_TYPE_BTC: case AT::ACCOUNT_TYPE_BTC_P2PKH: case AT::ACCOUNT_TYPE_BTC_P2SH:
+        case AT::ACCOUNT_TYPE_BTC_P2WPKH: case AT::ACCOUNT_TYPE_BTC_P2WSH: case AT::ACCOUNT_TYPE_BTC_P2TR:
+                                          return AddressChain::Bitcoin;
+        case AT::ACCOUNT_TYPE_ETH:        return AddressChain::Ethereum;
+        case AT::ACCOUNT_TYPE_SOLANA:     return AddressChain::Solana;
+        case AT::ACCOUNT_TYPE_POLKADOT:   return AddressChain::Polkadot;
+        case AT::ACCOUNT_TYPE_CARDANO:    return AddressChain::Cardano;
+        case AT::ACCOUNT_TYPE_RIPPLE:     return AddressChain::Ripple;
+        case AT::ACCOUNT_TYPE_TRON:       return AddressChain::Tron;
+        case AT::ACCOUNT_TYPE_TEZOS:      return AddressChain::Tezos;
+        default:                          return AddressChain::Auto;
+    }
+}
+
+static const char* ChainName(AddressChain c) {
+    switch (c) {
+        case AddressChain::Bitcoin: return "Bitcoin";
+        case AddressChain::Cardano: return "Cardano";
+        case AddressChain::Ripple:  return "Ripple";
+        case AddressChain::Tron:    return "Tron";
+        case AddressChain::Tezos:   return "Tezos";
+        default:                    return "matching";
+    }
+}
+
+static Result<DecodedAddress> DetectAddress(const std::string& a);
+
 Result<DecodedAddress> DecodeAddress(const std::string& input, AddressChain hint) {
     std::string a = input;
     a.erase(0, a.find_first_not_of(" \t\r\n"));
@@ -215,6 +248,17 @@ Result<DecodedAddress> DecodeAddress(const std::string& input, AddressChain hint
     }
     if (hint == AddressChain::ZooBC || hint == AddressChain::DataSet) return zbcForm(a);
 
+    // Bitcoin, Cardano, Ripple, Tron and Tezos each have formats detection already reads by checksum, so for them
+    // the hint is a check, not a reading: an address that reads as another chain is refused, never typed as it.
+    // (They used to fall through here unchecked, so --chain tron with a 0x address made an Ethereum account.)
+    auto detected = DetectAddress(a);
+    if (hint != AddressChain::Auto && detected.IsOk() && ChainOfType(detected.Value().account_type) != hint)
+        return Error{ErrorCode::ValidationError, std::string("not a ") + ChainName(hint) + " address: it reads as " +
+                                                     AccountTypeName(detected.Value().account_type)};
+    return detected;
+}
+
+static Result<DecodedAddress> DetectAddress(const std::string& a) {
     // ---- Ethereum: 0x + 40 hex ---------------------------------------------------------------
     if (a.size() == 42 && a[0] == '0' && (a[1] == 'x' || a[1] == 'X') && isHex(a.substr(2), 40))
         return DecodedAddress{withType(AT::ACCOUNT_TYPE_ETH, hexBytes(a.substr(2))), AT::ACCOUNT_TYPE_ETH, "ethereum"};
@@ -313,6 +357,51 @@ Result<DecodedAddress> DecodeAddress(const std::string& input, AddressChain hint
     return Error{ErrorCode::ValidationError,
                  "unrecognised address. Supported: ZooBC (ZBC_/ZBS_), Bitcoin, Ethereum, Solana, "
                  "Polkadot, Cardano, Ripple, Tron, Tezos. Use --chain to force one."};
+}
+
+std::string BridgeDestinationProblem(const std::string& chain, const std::string& destination) {
+    if (destination.empty()) return "the withdrawal names no destination";
+    for (char c : destination)
+        if (c < 0x21 || c > 0x7e || c == '|')
+            return "a destination is printable ASCII with no space and no '|'";
+    std::string name;
+    for (char c : chain) name.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    if (ParseAddressChain(name) == AddressChain::Ethereum || name == "bsc") {
+        const bool prefixed = destination.size() > 2 && destination[0] == '0' && (destination[1] == 'x' || destination[1] == 'X');
+        const std::string digits = prefixed ? destination.substr(2) : destination;
+        if (!isHex(digits, 40))
+            return "an Ethereum destination is 0x and 40 hex digits (a 20-byte address)";
+        // EIP-55: letters in both cases are a checksum (a letter is upper case where the matching nibble of
+        // keccak256 of the lower-case hex is 8 or more); all lower or all upper case is plain hex, with none.
+        bool has_lower = false, has_upper = false;
+        for (char c : digits) { has_lower = has_lower || (c >= 'a' && c <= 'f'); has_upper = has_upper || (c >= 'A' && c <= 'F'); }
+        if (has_lower && has_upper) {
+            std::string low;
+            for (char c : digits) low.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+            auto hash = Hash::Keccak256(std::vector<uint8_t>(low.begin(), low.end()));
+            if (hash.IsErr() || hash.Value().size() < 20) return "the Ethereum destination's EIP-55 checksum could not be computed";
+            for (size_t i = 0; i < 40; ++i) {
+                const char c = digits[i];
+                if (!std::isalpha(static_cast<unsigned char>(c))) continue;
+                const uint8_t nibble = (i % 2 == 0) ? (hash.Value()[i / 2] >> 4) : (hash.Value()[i / 2] & 0x0f);
+                if ((nibble >= 8) != (c >= 'A' && c <= 'F'))
+                    return "the Ethereum destination is in mixed case, so it carries an EIP-55 checksum, and the checksum "
+                           "does not match: a character is wrong";
+            }
+        }
+        return "";
+    }
+    if (ParseAddressChain(name) == AddressChain::Bitcoin) {
+        if (BitcoinSignature::DecodeAddressWithType(destination).IsErr())
+            return "a Bitcoin destination is a Bitcoin address with a valid checksum (1..., 3..., bc1...)";
+        return "";
+    }
+    if (ParseAddressChain(name) == AddressChain::Solana) {
+        bool ok = false;
+        if (Base58Decode(destination, ok).size() != 32 || !ok) return "a Solana destination is the base58 form of a 32-byte key";
+        return "";
+    }
+    return "";
 }
 
 }  // namespace crypto

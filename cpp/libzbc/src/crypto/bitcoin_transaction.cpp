@@ -125,6 +125,55 @@ BitcoinTx ParseBitcoinTx(const std::vector<uint8_t>& raw) {
     return tx;
 }
 
+std::vector<uint8_t> BitcoinTxid(const BitcoinTx& tx) {
+    if (!tx.ok) return {};
+    std::vector<uint8_t> raw;
+    putU32(raw, tx.version);
+    putVar(raw, tx.vin.size());
+    for (const auto& in : tx.vin) {
+        raw.insert(raw.end(), in.outpoint.begin(), in.outpoint.end());
+        putVar(raw, in.script_sig.size());
+        raw.insert(raw.end(), in.script_sig.begin(), in.script_sig.end());
+        putU32(raw, in.sequence);
+    }
+    putVar(raw, tx.vout.size());
+    for (const auto& out : tx.vout) {
+        putU64(raw, out.value);
+        putVar(raw, out.script.size());
+        raw.insert(raw.end(), out.script.begin(), out.script.end());
+    }
+    putU32(raw, tx.locktime);
+    return dsha(raw);
+}
+
+std::vector<uint8_t> SerializeBitcoinTx(const BitcoinTx& tx) {
+    if (!tx.ok) return {};
+    std::vector<uint8_t> raw;
+    putU32(raw, tx.version);
+    if (tx.segwit) { raw.push_back(0x00); raw.push_back(0x01); }
+    putVar(raw, tx.vin.size());
+    for (const auto& in : tx.vin) {
+        raw.insert(raw.end(), in.outpoint.begin(), in.outpoint.end());
+        putVar(raw, in.script_sig.size());
+        raw.insert(raw.end(), in.script_sig.begin(), in.script_sig.end());
+        putU32(raw, in.sequence);
+    }
+    putVar(raw, tx.vout.size());
+    for (const auto& out : tx.vout) {
+        putU64(raw, out.value);
+        putVar(raw, out.script.size());
+        raw.insert(raw.end(), out.script.begin(), out.script.end());
+    }
+    if (tx.segwit) {
+        for (const auto& in : tx.vin) {
+            putVar(raw, in.witness.size());
+            for (const auto& item : in.witness) { putVar(raw, item.size()); raw.insert(raw.end(), item.begin(), item.end()); }
+        }
+    }
+    putU32(raw, tx.locktime);
+    return raw;
+}
+
 std::vector<uint8_t> BIP143Preimage(const BitcoinTx& tx, size_t idx,
         const std::vector<uint8_t>& script_code, uint64_t amount, uint32_t hash_type) {
     // SIGHASH_ALL: hashPrevouts/hashSequence over ALL inputs, hashOutputs over ALL outputs.

@@ -61,6 +61,55 @@ inline std::string bytes_to_hex(const std::vector<uint8_t>& bytes) {
     return ss.str();
 }
 
+// A private key typed by hand: 64 hex characters, an optional 0x in front. With ZBC_KEY set, such a first
+// argument is never shifted into the field after it (security review 2026-11-07, H-2).
+inline bool looks_like_typed_key(const std::string& s) {
+    const size_t start = (s.size() >= 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) ? 2 : 0;
+    if (s.size() - start != 64) return false;
+    for (size_t i = start; i < s.size(); ++i)
+        if (!std::isxdigit(static_cast<unsigned char>(s[i]))) return false;
+    return true;
+}
+
+// ============================================================================
+// Text from outside on a terminal (security review 2026-11-07, H-1)
+// ============================================================================
+// A terminal interprets ESC, CSI and the other control bytes: a note, a file name or a message carrying
+// "\e[5A" redraws the lines above it (the recipient, the amount) before the signer answers. Every string that
+// a file, a package or a node supplied reaches the terminal through one of these.
+
+// Printable ASCII (0x20-0x7E) only: nothing a terminal interprets.
+inline bool printable_ascii(const std::string& s) {
+    for (unsigned char c : s) if (c < 0x20 || c > 0x7e) return false;
+    return true;
+}
+// Plain text: printable ASCII and at most 512 bytes (the air-gap signer's printable()).
+inline bool plain_text(const std::string& s) { return s.size() <= 512 && printable_ascii(s); }
+
+// Every byte outside printable ASCII as \xHH and a backslash as "\\"; with keep_lines, \n and \t stay (for a
+// message the tool composed around such a string).
+inline std::string escape_text(const std::string& s, bool keep_lines = false) {
+    static const char* hx = "0123456789abcdef";
+    std::string o;
+    o.reserve(s.size());
+    for (unsigned char c : s) {
+        if (keep_lines && (c == '\n' || c == '\t')) o += static_cast<char>(c);
+        else if (c == '\\' && !keep_lines) o += "\\\\";
+        else if (c >= 0x20 && c <= 0x7e) o += static_cast<char>(c);
+        else { o += "\\x"; o += hx[c >> 4]; o += hx[c & 15]; }
+    }
+    return o;
+}
+
+// One field from outside, shown on a line: as it is when printable ASCII; otherwise marked and escaped (the
+// first 256 bytes), so the signer sees that it carries something other than text, and what.
+inline std::string shown(const std::string& s) {
+    if (printable_ascii(s)) return s;
+    const bool cut = s.size() > 256;
+    return "[not plain text: " + std::to_string(s.size()) + " bytes, shown escaped] \"" +
+           escape_text(cut ? s.substr(0, 256) : s) + (cut ? "\"..." : "\"");
+}
+
 // ============================================================================
 // Exit codes (2026-09-15)
 // ============================================================================
@@ -388,6 +437,25 @@ struct DerivedKeys {
     KeyType type;
 };
 
+// The account a key sends from, in the one form the node's parser carries: the 4-byte type, then the
+// type's GetAccountPublicKeyLength bytes. Ethereum 04000000 || Keccak address (the node recovers the key from
+// the 65-byte signature); Bitcoin P2PKH 05000000 || HASH160, the 1… address shown (the key rides in the
+// signature); ZBC 00000000 || key. A 68-byte Ethereum or 37-byte Bitcoin "full" form is read back as a
+// 24-byte address and the rest of the envelope misread, so it never reaches the verifier.
+inline std::vector<uint8_t> sender_account_of(KeyType type, const std::vector<uint8_t>& public_key) {
+    std::vector<uint8_t> payload = public_key;
+    int32_t account_type = TransactionUtil::ACCOUNT_TYPE_ZBC;
+    if (type == KeyType::ETH) {
+        account_type = TransactionUtil::ACCOUNT_TYPE_ETH;
+        payload = zoobc::crypto::EthereumSignature::GetAddress20(public_key);
+    } else if (type == KeyType::BTC) {
+        account_type = TransactionUtil::ACCOUNT_TYPE_BTC_P2PKH;
+        auto h = zoobc::crypto::BitcoinSignature::Hash160(public_key);
+        payload = h.IsOk() ? h.Value() : std::vector<uint8_t>{};
+    }
+    return TransactionUtil::BuildAccountAddress(account_type, payload);
+}
+
 inline zoobc::Result<DerivedKeys> derive_sender_keys(const std::string& privkey_hex, KeyType type = KeyType::ZBC) {
     if (privkey_hex.length() != 64) {
         return zoobc::Error{zoobc::ErrorCode::ValidationError, "Private key must be 64 hex characters (32 bytes)"};
@@ -423,10 +491,7 @@ inline zoobc::Result<DerivedKeys> derive_sender_keys(const std::string& privkey_
         auto addr20 = zoobc::crypto::EthereumSignature::GetAddress20(keys.keypair.public_key);
         keys.formatted = zoobc::crypto::EthereumSignature::ToChecksumAddress(addr20);
         keys.type_label = "ETH";
-        keys.sender_address.resize(4 + 64);
-        keys.sender_address[0] = 0x04; keys.sender_address[1] = 0x00;
-        keys.sender_address[2] = 0x00; keys.sender_address[3] = 0x00;
-        std::copy(keys.keypair.public_key.begin(), keys.keypair.public_key.end(), keys.sender_address.begin() + 4);
+        keys.sender_address = sender_account_of(type, keys.keypair.public_key);
 
     } else if (type == KeyType::BTC) {
         zoobc::crypto::BitcoinSignature btc_sig;
@@ -438,10 +503,7 @@ inline zoobc::Result<DerivedKeys> derive_sender_keys(const std::string& privkey_
         keys.keypair.private_key = seed;
         keys.formatted = btc_sig.GetAddressFromPublicKey("", keys.keypair.public_key);
         keys.type_label = "BTC";
-        keys.sender_address.resize(4 + 33);
-        keys.sender_address[0] = 0x05; keys.sender_address[1] = 0x00;
-        keys.sender_address[2] = 0x00; keys.sender_address[3] = 0x00;
-        std::copy(keys.keypair.public_key.begin(), keys.keypair.public_key.end(), keys.sender_address.begin() + 4);
+        keys.sender_address = sender_account_of(type, keys.keypair.public_key);
     }
 
     return keys;
@@ -895,6 +957,43 @@ inline BlockInfo fetch_latest_block(const std::string& api_url) {
     return info;
 }
 
+struct ClaimNotice {
+    std::vector<uint8_t> recipient;
+    std::string message;
+};
+
+inline zoobc::Result<ClaimNotice> build_claim_notice(
+    const std::string& api_url,
+    const std::vector<uint8_t>& node_public_key,
+    const std::vector<uint8_t>& claimer_public_key) {
+    auto block = fetch_latest_block(api_url);
+    if (!block.valid) return zoobc::Error{zoobc::ErrorCode::NetworkError, "Failed to fetch latest block from " + api_url};
+    const ApiTarget t = parse_api_url(api_url);
+    auto res = with_api_client(t, [&](auto& c) { return c.Get((t.path_prefix + "/api/v1/nodes").c_str()); });
+    if (!res || res->status != 200) return zoobc::Error{zoobc::ErrorCode::NetworkError, "Failed to fetch the registered node owner from " + api_url};
+    try {
+        auto response = json::parse(res->body);
+        const std::string wanted = bytes_to_hex(node_public_key);
+        for (const auto& node : response["nodes"]) {
+            if (node.value("node_public_key", "") != wanted) continue;
+            ClaimNotice notice;
+            notice.recipient = hex_to_bytes(node.value("account_address", ""));
+            auto claimer = TransactionUtil::BuildAccountAddress(TransactionUtil::ACCOUNT_TYPE_ZBC, claimer_public_key);
+            if (claimer == notice.recipient) return notice;
+            if (notice.recipient.empty()) return zoobc::Error{zoobc::ErrorCode::ValidationError, "The registered node has no owner account"};
+            const uint64_t h = static_cast<uint64_t>(block.height) + 1;
+            const uint64_t due = h + zoobc::constants::NODE_CLAIM_DELAY_BLOCKS;
+            notice.message = "Claim on your node " + wanted + " announced at block " + std::to_string(h) +
+                             ". It executes at block " + std::to_string(due) +
+                             " unless you remove the node with your owner key.";
+            return notice;
+        }
+    } catch (const std::exception& e) {
+        return zoobc::Error{zoobc::ErrorCode::NetworkError, std::string("Cannot read the registered node owner: ") + e.what()};
+    }
+    return zoobc::Error{zoobc::ErrorCode::NotFound, "The node key is not in the node's registry"};
+}
+
 inline std::vector<uint8_t> build_poown_message(
     const std::vector<uint8_t>& account_address,
     const std::vector<uint8_t>& block_hash,
@@ -1219,7 +1318,8 @@ inline void print_tool_usage(const ToolConfig& config, const char* program) {
     std::cout << std::endl;
     std::cout << "Environment:" << std::endl;
     std::cout << "  ZBC_KEY               Sender private key (64 hex). Used when the key argument is omitted" << std::endl;
-    std::cout << "                        or given as '-' (positional), or absent/'-' in stdin JSON." << std::endl;
+    std::cout << "                        or given as '-' (positional), or absent/'-' in stdin JSON. Left out only" << std::endl;
+    std::cout << "                        when the first argument is not 64 hex characters (else: '-')." << std::endl;
     std::cout << "  ZBC_API, ZBC_TIMEOUT  Defaults for --api and --timeout." << std::endl;
     std::cout << "  ZOOBC_GENESIS_HASH    Default for --genesis." << std::endl;
     std::cout << std::endl;
@@ -1553,6 +1653,12 @@ inline int parse_params(const ToolConfig& config, int argc, char* argv[], Parsed
         // the positionals shift right by one. An explicit '-' (or '@env') in the key position always
         // means "from ZBC_KEY", regardless of how many positionals follow — use that form in scripts
         // that also pass the optional trailing [fee] [api_url].
+        //
+        // Never when the first positional is 64 hex characters (an optional 0x in front): that is a
+        // key typed by hand with a later argument missing (ZBC_KEY exported, an empty $RECIPIENT),
+        // and the shift would make the typed seed the recipient or the body and publish it on chain
+        // (security review 2026-11-07, H-2). Refused; '-' is the way to use ZBC_KEY in front of a
+        // 64-hex argument.
         if (key_is_first) {
             size_t required = 0;
             for (const auto& p : config.params) if (p.required && p.default_value.empty()) required++;
@@ -1560,6 +1666,10 @@ inline int parse_params(const ToolConfig& config, int argc, char* argv[], Parsed
                 if (env_key.empty()) return fail(emit_error, exit_code::USAGE, "key argument is '-' but ZBC_KEY is not set");
                 positional[0] = env_key;
             } else if (!env_key.empty() && positional.size() + 1 == required) {
+                if (looks_like_typed_key(positional[0]))
+                    return fail(emit_error, exit_code::USAGE,
+                                "ZBC_KEY is set and the first argument looks like a private key: give the key one way "
+                                "(the key argument, or '-' to take it from ZBC_KEY)");
                 positional.insert(positional.begin(), env_key);
             }
         }
@@ -1641,11 +1751,12 @@ inline void emit_error_json(const std::string& message) {
     pending_exit_code() = 0;
     json result = {{"success", false}, {"error", message},
                    {"exit_code", code}, {"error_class", exit_code::name(code)}};
-    std::cout << result.dump() << std::endl;
+    // dump() escapes control bytes; replace keeps a message with invalid UTF-8 (a file's bytes) from throwing
+    std::cout << result.dump(-1, ' ', false, json::error_handler_t::replace) << std::endl;
 }
 
 inline void emit_error_verbose(const std::string& message) {
-    std::cerr << "Error: " << message << std::endl;
+    std::cerr << "Error: " << escape_text(message, true) << std::endl;   // the message may quote a file's text
 }
 
 // Create an emit_error function based on json_output flag
@@ -1768,22 +1879,19 @@ inline int run_transaction(
         int32_t version = params.expiry > 0 ? 3 : (params.survival > 0 ? 2 : 1);
         int64_t timestamp = transaction_timestamp(params);
 
-        // Build transaction bytes
+        // Build transaction bytes. The sender as the bytes, the JSON and the reply carry it: a ZBC key (typed by the
+        // builder), or the typed account of an Ethereum or Bitcoin key. Both used to go out as a ZBC account holding
+        // the foreign key, which no verifier accepts.
         std::vector<uint8_t> tx_bytes;
+        std::vector<uint8_t> sender_field = sender_pubkey;
         if (signing_type == KeyType::ZBC) {
             tx_bytes = build_transaction_bytes(
                 version, timestamp, sender_pubkey, recipient_address,
                 tx_type, params.fee, body_bytes, escrow_bytes, message_bytes, params.survival, params.expiry);
         } else {
-            // For ETH/BTC, sender_address needs type prefix (handled by build_transaction_bytes_multikey)
-            DerivedKeys dk;
-            dk.type = signing_type;
-            dk.keypair = signing_keypair;
-            // Need full sender address - reconstruct from keypair
-            // Actually, for non-ZBC we'd use the multikey builder, but for simplicity
-            // the transfer tool handles this specially
-            tx_bytes = build_transaction_bytes(
-                version, timestamp, sender_pubkey, recipient_address,
+            sender_field = sender_account_of(signing_type, signing_keypair.public_key);
+            tx_bytes = build_transaction_bytes_multikey(
+                version, timestamp, sender_field, recipient_address,
                 tx_type, params.fee, body_bytes, escrow_bytes, message_bytes, params.survival, params.expiry);
         }
 
@@ -1817,7 +1925,7 @@ inline int run_transaction(
         const std::vector<uint8_t> recipient_for_json = recipient_address;
 
         auto json_payload = build_json_payload(
-            version, timestamp, sender_pubkey, recipient_for_json,
+            version, timestamp, sender_field, recipient_for_json,
             tx_type, params.fee, body_bytes, signature,
             message_bytes, escrow_json, params.survival, params.expiry);
 
@@ -1825,7 +1933,7 @@ inline int run_transaction(
         const json contract_fields = {
             {"transaction_hash", bytes_to_hex(tx_hash)},
             {"transaction_type", tx_type},
-            {"sender_account_address", bytes_to_hex(typed_account(sender_pubkey))},
+            {"sender_account_address", bytes_to_hex(typed_account(sender_field))},
             {"recipient_account_address", bytes_to_hex(typed_account(recipient_for_json))},
             {"fee", params.fee},
             {"timestamp", timestamp},

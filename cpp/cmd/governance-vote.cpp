@@ -26,7 +26,7 @@ static void putU64(std::vector<uint8_t>& b, int64_t v){ for(int i=0;i<8;i++){ b.
 int main(int argc, char* argv[]) {
     ToolConfig config;
     config.name = "ZooBC Governance — Vote on a consensus parameter";
-    config.description = "Declare the value this node wants for a governable parameter (counted at the snapshot cycle's end: the average over the counted seats, each vote within +20 % / half of today's value).";
+    config.description = "Declare the value this node wants for a governable parameter (counted at the snapshot cycle's end: the average over the counted registry nodes, each vote within +20 % / half of today's value).";
     config.tx_type = static_cast<uint32_t>(zoobc::TransactionType::SetConsensusParam);
     config.has_recipient = false;
     config.params = {

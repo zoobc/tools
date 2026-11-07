@@ -361,6 +361,12 @@ constexpr const char* APPS_SEED_PREFIX = "zbc-apps";
 // 16 F2-3: the readiness gate's window (ROLLING-UPGRADE.md §7.3): a bundle switches on at the first
 // height where two thirds of the registered producers signalled it inside the last W blocks.
 constexpr uint32_t SIGNAL_WINDOW_BLOCKS = 720;   // three hours at 15 s
+// Rule readiness_registry_schedule (owner decision 2026-11-05): the window grows with the registry (CF10, max(720, 5R))
+// but never beyond the blocks every node holds: a pruned node keeps MIN_ROLLBACK_BLOCKS below its tip (BlockService::
+// PruneData) and a snapshot carries as many below its height (GoSnapshotService), so a joiner, a pruned node and a
+// full node tally the same headers (consensus/readiness_gate.h SignalWindowAt).
+constexpr uint32_t SIGNAL_WINDOW_MAX_BLOCKS = MIN_ROLLBACK_BLOCKS;
+static_assert(SIGNAL_WINDOW_BLOCKS <= SIGNAL_WINDOW_MAX_BLOCKS, "the signal window's floor must fit the blocks every node holds");
 // 16 F2-4: a bundle activates no earlier than the release registry's height for its release plus
 // this (ROLLING-UPGRADE.md §7.4): the time the self-updater needs to reach the fleet.
 constexpr uint32_t ACTIVATION_FLOOR_BLOCKS = 5760;   // one day at 15 s
@@ -414,6 +420,7 @@ constexpr uint32_t QUEUE_ATTENDANCE_MISSES_ALLOWED = 2;   // the floor; rule att
 // does not hold, so a snapshot carries the block headers this far below its height (GoSnapshotService), or a node
 // restored from it refuses blocks the others accept. Each citing rule asserts it stays within this reach.
 constexpr uint32_t SNAPSHOT_BLOCK_REFERENCE_REACH = 720;
+static_assert(SIGNAL_WINDOW_MAX_BLOCKS <= MIN_ROLLBACK_BLOCKS, "a pruned node must hold the readiness gate's whole window");
 static_assert(EQUIVOCATION_EVIDENCE_MAX_AGE_BLOCKS <= SNAPSHOT_BLOCK_REFERENCE_REACH, "the snapshot must carry the blocks an equivocation report may cite");
 static_assert(QUEUE_ATTENDANCE_MAX_AGE_BLOCKS <= SNAPSHOT_BLOCK_REFERENCE_REACH, "the snapshot must carry the blocks a queue attendance may cite");
 // LV8 (owner decisions 2026-10-25 and 2026-10-27, j52; consensus/node_exit.h): a voluntary exit returns the
@@ -620,7 +627,8 @@ constexpr uint32_t BRIDGE_DEPOSIT_EVENT_ID_MAX = 200;
 constexpr uint32_t BRIDGE_EVENT_IDLE_WINDOW = 720;
 
 constexpr char     BRIDGE_WITHDRAWAL_PREFIX[] = "ZBWDR1:";
-constexpr char     BRIDGE_WITHDRAWAL_MEMO[]   = "ZBW1|";   // memo that marks a transfer as a trigger
+constexpr char     BRIDGE_WITHDRAWAL_MEMO[]   = "ZBW1|";   // memo that marks a transfer as a trigger; the destination after
+                                                           // it must suit the coin's chain (crypto::BridgeDestinationProblem)
 constexpr int32_t  EVENT_TYPE_BRIDGE_BURN = 36;            // wrapper burned on a resolved withdrawal
 
 // ---- Scheduler / vested transfers (on-chain scheduler) ----

@@ -341,6 +341,16 @@ struct EquivocationReportTransactionBody {
     std::vector<uint8_t> header1, signature1, header2, signature2;
 };
 
+// SpineEquivocationReport (type 62, rule spine_equivocation_report, owner decision 2026-11-04 A7): one registered
+// node's YES and NO on one spine block candidate. The spine signature signs the candidate's signed header bytes
+// (GetBlockBytesForSignature); the non-signing statement signs SHA3-256("ZBC-SPINE-REFUSE" || genesis hash ||
+// spine_height u32 LE || SHA3-256(header)).
+// Wire: spine_height(u32 LE) | node_public_key(32) | header_len(u32 LE) | header | spine_signature(64) | statement_signature(64)
+struct SpineEquivocationReportTransactionBody {
+    uint32_t spine_height = 0;
+    std::vector<uint8_t> node_public_key, header, spine_signature, statement_signature;
+};
+
 // Approval escrow transaction body (type 4)
 // Used to approve, reject, or expire an escrow transaction
 // Matches Go model.ApprovalEscrowTransactionBody
@@ -659,8 +669,9 @@ struct DatasetObject {
     std::vector<uint8_t> pending_owner;   // proposed owner awaiting AcceptDataset (empty if none)
     int32_t manage_mode;                  // 0 owner_only, 1 whitelist, 2 blacklist, 3 open
     uint32_t height;
+    uint32_t last_billing_height;
     bool latest;
-    DatasetObject() : manage_mode(0), height(0), latest(true) {}
+    DatasetObject() : manage_mode(0), height(0), last_billing_height(0), latest(true) {}
 };
 
 // Setup account dataset transaction body (type 3)

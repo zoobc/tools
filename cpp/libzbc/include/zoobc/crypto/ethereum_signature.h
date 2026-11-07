@@ -179,6 +179,8 @@ public:
      */
     static Result<int64_t> WeiToAtomicZbc(const std::vector<uint8_t>& wei_be);
 
+    static int64_t SignedCarrierFeeAtomic(const ParsedTransaction& tx);
+
     /**
      * Parse RLP-encoded signed Ethereum transaction
      * Supports both legacy and EIP-155 transactions
@@ -186,6 +188,9 @@ public:
      * @return Parsed transaction structure
      */
     static Result<ParsedTransaction> ParseSignedTransaction(const std::vector<uint8_t>& raw_tx);
+
+    static Result<std::vector<uint8_t>> CanonicalSignedTransaction(
+        const std::vector<uint8_t>& raw_tx);
 
     /**
      * Recover sender address from signed transaction
