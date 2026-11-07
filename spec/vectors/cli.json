@@ -160,6 +160,133 @@
    "success": false
   },
   {
+   "case": "ZBC_KEY set, a typed key and a missing argument",
+   "args": [
+    "send-zbc",
+    "1111111111111111111111111111111111111111111111111111111111111111",
+    "1",
+    "--genesis",
+    "v1",
+    "--offline"
+   ],
+   "stdin": null,
+   "exit_code": 2,
+   "error_class": "usage",
+   "success": false,
+   "env": {
+    "ZBC_KEY": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96"
+   },
+   "output_excludes": [
+    "1111111111111111111111111111111111111111111111111111111111111111",
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96"
+   ]
+  },
+  {
+   "case": "ZBC_KEY set, a key as the only argument",
+   "args": [
+    "accept-dataset",
+    "1111111111111111111111111111111111111111111111111111111111111111",
+    "--genesis",
+    "v1",
+    "--offline"
+   ],
+   "stdin": null,
+   "exit_code": 2,
+   "error_class": "usage",
+   "success": false,
+   "env": {
+    "ZBC_KEY": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96"
+   },
+   "output_excludes": [
+    "1111111111111111111111111111111111111111111111111111111111111111",
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96"
+   ]
+  },
+  {
+   "case": "ZBC_KEY set, sign-message given only a key",
+   "args": [
+    "sign-message",
+    "1111111111111111111111111111111111111111111111111111111111111111",
+    "--genesis",
+    "cf30b4a8c165da3bc004b3a397b18c68986271b0395f9df0e984552fb455cf1d"
+   ],
+   "stdin": null,
+   "exit_code": 2,
+   "error_class": "usage",
+   "success": false,
+   "env": {
+    "ZBC_KEY": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96"
+   },
+   "output_excludes": [
+    "1111111111111111111111111111111111111111111111111111111111111111",
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96"
+   ]
+  },
+  {
+   "case": "ZBC_KEY set, a 64-hex recipient without '-'",
+   "args": [
+    "send-zbc",
+    "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "1",
+    "--genesis",
+    "v1",
+    "--offline"
+   ],
+   "stdin": null,
+   "exit_code": 2,
+   "error_class": "usage",
+   "success": false,
+   "env": {
+    "ZBC_KEY": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96"
+   },
+   "output_excludes": [
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96"
+   ]
+  },
+  {
+   "case": "ZBC_KEY set, '-' and a 64-hex recipient",
+   "args": [
+    "send-zbc",
+    "-",
+    "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "1",
+    "--genesis",
+    "v1",
+    "--offline"
+   ],
+   "stdin": null,
+   "exit_code": 0,
+   "error_class": null,
+   "success": true,
+   "env": {
+    "ZBC_KEY": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96"
+   },
+   "output_excludes": [
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96"
+   ]
+  },
+  {
+   "case": "ZBC_KEY set, key left out",
+   "args": [
+    "send-zbc",
+    "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX",
+    "1",
+    "--genesis",
+    "v1",
+    "--offline"
+   ],
+   "stdin": null,
+   "exit_code": 0,
+   "error_class": null,
+   "success": true,
+   "env": {
+    "ZBC_KEY": "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96"
+   },
+   "output_excludes": [
+    "51bae95d58f32304a5c9d894819989a4fb04da6115d9a43612a026e7a5dd5d96"
+   ]
+  },
+  {
    "case": "approve-escrow bad approval",
    "args": [
     "approve-escrow",

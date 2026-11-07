@@ -126,8 +126,10 @@ func TestExitCodes(t *testing.T) {
 			Case, ErrorClass string `json:",omitempty"`
 			Args             []string
 			Stdin            *string
-			ExitCode         int    `json:"exit_code"`
-			Class            string `json:"error_class"`
+			ExitCode         int               `json:"exit_code"`
+			Class            string            `json:"error_class"`
+			Env              map[string]string `json:"env"`
+			OutputExcludes   []string          `json:"output_excludes"`
 		}
 	}
 	load(t, "cli.json", &d)
@@ -136,7 +138,16 @@ func TestExitCodes(t *testing.T) {
 		if c.Stdin != nil {
 			stdin = *c.Stdin
 		}
+		clearEnv(t)
+		for k, v := range c.Env {
+			t.Setenv(k, v)
+		}
 		code, out, errs := run(t, stdin, c.Args...)
+		for _, secret := range c.OutputExcludes {
+			if strings.Contains(out+errs, secret) {
+				t.Errorf("%s: a private key is in the output: %s %s", c.Case, out, errs)
+			}
+		}
 		if code != c.ExitCode {
 			t.Errorf("%s: exit %d, want %d: %s %s", c.Case, code, c.ExitCode, out, errs)
 			continue

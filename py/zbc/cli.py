@@ -45,6 +45,9 @@ MESSAGE_COMMANDS = {
         {"name": "message_hex", "kind": "string", "required": True, "help": "the transaction's message field as hex: ZBE1 then the sealed box"}]),
 }
 _INT = re.compile(r"^-?\d+$")
+# ZBC_KEY with one positional short and a 64-hex first positional: a typed key with a later argument missing would
+# shift into the recipient (or the body) and be published on chain, so the tool refuses (cli-contract.md section 1).
+KEY_GIVEN_TWICE = "ZBC_KEY is set and the first argument looks like a private key: give the key one way"
 
 
 class Options:
@@ -254,6 +257,8 @@ def resolve_params(params: List[dict], positional: List[str], o: Options) -> Dic
                 raise usage("key argument is '-' but ZBC_KEY is not set")
             pos[0] = env_key
         elif env_key and len(pos) + 1 == required:
+            if pos and is_hex(pos[0], 64):
+                raise usage(KEY_GIVEN_TWICE)
             pos.insert(0, env_key)
     for i, p in enumerate(params):
         if i < len(pos):

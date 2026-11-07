@@ -149,9 +149,10 @@ final class VectorsTests: XCTestCase {
 
     func testCliExitCodes() throws {
         for c in try load("cli.json")["vectors"] as! [[String: Any]] {
-            let (code, out, err) = cli(c["args"] as! [String], stdin: c["stdin"] as? String ?? "")
+            let (code, out, err) = cli(c["args"] as! [String], stdin: c["stdin"] as? String ?? "", env: c["env"] as? [String: String] ?? [:])
             XCTAssertEqual(Int64(code), i64(c["exit_code"]), "\(s(c, "case")): \(out)\(err)")
             if let cls = c["error_class"] as? String { XCTAssertEqual(json(out)["error_class"] as? String, cls, s(c, "case")) }
+            for secret in c["output_excludes"] as? [String] ?? [] { XCTAssertFalse((out + err).contains(secret), "\(s(c, "case")): a private key is in the output") }
         }
     }
 

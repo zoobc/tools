@@ -166,9 +166,10 @@ subtest 'zbc-cli --offline reproduces every vector' => sub {
 
 subtest 'cli.json: exit codes and error classes' => sub {
     for my $c (@{ load('cli.json')->{vectors} }) {
-        my ($rc, $out, $err) = run_cli($c->{args}, stdin => $c->{stdin});
+        my ($rc, $out, $err) = run_cli($c->{args}, stdin => $c->{stdin}, env => { %ENV_CLEAN, %{ $c->{env} // {} } });
         is($rc, $c->{exit_code}, "$c->{case}: exit $c->{exit_code}") or diag "$out$err";
         if (defined $c->{error_class}) { my $j = eval { $JSON->decode($out) } // {}; is($j->{error_class}, $c->{error_class}, "$c->{case}: error_class"); }
+        for my $secret (@{ $c->{output_excludes} // [] }) { ok(index("$out$err", $secret) < 0, "$c->{case}: no private key in the output"); }
     }
 };
 

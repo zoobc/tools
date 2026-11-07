@@ -134,9 +134,10 @@ foreach (array_merge($load('transactions.json')['vectors'], $load('transactions-
 }
 // CLI: exit codes
 foreach ($load('cli.json')['vectors'] as $c) {
-    [$code, $out, $err] = cli($c['args'], $c['stdin'] ?? '');
+    [$code, $out, $err] = cli($c['args'], $c['stdin'] ?? '', $c['env'] ?? []);
     $j = json_decode($out, true) ?? [];
     check("cli exit: {$c['case']}", $code === $c['exit_code'] && (!isset($c['error_class']) || ($j['error_class'] ?? null) === $c['error_class']), "exit $code $out$err");
+    foreach ($c['output_excludes'] ?? [] as $secret) { check("cli no private key in the output: {$c['case']}", !str_contains($out . $err, $secret), "$out$err"); }
 }
 // CLI: messages
 foreach ($m['vectors'] as $v) {

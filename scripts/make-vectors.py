@@ -24,6 +24,7 @@ SEED_2 = "22" * 32
 MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
 A_V = "ZBC_L2HLFDOM_VKKKTEXX_C2P2M6LG_EB6ZNKSV_356SJUWW_5QPVHDE7_EFJA3PEX"
 A_1 = "ZBC_2BFLEMTU_FO2KWOQT_NC6UMFPE_43ICESVX_DIAWXL4F_ECRTFSLX_Q43UIV2I"
+PUB_1 = "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"   # public key of SEED_1 (A_1 as 64 hex)
 V_SIG_1 = "4cdf8cafca5d06dd6c81c5460c9affec7eada96a63943e485b673ae33da6330570885a8b3f5dd752cbbe2b4404ae9402cdd2f6c36a09941e5d8546dbdd4ef10b"  # sign-message(SEED_1, "hello zoobc")
 REF_BLOCK = {"block_hash": "5a" * 32, "height": 1000}
 # ZBC-MSG-v1 vectors frozen when v2 shipped (2026-10-19): the tools no longer PRODUCE v1 signatures, but
@@ -99,13 +100,14 @@ LEGACY_V1_MESSAGE_VECTORS = [
 ]
 
 BIN = None
-def run(args, stdin=None):
+def run(args, stdin=None, env_set=None):
     env = dict(os.environ)
     for k in ("ZBC_KEY", "ZBC_API", "ZBC_TIMEOUT", "ZOOBC_GENESIS_HASH"): env.pop(k, None)
+    env.update(env_set or {})
     p = subprocess.run(args, input=stdin, capture_output=True, text=True, env=env)
     return p.returncode, p.stdout, p.stderr
-def cli(*args, stdin=None):
-    return run([str(BIN / "zbc-cli"), *args], stdin=stdin)
+def cli(*args, stdin=None, env=None):
+    return run([str(BIN / "zbc-cli"), *args], stdin=stdin, env_set=env)
 def must_json(rc, out, err, what):
     if rc != 0:
         sys.exit("%s: exit %d\n%s\n%s" % (what, rc, out, err))
@@ -419,11 +421,17 @@ def transactions_vectors():
 # ---------------------------------------------------------------- cli behaviour -------------
 def cli_vectors():
     cases = []
-    def case(name, args, expect_code, stdin=None):
-        rc, o, e = cli(*args, stdin=stdin)
+    def case(name, args, expect_code, stdin=None, env=None, secrets=()):
+        # env: variables set for this run (ZBC_KEY, ZBC_API, ZBC_TIMEOUT and ZOOBC_GENESIS_HASH are cleared first).
+        # secrets: private keys that must appear nowhere in stdout or stderr (recorded as output_excludes).
+        rc, o, e = cli(*args, stdin=stdin, env=env)
         j = json.loads(o) if o.strip().startswith("{") else None
-        cases.append({"case": name, "args": list(args), "stdin": stdin, "exit_code": rc, "error_class": (j or {}).get("error_class"), "success": (j or {}).get("success")})
+        c = {"case": name, "args": list(args), "stdin": stdin, "exit_code": rc, "error_class": (j or {}).get("error_class"), "success": (j or {}).get("success")}
+        if env: c["env"] = dict(env)
+        if secrets: c["output_excludes"] = list(secrets)
+        cases.append(c)
         assert rc == expect_code, (name, rc, o, e)
+        assert not [k for k in secrets if k in o or k in e], (name, "a private key is in the output", o, e)
     case("missing amount", ["send-zbc", SEED_V, A_V], 2)
     case("bad recipient", ["send-zbc", SEED_V, "not-an-address", "1", "--genesis", "v1", "--offline"], 2)
     case("fee not a number", ["send-zbc", SEED_V, A_V, "1", "--fee", "abc"], 2)
@@ -434,6 +442,17 @@ def cli_vectors():
     case("escrow without timeout", ["send-zbc", SEED_V, A_V, "1", "--escrow-approver", A_1, "--genesis", "v1", "--offline"], 2)
     case("key placeholder without ZBC_KEY", ["send-zbc", "-", A_V, "1", "--genesis", "v1", "--offline"], 2)
     case("key wrong length", ["send-zbc", "abcd", A_V, "1", "--genesis", "v1", "--offline"], 2)
+    # ZBC_KEY with one positional short: the key is taken from ZBC_KEY only when the first positional is not 64 hex.
+    # A typed key with a later argument missing (an empty $RECIPIENT) would otherwise become the recipient, on chain.
+    env_key = {"ZBC_KEY": SEED_V}
+    case("ZBC_KEY set, a typed key and a missing argument", ["send-zbc", SEED_1, "1", "--genesis", "v1", "--offline"], 2,
+         env=env_key, secrets=[SEED_1, SEED_V])
+    case("ZBC_KEY set, a key as the only argument", ["accept-dataset", SEED_1, "--genesis", "v1", "--offline"], 2,
+         env=env_key, secrets=[SEED_1, SEED_V])
+    case("ZBC_KEY set, sign-message given only a key", ["sign-message", SEED_1, "--genesis", GENESIS], 2, env=env_key, secrets=[SEED_1, SEED_V])
+    case("ZBC_KEY set, a 64-hex recipient without '-'", ["send-zbc", PUB_1, "1", "--genesis", "v1", "--offline"], 2, env=env_key, secrets=[SEED_V])
+    case("ZBC_KEY set, '-' and a 64-hex recipient", ["send-zbc", "-", PUB_1, "1", "--genesis", "v1", "--offline"], 0, env=env_key, secrets=[SEED_V])
+    case("ZBC_KEY set, key left out", ["send-zbc", A_V, "1", "--genesis", "v1", "--offline"], 0, env=env_key, secrets=[SEED_V])
     case("approve-escrow bad approval", ["approve-escrow", SEED_V, "3", "11" * 32, "--genesis", "v1", "--offline"], 2)
     case("approve-escrow short hash", ["approve-escrow", SEED_V, "0", "1111", "--genesis", "v1", "--offline"], 2)
     case("unreachable node", ["send-zbc", SEED_V, A_V, "1", "--api", "http://127.0.0.1:9", "--genesis", "v1", "--timeout", "2"], 3)

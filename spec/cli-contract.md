@@ -24,6 +24,16 @@ governance votes, `requester_privkey` for escrow requests) always take the key e
 `verify-message` is the exception: its first parameter is a ZBC address, because verification needs
 no key. `decrypt-message` takes the recipient's own key first, under the same `ZBC_KEY` rule.
 
+To leave the key out, give exactly one positional parameter fewer than the command requires
+(parameters that have a default do not count); the tool puts `ZBC_KEY` in front. It does so only
+when the first positional parameter is **not** 64 hex characters. When it is, the tool cannot tell
+a typed key from a 64-hex recipient or hash, and a typed key with a later argument missing (an
+empty, unquoted `$RECIPIENT` in a script) would shift into the recipient or the body and be
+published on chain. So it refuses, with exit code 2 (`usage`) and the message
+`ZBC_KEY is set and the first argument looks like a private key: give the key one way`. To pass a
+64-hex first parameter (a raw public key as recipient, a 32-byte hash) together with `ZBC_KEY`,
+give the key as `-`: the `-` placeholder always means `ZBC_KEY`, whatever follows.
+
 Positional parameters and the JSON fields of `--json-input` are the same names, in the same order,
 as printed by `zbc-cli help <command>`. The stdin object may also carry the options `fee`,
 `timeout_seconds`, `timestamp`, `offline`, `hex` and `verbose` (booleans), `api_url`, `message` and `escrow`
@@ -53,7 +63,7 @@ Options may appear anywhere on the command line. Unknown options are a usage err
 
 | Variable | Used for |
 |----------|----------|
-| `ZBC_KEY` | The sender private key when the key parameter is omitted or `-` (also inside stdin JSON). |
+| `ZBC_KEY` | The sender private key when the key parameter is omitted (section 1) or `-` (also inside stdin JSON). |
 | `ZBC_API` | Default for `--api`. |
 | `ZBC_TIMEOUT` | Default for `--timeout`. |
 | `ZOOBC_GENESIS_HASH` | Default for `--genesis`. |

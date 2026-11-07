@@ -254,6 +254,11 @@ func checkEscrow(e *zbc.Escrow) error {
 
 func isPlaceholder(s string) bool { return s == "-" || s == "@env" || s == "env:ZBC_KEY" }
 
+// keyGivenTwice: ZBC_KEY with one positional short and a 64-hex first positional. A typed key with a later argument
+// missing would shift into the recipient (or the body) and be published on chain, so the tool refuses
+// (cli-contract.md section 1).
+const keyGivenTwice = "ZBC_KEY is set and the first argument looks like a private key: give the key one way"
+
 func resolveParams(params []zbc.ParamDef, positional []string, o *options, e *env) (map[string]string, error) {
 	values := map[string]string{}
 	keyIsFirst := len(params) > 0 && params[0].Name == "sender_privkey"
@@ -410,6 +415,9 @@ func resolveParams(params []zbc.ParamDef, positional []string, o *options, e *en
 			}
 			pos[0] = envKey
 		} else if envKey != "" && len(pos)+1 == required {
+			if len(pos) > 0 && zbc.IsHex(pos[0], 64) {
+				return nil, zbc.Usage(keyGivenTwice)
+			}
 			pos = append([]string{envKey}, pos...)
 		}
 	}

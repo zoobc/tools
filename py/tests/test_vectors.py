@@ -141,10 +141,12 @@ class Vectors(unittest.TestCase):
 
     def test_cli_exit_codes(self):
         for c in load("cli.json")["vectors"]:
-            rc, out, err = run_cli(c["args"], stdin=c.get("stdin"))
+            rc, out, err = run_cli(c["args"], stdin=c.get("stdin"), env=dict(ENV, **c["env"]) if c.get("env") else None)
             self.assertEqual(rc, c["exit_code"], "%s: %s%s" % (c["case"], out, err))
             if c.get("error_class"):
                 self.assertEqual(json.loads(out)["error_class"], c["error_class"], c["case"])
+            for secret in c.get("output_excludes", []):
+                self.assertNotIn(secret, out + err, "%s: a private key is in the output" % c["case"])
 
     def test_cli_messages(self):
         m = load("messages.json")

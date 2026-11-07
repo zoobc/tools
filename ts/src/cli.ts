@@ -111,6 +111,9 @@ function parseArgs(argv: string[]): { positional: string[]; o: Options } {
 }
 
 const isKeyPlaceholder = (s: string): boolean => s === "-" || s === "@env" || s === "env:ZBC_KEY";
+// ZBC_KEY with one positional short and a 64-hex first positional: a typed key with a later argument missing would
+// shift into the recipient (or the body) and be published on chain, so the tool refuses (cli-contract.md section 1).
+const KEY_GIVEN_TWICE = "ZBC_KEY is set and the first argument looks like a private key: give the key one way";
 
 /** Resolve parameter values from positionals, stdin JSON or prompts. */
 async function resolveParams(params: ParamDef[], positional: string[], o: Options): Promise<{ values: Record<string, string>; extraPositional: string[] }> {
@@ -180,7 +183,10 @@ async function resolveParams(params: ParamDef[], positional: string[], o: Option
     if (pos.length > 0 && isKeyPlaceholder(pos[0])) {
       if (!envKey) throw usage("key argument is '-' but ZBC_KEY is not set");
       pos[0] = envKey;
-    } else if (envKey && pos.length + 1 === required) pos.unshift(envKey);
+    } else if (envKey && pos.length + 1 === required) {
+      if (pos.length > 0 && isHex(pos[0], 64)) throw usage(KEY_GIVEN_TWICE);
+      pos.unshift(envKey);
+    }
   }
   params.forEach((p, i) => {
     if (i < pos.length) values[p.name] = pos[i];

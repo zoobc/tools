@@ -215,11 +215,15 @@ fn cli_offline_reproduces_every_vector() {
 fn cli_exit_codes() {
     for c in load("cli.json")["vectors"].as_array().unwrap() {
         let args: Vec<&str> = c["args"].as_array().unwrap().iter().map(|a| a.as_str().unwrap()).collect();
-        let (code, out, err) = cli(&args, c["stdin"].as_str().unwrap_or(""), &[]);
+        let env: Vec<(&str, &str)> = c["env"].as_object().map_or(vec![], |m| m.iter().map(|(k, v)| (k.as_str(), v.as_str().unwrap())).collect());
+        let (code, out, err) = cli(&args, c["stdin"].as_str().unwrap_or(""), &env);
         assert_eq!(code as i64, c["exit_code"].as_i64().unwrap(), "{}: {out}{err}", s(c, "case"));
         if let Some(class) = c["error_class"].as_str() {
             let j: Value = serde_json::from_str(&out).unwrap();
             assert_eq!(j["error_class"], class, "{}", s(c, "case"));
+        }
+        for secret in c["output_excludes"].as_array().map_or(vec![], |a| a.iter().map(|x| x.as_str().unwrap()).collect()) {
+            assert!(!out.contains(secret) && !err.contains(secret), "{}: a private key is in the output", s(c, "case"));
         }
     }
 }

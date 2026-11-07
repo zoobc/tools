@@ -123,6 +123,10 @@ object Cli {
 
     private fun isPlaceholder(s: String) = s == "-" || s == "@env" || s == "env:ZBC_KEY"
 
+    /** ZBC_KEY with one positional short and a 64-hex first positional: a typed key with a later argument missing would
+     *  shift into the recipient (or the body) and be published on chain, so the tool refuses (cli-contract.md section 1). */
+    private const val KEY_GIVEN_TWICE = "ZBC_KEY is set and the first argument looks like a private key: give the key one way"
+
     private fun resolveParams(params: List<ParamDef>, positional: List<String>, o: Options, io: Io): MutableMap<String, String> {
         val values = mutableMapOf<String, String>()
         val keyIsFirst = params.firstOrNull()?.name == "sender_privkey"
@@ -179,7 +183,10 @@ object Cli {
         if (keyIsFirst) {
             val required = params.count { it.required && it.default.isNullOrEmpty() }
             if (pos.isNotEmpty() && isPlaceholder(pos[0])) { if (envKey.isEmpty()) throw ToolError.usage("key argument is '-' but ZBC_KEY is not set"); pos[0] = envKey }
-            else if (envKey.isNotEmpty() && pos.size + 1 == required) pos.add(0, envKey)
+            else if (envKey.isNotEmpty() && pos.size + 1 == required) {
+                if (pos.isNotEmpty() && Encoding.isHex(pos[0], 64)) throw ToolError.usage(KEY_GIVEN_TWICE)
+                pos.add(0, envKey)
+            }
         }
         params.forEachIndexed { i, p ->
             values[p.name] = when {

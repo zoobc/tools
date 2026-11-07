@@ -123,6 +123,9 @@ public enum Cli {
     }
 
     static func isPlaceholder(_ s: String) -> Bool { s == "-" || s == "@env" || s == "env:ZBC_KEY" }
+    /// ZBC_KEY with one positional short and a 64-hex first positional: a typed key with a later argument missing would
+    /// shift into the recipient (or the body) and be published on chain, so the tool refuses (cli-contract.md section 1).
+    static let keyGivenTwice = "ZBC_KEY is set and the first argument looks like a private key: give the key one way"
 
     static func resolveParams(_ params: [ParamDef], _ positional: [String], _ o: inout Options, _ io: Io) throws -> [String: String] {
         var values: [String: String] = [:]
@@ -180,7 +183,10 @@ public enum Cli {
         if keyIsFirst {
             let required = params.filter { $0.required && ($0.default ?? "").isEmpty }.count
             if let f = pos.first, isPlaceholder(f) { guard !envKey.isEmpty else { throw ToolError.usage("key argument is '-' but ZBC_KEY is not set") }; pos[0] = envKey }
-            else if !envKey.isEmpty && pos.count + 1 == required { pos.insert(envKey, at: 0) }
+            else if !envKey.isEmpty && pos.count + 1 == required {
+                if let f = pos.first, Enc.isHex(f, 64) { throw ToolError.usage(keyGivenTwice) }
+                pos.insert(envKey, at: 0)
+            }
         }
         for (i, p) in params.enumerated() {
             if i < pos.count { values[p.name] = pos[i] }

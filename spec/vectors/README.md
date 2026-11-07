@@ -14,7 +14,7 @@ the files from a fresh C++ build and fails if a byte differs (`.github/workflows
 | `messages.json` | `ZBC-MSG-v1` sign and verify, including hex-byte messages, and `invalid` cases that must fail with the given exit code |
 | `transactions.json` | the core set: `SendZBC` (plain, message, escrow, foreign recipient, signing v1, another genesis, large fee) and `ApprovalEscrow`; unsigned bytes, digest, signature, transaction bytes, hash and submit payload |
 | `transactions-all.json` | one vector per transaction type, from each `../transactions/*.json` example, plus the liquid-payment token variant |
-| `cli.json` | exit code and `error_class` of `zbc-cli` for a list of wrong invocations |
+| `cli.json` | exit code and `error_class` of `zbc-cli` for a list of invocations, mostly wrong ones; `env`, when present, is set for the run (with `ZBC_KEY`, `ZBC_API`, `ZBC_TIMEOUT` and `ZOOBC_GENESIS_HASH` cleared first), and no string of `output_excludes` (private keys) may appear on stdout or stderr |
 | `encryption.json` | sealed messages (`signing.md` 8): Ed25519 → X25519 key conversion; sealed boxes built with a given ephemeral key, to reproduce byte for byte; fields sealed by the C++ tool with a random key, to open; `invalid` cases with their exit code |
 
 Conventions: hex is lower case; `key` is the 32-byte seed; `params` are the command-line strings

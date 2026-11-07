@@ -4,6 +4,7 @@ package foundation.zoobc.zbc
 
 import foundation.zoobc.zbc.cli.Cli
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
@@ -18,6 +19,7 @@ import java.io.PrintStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** Every file in spec/vectors, through the library and in-process through the CLI. */
@@ -149,9 +151,11 @@ class VectorsTest {
 
     @Test fun cliExitCodes() {
         for (c in load("cli.json")["vectors"]!!.jsonArray.map { it.jsonObject }) {
-            val (code, out, err) = cli(c["args"]!!.jsonArray.map { it.jsonPrimitive.content }, c["stdin"]?.jsonPrimitive?.contentOrNull ?: "")
+            val env = (c["env"] as? JsonObject)?.mapValues { it.value.jsonPrimitive.content } ?: emptyMap()
+            val (code, out, err) = cli(c["args"]!!.jsonArray.map { it.jsonPrimitive.content }, c["stdin"]?.jsonPrimitive?.contentOrNull ?: "", env)
             assertEquals(c["exit_code"]!!.jsonPrimitive.content.toInt(), code, "${s(c, "case")}: $out$err")
             c["error_class"]?.jsonPrimitive?.contentOrNull?.let { assertEquals(it, Json.parseToJsonElement(out).jsonObject["error_class"]!!.jsonPrimitive.content, s(c, "case")) }
+            for (secret in (c["output_excludes"] as? JsonArray)?.map { it.jsonPrimitive.content } ?: emptyList()) assertFalse((out + err).contains(secret), "${s(c, "case")}: a private key is in the output")
         }
     }
 

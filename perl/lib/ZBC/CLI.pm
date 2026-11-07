@@ -19,6 +19,7 @@ use ZBC::Message qw(SCHEME SCHEME_V1 message_digest message_digest_v2 public_key
 use ZBC::Transaction qw(sign_transaction transaction_id);
 
 use constant DEFAULT_FEE => 5000000;
+use constant KEY_GIVEN_TWICE => 'ZBC_KEY is set and the first argument looks like a private key: give the key one way';
 my %CATEGORY = (
     'send-zbc' => 'value', 'liquid-payment' => 'value', 'liquid-payment-stop' => 'value',
     'transfer-token' => 'tokens', 'issue-token' => 'tokens', 'mint-token' => 'tokens', 'burn-token' => 'tokens', 'finance-token' => 'tokens',
@@ -236,6 +237,9 @@ sub resolve_params {
             die usage("key argument is '-' but ZBC_KEY is not set") unless length $env_key;
             $pos[0] = $env_key;
         } elsif (length($env_key) && @pos + 1 == $required) {
+            # A 64-hex first positional: a typed key with a later argument missing would shift into the recipient
+            # (or the body) and be published on chain, so the tool refuses (cli-contract.md section 1).
+            die usage(KEY_GIVEN_TWICE) if @pos && is_hex($pos[0], 64);
             unshift @pos, $env_key;
         }
     }

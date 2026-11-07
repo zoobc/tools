@@ -21,6 +21,10 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// ZBC_KEY with one positional short and a 64-hex first positional: a typed key with a later argument missing would
+/// shift into the recipient (or the body) and be published on chain, so the tool refuses (cli-contract.md section 1).
+const KEY_GIVEN_TWICE: &str = "ZBC_KEY is set and the first argument looks like a private key: give the key one way";
+
 const DEFAULT_FEE: i64 = 5_000_000;
 
 fn category(cmd: &str) -> &'static str {
@@ -302,6 +306,9 @@ fn resolve_params(params: &[ParamDef], positional: &[String], o: &mut Options, i
             }
             pos[0] = env_key.clone();
         } else if !env_key.is_empty() && pos.len() + 1 == required {
+            if pos.first().is_some_and(|s| is_hex(s, 64)) {
+                return Err(usage(KEY_GIVEN_TWICE));
+            }
             pos.insert(0, env_key.clone());
         }
     }

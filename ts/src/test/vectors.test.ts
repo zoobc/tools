@@ -152,9 +152,10 @@ test("zbc-cli --offline reproduces every transaction vector", { skip: !cliAvaila
 });
 test("zbc-cli: cli.json exit codes and error classes", { skip: !cliAvailable }, () => {
   for (const c of load("cli.json").vectors) {
-    const r = spawnSync(process.execPath, [CLI, ...c.args], { encoding: "utf8", input: c.stdin ?? undefined, env: { ...process.env, ZBC_KEY: "", ZOOBC_GENESIS_HASH: "" } });
+    const r = spawnSync(process.execPath, [CLI, ...c.args], { encoding: "utf8", input: c.stdin ?? undefined, env: { ...process.env, ZBC_KEY: "", ZOOBC_GENESIS_HASH: "", ...(c.env ?? {}) } });
     assert.equal(r.status, c.exit_code, `${c.case}: ${r.stdout}${r.stderr}`);
     if (c.error_class) assert.equal(JSON.parse(r.stdout).error_class, c.error_class, c.case);
+    for (const secret of c.output_excludes ?? []) assert.ok(!(r.stdout + r.stderr).includes(secret), `${c.case}: a private key is in the output`);
   }
 });
 test("zbc-cli: sign-message and verify-message vectors (v2 with --genesis, legacy v1 accepted), exit 10 on a bad signature", { skip: !cliAvailable }, () => {

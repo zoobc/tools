@@ -9,6 +9,9 @@ namespace Zoobc\Zbc;
 final class Cli
 {
     private const DEFAULT_FEE = 5000000;
+    // ZBC_KEY with one positional short and a 64-hex first positional: a typed key with a later argument missing would
+    // shift into the recipient (or the body) and be published on chain, so the tool refuses (cli-contract.md section 1).
+    private const KEY_GIVEN_TWICE = 'ZBC_KEY is set and the first argument looks like a private key: give the key one way';
     private const CATEGORY = [
         'send-zbc' => 'value', 'liquid-payment' => 'value', 'liquid-payment-stop' => 'value',
         'transfer-token' => 'tokens', 'issue-token' => 'tokens', 'mint-token' => 'tokens', 'burn-token' => 'tokens', 'finance-token' => 'tokens',
@@ -195,7 +198,10 @@ TXT;
         if ($keyIsFirst) {
             $required = count(array_filter($params, fn($p) => $p['required'] && ($p['default'] ?? '') === ''));
             if ($pos !== [] && self::isPlaceholder($pos[0])) { if ($envKey === '') { throw ToolError::usage("key argument is '-' but ZBC_KEY is not set"); } $pos[0] = $envKey; }
-            elseif ($envKey !== '' && count($pos) + 1 === $required) { array_unshift($pos, $envKey); }
+            elseif ($envKey !== '' && count($pos) + 1 === $required) {
+                if ($pos !== [] && Encoding::isHex($pos[0], 64)) { throw ToolError::usage(self::KEY_GIVEN_TWICE); }
+                array_unshift($pos, $envKey);
+            }
         }
         foreach ($params as $i => $p) {
             if ($i < count($pos)) { $values[$p['name']] = $pos[$i]; }
